@@ -13,12 +13,14 @@
   <link rel="stylesheet" href="./css/layout.css">
   <link rel="stylesheet" href="./css/dashboard.css">
   <link rel="stylesheet" href="./css/responsive.css">
+  <link rel="stylesheet" href="./css/onboarding.css">
 </head>
 <body>
   <div id="app" class="app-shell">
     <div id="scene" class="scene" aria-label="Interactive visualization of a five-neuron Neural Seed"></div>
     <div class="scene-vignette" aria-hidden="true"></div>
 
+    <div class="dashboard-chrome is-hidden">
     <header class="topbar glass-line">
       <a class="brand" href="#dashboard" aria-label="Mindling dashboard">
         <svg class="brand-mark" viewBox="0 0 34 30" aria-hidden="true">
@@ -60,7 +62,7 @@
         </details>
         <details open>
           <summary><span>Pathways</span></summary>
-          <p class="empty-copy">No pathways selected yet.</p>
+          <p class="empty-copy pathways-copy">No pathways selected yet.</p>
         </details>
         <p class="control-hint"><span>↔</span> Drag to rotate &nbsp;·&nbsp; scroll to zoom</p>
       </aside>
@@ -105,7 +107,12 @@
       </form>
     </main>
 
-    <footer><span>RAISE YOUR OWN AI.</span><span class="storage-status" role="status">Local-first · Preparing</span><span>Milestone 01</span></footer>
+    <p class="mindling-id" aria-label="Mindling ID"></p>
+    <aside id="neural-inspector" class="neural-inspector glass-panel" aria-live="polite" hidden></aside>
+
+    <footer><span>RAISE YOUR OWN AI.</span><span class="storage-status" role="status">Local-first · Preparing</span><span>Milestone 02</span></footer>
+    </div>
+    <div id="onboarding" class="onboarding" hidden></div>
   </div>
   <noscript><div class="fatal-message">Play Mindling needs JavaScript to render its Neural Seed.</div></noscript>
   <script type="module" src="./js/bootstrap.js"></script>
