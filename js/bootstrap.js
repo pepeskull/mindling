@@ -1,4 +1,4 @@
-import { MindlingApp } from "../api/app/app.js";
+import { MindlingApp } from "../src/app/app.js";
 
 const app=new MindlingApp();
 app.start().catch(()=>{
