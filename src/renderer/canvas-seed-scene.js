@@ -1,4 +1,5 @@
 import { SceneInteraction } from "./scene-interaction.js";
+import { NEURAL_SEED_MORPHOLOGY as MORPHOLOGY, seededValue } from "./neural-morphology.js";
 
 export class CanvasSeedScene {
   #host;
@@ -46,7 +47,7 @@ export class CanvasSeedScene {
       if (start && end) this.#drawSynapse(start, end);
     }
     this.#drawActivationPulse(points, elapsed);
-    for (const point of points.values()) this.#drawNode(point);
+    for (const point of points.values()) this.#drawNeuron(point);
   }
 
   #projectNodes(elapsed) {
@@ -60,6 +61,7 @@ export class CanvasSeedScene {
         const [x, y, z] = node.position;
         const breath = this.#reducedMotion ? 0 : Math.sin(elapsed + index) * 0.04;
         return [node.id, {
+          index,
           x: centerX + (x * Math.cos(angle) + z * Math.sin(angle)) * scale,
           y: centerY - y * scale,
           radius: 14 * node.size * (1 + breath)
@@ -74,6 +76,7 @@ export class CanvasSeedScene {
     gradient.addColorStop(0.5, "rgba(199,236,229,.55)");
     gradient.addColorStop(1, "rgba(174,218,209,.12)");
     this.#context.strokeStyle = gradient;
+    this.#context.lineWidth = 0.7;
     this.#context.beginPath();
     this.#context.moveTo(start.x, start.y);
     this.#context.quadraticCurveTo(
@@ -85,7 +88,8 @@ export class CanvasSeedScene {
     this.#context.stroke();
   }
 
-  #drawNode(point) {
+  #drawNeuron(point) {
+    this.#drawDendrites(point);
     const glow = this.#context.createRadialGradient(
       point.x - point.radius * 0.2,
       point.y - point.radius * 0.25,
@@ -102,6 +106,46 @@ export class CanvasSeedScene {
     this.#context.beginPath();
     this.#context.arc(point.x, point.y, point.radius * 2.8, 0, Math.PI * 2);
     this.#context.fill();
+
+    const context = this.#context;
+    context.beginPath();
+    for (let vertex = 0; vertex < 12; vertex += 1) {
+      const angle = (vertex / 12) * Math.PI * 2;
+      const irregularity = 0.84 + seededValue(point.index * 101 + vertex) * 0.24;
+      const radius = point.radius * irregularity;
+      const x = point.x + Math.cos(angle) * radius;
+      const y = point.y + Math.sin(angle) * radius * 0.9;
+      if (vertex === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    }
+    context.closePath();
+    context.fillStyle = "rgba(187,224,217,.58)";
+    context.strokeStyle = "rgba(222,247,242,.42)";
+    context.lineWidth = 0.65;
+    context.fill(); context.stroke();
+  }
+
+  #drawDendrites(point) {
+    const context = this.#context;
+    context.strokeStyle = "rgba(139,190,181,.3)";
+    context.lineWidth = 0.65;
+    context.lineCap = "round";
+    for (let branch = 0; branch < MORPHOLOGY.primaryDendrites; branch += 1) {
+      const seed = point.index * 31 + branch;
+      const angle = (branch / MORPHOLOGY.primaryDendrites) * Math.PI * 2 + seededValue(seed) * 0.55;
+      const length = point.radius * (1.6 + seededValue(seed + 7) * 0.75);
+      const startX = point.x + Math.cos(angle) * point.radius * 0.72;
+      const startY = point.y + Math.sin(angle) * point.radius * 0.65;
+      const endX = point.x + Math.cos(angle) * length;
+      const endY = point.y + Math.sin(angle) * length;
+      const bend = (seededValue(seed + 11) - 0.5) * length * 0.45;
+      const controlX = (startX + endX) / 2 - Math.sin(angle) * bend;
+      const controlY = (startY + endY) / 2 + Math.cos(angle) * bend;
+      context.beginPath(); context.moveTo(startX, startY); context.quadraticCurveTo(controlX, controlY, endX, endY); context.stroke();
+      if (branch % 2 === 0) {
+        context.beginPath(); context.moveTo(controlX, controlY);
+        context.lineTo(endX - Math.sin(angle) * length * 0.28, endY + Math.cos(angle) * length * 0.28); context.stroke();
+      }
+    }
   }
 
   #drawActivationPulse(points, elapsed) {
