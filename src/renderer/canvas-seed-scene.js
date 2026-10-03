@@ -36,7 +36,8 @@ export class CanvasSeedScene {
     this.#context.setTransform(density, 0, 0, density, 0, 0);
   }
 
-  render(elapsed) {
+  render(elapsed, delta) {
+    this.#interaction.update(delta);
     const context = this.#context;
     context.clearRect(0, 0, this.#width, this.#height);
     const points = this.#projectNodes(elapsed);

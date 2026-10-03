@@ -225,7 +225,8 @@ export class ThreeSeedScene {
     this.#camera.updateProjectionMatrix();
   }
 
-  render(elapsed) {
+  render(elapsed, delta) {
+    this.#interaction.update(delta);
     const ambientTurn = this.#reducedMotion ? 0 : Math.sin(elapsed * 0.16) * 0.08;
     this.#seedGroup.rotation.set(
       this.#interaction.rotation.x,
