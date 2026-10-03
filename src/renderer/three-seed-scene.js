@@ -1,4 +1,5 @@
 import { SceneInteraction } from "./scene-interaction.js";
+import { NEURAL_SEED_MORPHOLOGY as MORPHOLOGY, seededValue } from "./neural-morphology.js";
 
 export class ThreeSeedScene {
   #three;
@@ -10,6 +11,9 @@ export class ThreeSeedScene {
   #particles;
   #nodeMeshes = [];
   #activationPulses = [];
+  #somaMaterial;
+  #dendriteMaterial;
+  #synapseMaterial;
   #interaction = new SceneInteraction();
   #reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -54,26 +58,26 @@ export class ThreeSeedScene {
     const positions = new Map(
       model.nodes.map((node) => [node.id, new T.Vector3(...node.position)])
     );
-    const geometry = new T.IcosahedronGeometry(0.23, 4);
     const glowTexture = this.#createGlowTexture();
+    this.#somaMaterial = new T.MeshPhysicalMaterial({
+      color: 0xa8c4c0, emissive: 0x6daca2, emissiveIntensity: 0.42,
+      roughness: 0.38, transparent: true, opacity: 0.92
+    });
+    this.#dendriteMaterial = new T.LineBasicMaterial({ color: 0x80aaa3, transparent: true, opacity: 0.28 });
+    this.#synapseMaterial = new T.MeshBasicMaterial({ color: 0xa6d2ca, transparent: true, opacity: 0.25 });
+    const dendriteVertices = [];
 
     model.nodes.forEach((node, index) => {
       const mesh = new T.Mesh(
-        geometry,
-        new T.MeshPhysicalMaterial({
-          color: index ? 0xa8c4c0 : 0xe5f4f1,
-          emissive: 0x6daca2,
-          emissiveIntensity: index ? 0.35 : 0.7,
-          roughness: 0.25,
-          transparent: true,
-          opacity: 0.94
-        })
+        this.#createSomaGeometry(index),
+        this.#somaMaterial
       );
       mesh.position.copy(positions.get(node.id));
       mesh.scale.setScalar(node.size);
       mesh.userData = { phase: index * 1.31, baseSize: node.size };
       this.#seedGroup.add(mesh);
       this.#nodeMeshes.push(mesh);
+      this.#addDendriteVertices(dendriteVertices, mesh.position, node.size, index);
 
       const halo = new T.Sprite(
         new T.SpriteMaterial({
@@ -92,6 +96,10 @@ export class ThreeSeedScene {
       this.#nodeMeshes.push(halo);
     });
 
+    const dendriteGeometry = new T.BufferGeometry();
+    dendriteGeometry.setAttribute("position", new T.Float32BufferAttribute(dendriteVertices, 3));
+    this.#seedGroup.add(new T.LineSegments(dendriteGeometry, this.#dendriteMaterial));
+
     for (const synapse of model.synapses) {
       this.#addSynapse(
         positions.get(synapse.from),
@@ -101,15 +109,54 @@ export class ThreeSeedScene {
     }
   }
 
+  #createSomaGeometry(index) {
+    const geometry = new this.#three.IcosahedronGeometry(0.23, MORPHOLOGY.somaDetail);
+    const positions = geometry.attributes.position;
+    for (let vertex = 0; vertex < positions.count; vertex += 1) {
+      const x = positions.getX(vertex); const y = positions.getY(vertex); const z = positions.getZ(vertex);
+      const noise = Math.sin(x * 19 + index * 1.7) * Math.cos(y * 23 - index) * Math.sin(z * 17 + index * 0.6);
+      const deformation = 1 + noise * MORPHOLOGY.somaIrregularity;
+      positions.setXYZ(vertex, x * deformation * (1 + index * 0.008), y * deformation, z * deformation * (0.96 + index * 0.006));
+    }
+    positions.needsUpdate = true;
+    geometry.computeVertexNormals();
+    return geometry;
+  }
+
+  #addDendriteVertices(vertices, origin, scale, nodeIndex) {
+    const T = this.#three;
+    for (let branch = 0; branch < MORPHOLOGY.primaryDendrites; branch += 1) {
+      const seed = nodeIndex * 31 + branch;
+      const theta = (branch / MORPHOLOGY.primaryDendrites) * Math.PI * 2 + seededValue(seed) * 0.7;
+      const elevation = (seededValue(seed + 11) - 0.5) * 1.25;
+      const direction = new T.Vector3(Math.cos(theta), elevation, Math.sin(theta)).normalize();
+      const side = new T.Vector3(-direction.z, seededValue(seed + 19) - 0.5, direction.x).normalize();
+      const length = MORPHOLOGY.dendriteLength * scale * (0.72 + seededValue(seed + 7) * 0.42);
+      const start = origin.clone().addScaledVector(direction, 0.17 * scale);
+      const bend = origin.clone().addScaledVector(direction, length * 0.58).addScaledVector(side, length * 0.16);
+      const tip = origin.clone().addScaledVector(direction, length).addScaledVector(side, length * 0.06);
+      this.#pushSegment(vertices, start, bend); this.#pushSegment(vertices, bend, tip);
+      if (branch % 2 === 0) {
+        const twig = tip.clone().addScaledVector(side, length * 0.32).addScaledVector(direction, -length * 0.08);
+        this.#pushSegment(vertices, bend, twig);
+      }
+    }
+  }
+
+  #pushSegment(vertices, start, end) { vertices.push(start.x, start.y, start.z, end.x, end.y, end.z); }
+
   #addSynapse(start, end, glowTexture) {
     const T = this.#three;
     if (!start || !end) return;
-    const midpoint = start.clone().add(end).multiplyScalar(0.5);
-    midpoint.z += 0.11;
-    const curve = new T.QuadraticBezierCurve3(start, midpoint, end);
+    const direction = end.clone().sub(start).normalize();
+    const connectionStart = start.clone().addScaledVector(direction, 0.16);
+    const connectionEnd = end.clone().addScaledVector(direction, -0.16);
+    const midpoint = connectionStart.clone().add(connectionEnd).multiplyScalar(0.5);
+    midpoint.z += 0.09; midpoint.y += 0.035;
+    const curve = new T.QuadraticBezierCurve3(connectionStart, midpoint, connectionEnd);
     const mesh = new T.Mesh(
-      new T.TubeGeometry(curve, 24, 0.012, 5, false),
-      new T.MeshBasicMaterial({ color: 0x91bdb5, transparent: true, opacity: 0.3 })
+      new T.TubeGeometry(curve, 20, MORPHOLOGY.synapseRadius, 4, false),
+      this.#synapseMaterial
     );
     this.#seedGroup.add(mesh);
 
@@ -178,7 +225,8 @@ export class ThreeSeedScene {
     this.#camera.updateProjectionMatrix();
   }
 
-  render(elapsed) {
+  render(elapsed, delta) {
+    this.#interaction.update(delta);
     const ambientTurn = this.#reducedMotion ? 0 : Math.sin(elapsed * 0.16) * 0.08;
     this.#seedGroup.rotation.set(
       this.#interaction.rotation.x,
@@ -200,14 +248,15 @@ export class ThreeSeedScene {
   }
 
   #updateActivationPulse(elapsed) {
-    const sequence = elapsed % 8;
-    const pulseIndex = Math.floor(sequence / 2);
+    const cycle = MORPHOLOGY.pulseInterval * this.#activationPulses.length;
+    const sequence = elapsed % cycle;
+    const pulseIndex = Math.floor(sequence / MORPHOLOGY.pulseInterval);
     for (const [index, pulse] of this.#activationPulses.entries()) {
       const active = !this.#reducedMotion && index === pulseIndex;
       pulse.visible = active;
       if (!active) continue;
-      const progress = sequence % 2;
-      const normalized = Math.min(progress / 1.35, 1);
+      const progress = sequence % MORPHOLOGY.pulseInterval;
+      const normalized = Math.min(progress / (MORPHOLOGY.pulseInterval * 0.7), 1);
       pulse.position.copy(pulse.userData.curve.getPoint(normalized));
       pulse.material.opacity = Math.sin(normalized * Math.PI) * 0.55;
     }

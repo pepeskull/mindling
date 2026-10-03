@@ -14,11 +14,21 @@ const synapses = [
 ];
 
 export const createNeuralSeedState = () => ({
+  id: null,
+  name: null,
   stage: "NEURAL_SEED",
+  createdAt: null,
+  traits: {},
+  mindlingId: null,
   nodes,
   synapses,
   memories: [],
   needs: {},
   pathways: [],
   activities: []
+});
+
+export const neuralSeedRecords = () => ({
+  neurons: nodes.map(node => structuredClone(node)),
+  synapses: synapses.map(synapse => structuredClone(synapse))
 });
