@@ -28,6 +28,16 @@ export class BrainEngine {
     return state;
   }
 
+  receiveInput(text) {
+    const value = text.trim();
+    if (!value) return null;
+    const hash = [...value].reduce((total, character) => (total * 31 + character.codePointAt(0)) >>> 0, 7);
+    const synapse = this.#state.synapses[hash % this.#state.synapses.length];
+    const signal = { source: synapse.from, synapse: synapse.id, destination: synapse.to };
+    this.#events.emit(EVENTS.NEURAL_INPUT, signal);
+    return signal;
+  }
+
   getState() {
     return structuredClone(this.#state);
   }

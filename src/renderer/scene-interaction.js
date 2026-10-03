@@ -5,15 +5,21 @@ export class SceneInteraction {
   #host;
   #dragOrigin = null;
   #pointerId = null;
+  #dragDistance = 0;
+  #onTap;
+  #onHover;
 
-  connect(host) {
+  connect(host, { onTap, onHover } = {}) {
     this.disconnect();
     this.#host = host;
+    this.#onTap = onTap;
+    this.#onHover = onHover;
     host.addEventListener("pointerdown", this.#onPointerDown);
     host.addEventListener("pointermove", this.#onPointerMove);
     host.addEventListener("pointerup", this.#onPointerUp);
     host.addEventListener("pointercancel", this.#onPointerUp);
     host.addEventListener("wheel", this.#onWheel, { passive: false });
+    host.addEventListener("pointerleave", this.#onPointerLeave);
   }
 
   #onPointerDown = (event) => {
@@ -21,12 +27,15 @@ export class SceneInteraction {
     event.preventDefault();
     this.#dragOrigin = { x: event.clientX, y: event.clientY };
     this.#pointerId = event.pointerId;
+    this.#dragDistance = 0;
     this.#host.setPointerCapture(event.pointerId);
     this.#host.classList.add("dragging");
   };
 
   #onPointerMove = (event) => {
-    if (!this.#dragOrigin || event.pointerId !== this.#pointerId) return;
+    if (!this.#dragOrigin) { this.#onHover?.(event); return; }
+    if (event.pointerId !== this.#pointerId) return;
+    this.#dragDistance += Math.hypot(event.clientX - this.#dragOrigin.x, event.clientY - this.#dragOrigin.y);
     this.rotation.y += (event.clientX - this.#dragOrigin.x) * 0.004;
     this.rotation.x = Math.max(
       -0.45,
@@ -38,10 +47,13 @@ export class SceneInteraction {
   #onPointerUp = (event) => {
     if (event.pointerId !== this.#pointerId) return;
     if (this.#host.hasPointerCapture?.(event.pointerId)) this.#host.releasePointerCapture(event.pointerId);
+    if (this.#dragDistance < 6) this.#onTap?.(event);
     this.#dragOrigin = null;
     this.#pointerId = null;
     this.#host.classList.remove("dragging");
   };
+
+  #onPointerLeave = () => { if (!this.#dragOrigin) this.#onHover?.(null); };
 
   #onWheel = (event) => {
     event.preventDefault();
@@ -60,9 +72,12 @@ export class SceneInteraction {
     this.#host?.removeEventListener("pointerup", this.#onPointerUp);
     this.#host?.removeEventListener("pointercancel", this.#onPointerUp);
     this.#host?.removeEventListener("wheel", this.#onWheel);
+    this.#host?.removeEventListener("pointerleave", this.#onPointerLeave);
     this.#host?.classList.remove("dragging");
     this.#dragOrigin = null;
     this.#pointerId = null;
+    this.#onTap = null;
+    this.#onHover = null;
     this.#host = null;
   }
 }

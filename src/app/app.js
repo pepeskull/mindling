@@ -1,4 +1,4 @@
-import { EventBus } from "./events.js";
+import { EventBus, EVENTS } from "./events.js";
 import { BrainEngine } from "../brain/brain-engine.js";
 import { BrainRenderer } from "../renderer/brain-renderer.js";
 import { MindlingDatabase } from "../storage/database.js";
@@ -10,12 +10,13 @@ import { neuralSeedRecords } from "../brain/neural-seed-state.js";
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #dashboard; #renderer; #onboarding;
   async start(){
-    this.#dashboard=new Dashboard(this.#events);
+    this.#dashboard=new Dashboard(this.#events, text => this.#brain.receiveInput(text));
+    this.#events.on(EVENTS.NEURAL_INPUT, signal => this.#renderer?.signal(signal));
     await this.#db.open();
     this.#dashboard.setStorageStatus(true);
     const saved = await this.#db.get("mindling", "primary");
     const state = saved ? this.#brain.hydrate(saved) : this.#brain.initialize();
-    this.#renderer=new BrainRenderer(document.querySelector("#scene"));
+    this.#renderer=new BrainRenderer(document.querySelector("#scene"), selection => this.#events.emit(EVENTS.SCENE_SELECTION, selection));
     const rendering=this.#renderer.initialize(state);
     await rendering;
     if (saved) this.#dashboard.show();

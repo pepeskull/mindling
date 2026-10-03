@@ -11,11 +11,12 @@ export class BrainRenderer {
   #resizeObserver;
   #paused = false;
   #lastTime = 0;
-  #renderModel;
+  #renderModel; #onSelection;
 
-  constructor(host) {
+  constructor(host, onSelection) {
     if (!host) throw new Error("Brain renderer host is required");
     this.#host = host;
+    this.#onSelection = onSelection;
   }
 
   async initialize(renderModel) {
@@ -27,7 +28,7 @@ export class BrainRenderer {
     } catch {
       this.#sceneView.destroy?.();
       this.#host.replaceChildren();
-      this.#sceneView = new CanvasSeedScene();
+      this.#sceneView = new CanvasSeedScene(this.#onSelection);
       this.#sceneView.mount(this.#host, this.#renderModel);
     }
 
@@ -44,12 +45,14 @@ export class BrainRenderer {
     this.#sceneView?.update(this.#renderModel);
   }
 
+  signal(route) { this.#sceneView?.signal(route); }
+
   async #createSceneView() {
     try {
       const three = await import(THREE_MODULE_URL);
-      return new ThreeSeedScene(three);
+      return new ThreeSeedScene(three, this.#onSelection);
     } catch {
-      return new CanvasSeedScene();
+      return new CanvasSeedScene(this.#onSelection);
     }
   }
 
