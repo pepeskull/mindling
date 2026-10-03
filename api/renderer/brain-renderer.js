@@ -1,33 +1,103 @@
-import { NEURAL_SEED } from "./neural-seed.js";
+import { CanvasSeedScene } from "./canvas-seed-scene.js";
+import { ThreeSeedScene } from "./three-seed-scene.js";
 
-const THREE_URL = "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js";
+const THREE_MODULE_URL =
+  "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js";
 
 export class BrainRenderer {
-  #host; #three; #renderer; #scene; #camera; #group; #frame; #observer; #fallback;
-  #nodes=[]; #particles; #paused=false; #reduced; #rotation={x:-.08,y:-.2}; #zoom=1; #drag=null;
-  constructor(host){this.#host=host;this.#reduced=matchMedia("(prefers-reduced-motion: reduce)").matches;}
-  async initialize(state){
-    if(state.stage!=="NEURAL_SEED")throw new Error("Unsupported renderer stage");
-    this.#attachInteraction();
-    try { this.#three=await import(THREE_URL); this.#createThreeScene(); } catch { this.#createFallback(); }
-    document.addEventListener("visibilitychange",this.#onVisibility);
-    this.#observer=new ResizeObserver(()=>this.#resize());this.#observer.observe(this.#host);this.#resize();this.#animate();
+  #host;
+  #sceneView;
+  #frameId = null;
+  #resizeObserver;
+  #paused = false;
+  #lastTime = 0;
+  #renderModel;
+
+  constructor(host) {
+    if (!host) throw new Error("Brain renderer host is required");
+    this.#host = host;
   }
-  #createThreeScene(){
-    const T=this.#three;this.#renderer=new T.WebGLRenderer({antialias:true,alpha:true,powerPreference:"high-performance"});this.#renderer.setPixelRatio(Math.min(devicePixelRatio,1.75));this.#renderer.setClearColor(0x000000,0);this.#renderer.outputColorSpace=T.SRGBColorSpace;this.#host.append(this.#renderer.domElement);
-    this.#scene=new T.Scene();this.#camera=new T.PerspectiveCamera(36,1,.1,30);this.#camera.position.z=5.8;this.#group=new T.Group();this.#group.scale.setScalar(1.28);this.#scene.add(this.#group);
-    this.#scene.add(new T.AmbientLight(0xdce7e5,.25));const light=new T.PointLight(0xc7eee7,6,8);light.position.set(-1.5,2,3);this.#scene.add(light);
-    const positions=new Map(NEURAL_SEED.nodes.map(n=>[n.id,new T.Vector3(...n.position)])),geometry=new T.IcosahedronGeometry(.23,4);
-    NEURAL_SEED.nodes.forEach((node,index)=>{const material=new T.MeshPhysicalMaterial({color:index?0xa8c4c0:0xe5f4f1,emissive:0x6daca2,emissiveIntensity:index?.35:.7,roughness:.25,transparent:true,opacity:.94}),mesh=new T.Mesh(geometry,material);mesh.position.copy(positions.get(node.id));mesh.scale.setScalar(node.scale);mesh.userData={phase:index*1.31,base:node.scale};this.#group.add(mesh);this.#nodes.push(mesh);const halo=new T.Sprite(new T.SpriteMaterial({map:this.#glowTexture(),color:index?0x7ea8a1:0xd8fff8,transparent:true,opacity:index?.13:.22,depthWrite:false,blending:T.AdditiveBlending}));halo.position.copy(mesh.position);halo.scale.setScalar(.9*node.scale);halo.userData.phase=mesh.userData.phase;this.#group.add(halo);this.#nodes.push(halo);});
-    NEURAL_SEED.connections.forEach(([a,b])=>{const start=positions.get(a),end=positions.get(b),mid=start.clone().add(end).multiplyScalar(.5).add(new T.Vector3(0,0,.11)),curve=new T.QuadraticBezierCurve3(start,mid,end);this.#group.add(new T.Mesh(new T.TubeGeometry(curve,24,.012,5,false),new T.MeshBasicMaterial({color:0x91bdb5,transparent:true,opacity:.3})));});
-    const data=[];for(let i=0;i<90;i++){const r=1.7+Math.random()*2.5,a=Math.random()*Math.PI*2;data.push(Math.cos(a)*r,(Math.random()-.5)*3.8,Math.sin(a)*r-1.5);}const pg=new T.BufferGeometry();pg.setAttribute("position",new T.Float32BufferAttribute(data,3));this.#particles=new T.Points(pg,new T.PointsMaterial({color:0x80918e,size:.014,transparent:true,opacity:.27,depthWrite:false}));this.#scene.add(this.#particles);
+
+  async initialize(renderModel) {
+    this.#validateModel(renderModel);
+    this.#renderModel = structuredClone(renderModel);
+    this.#sceneView = await this.#createSceneView();
+    try {
+      this.#sceneView.mount(this.#host, this.#renderModel);
+    } catch {
+      this.#sceneView.destroy?.();
+      this.#host.replaceChildren();
+      this.#sceneView = new CanvasSeedScene();
+      this.#sceneView.mount(this.#host, this.#renderModel);
+    }
+
+    this.#resizeObserver = new ResizeObserver(() => this.#resize());
+    this.#resizeObserver.observe(this.#host);
+    document.addEventListener("visibilitychange", this.#handleVisibility);
+    this.#resize();
+    this.#start();
   }
-  #glowTexture(){const c=document.createElement("canvas");c.width=c.height=64;const x=c.getContext("2d"),g=x.createRadialGradient(32,32,0,32,32,32);g.addColorStop(0,"rgba(255,255,255,.95)");g.addColorStop(.15,"rgba(190,240,230,.35)");g.addColorStop(1,"rgba(0,0,0,0)");x.fillStyle=g;x.fillRect(0,0,64,64);return new this.#three.CanvasTexture(c);}
-  #createFallback(){const canvas=document.createElement("canvas");canvas.className="webgl-fallback";canvas.setAttribute("aria-hidden","true");this.#host.append(canvas);this.#fallback={canvas,ctx:canvas.getContext("2d")};const note=document.createElement("span");note.className="scene-error";note.textContent="Neural Seed · compatibility view";this.#host.append(note);}
-  #attachInteraction(){this.#host.addEventListener("pointerdown",e=>{this.#drag={x:e.clientX,y:e.clientY};this.#host.setPointerCapture(e.pointerId);});this.#host.addEventListener("pointermove",e=>{if(!this.#drag)return;this.#rotation.y+=(e.clientX-this.#drag.x)*.004;this.#rotation.x=Math.max(-.45,Math.min(.35,this.#rotation.x+(e.clientY-this.#drag.y)*.003));this.#drag={x:e.clientX,y:e.clientY};});this.#host.addEventListener("pointerup",()=>this.#drag=null);this.#host.addEventListener("wheel",e=>{e.preventDefault();this.#zoom=Math.max(.82,Math.min(1.32,this.#zoom-e.deltaY*.0005));},{passive:false});}
-  #resize(){const w=this.#host.clientWidth,h=this.#host.clientHeight;if(!w||!h)return;if(this.#renderer){this.#renderer.setSize(w,h,false);this.#camera.aspect=w/h;this.#camera.updateProjectionMatrix();}if(this.#fallback){const d=Math.min(devicePixelRatio,1.5);this.#fallback.canvas.width=w*d;this.#fallback.canvas.height=h*d;this.#fallback.ctx.setTransform(d,0,0,d,0,0);}}
-  #onVisibility=()=>{this.#paused=document.hidden;if(!this.#paused&&!this.#frame)this.#animate();};
-  #animate=(time=0)=>{this.#frame=null;if(this.#paused)return;const t=time*.001;if(this.#renderer){this.#group.rotation.set(this.#rotation.x,this.#rotation.y+(this.#reduced?0:Math.sin(t*.16)*.08),0);this.#group.scale.setScalar(1.28*this.#zoom);this.#nodes.forEach(item=>{if(item.isSprite)item.material.opacity=.13+(this.#reduced?0:Math.sin(t*.85+item.userData.phase)*.035);else item.scale.setScalar(item.userData.base*(this.#reduced?1:1+Math.sin(t*1.15+item.userData.phase)*.035));});if(this.#particles&&!this.#reduced)this.#particles.rotation.y=t*.012;this.#renderer.render(this.#scene,this.#camera);}else if(this.#fallback)this.#drawFallback(t);this.#frame=requestAnimationFrame(this.#animate);};
-  #drawFallback(t){const {ctx,canvas}=this.#fallback,w=canvas.clientWidth,h=canvas.clientHeight;ctx.clearRect(0,0,w,h);const cx=w/2,cy=h*.52,s=Math.min(w,h)*.18*this.#zoom,points=NEURAL_SEED.nodes.map((n,i)=>{const[x,y,z]=n.position,a=this.#rotation.y;return{x:cx+(x*Math.cos(a)+z*Math.sin(a))*s,y:cy-y*s,r:14*n.scale*(1+(this.#reduced?0:Math.sin(t+i)*.04))};});for(const[a,b]of NEURAL_SEED.connections){const p=points[NEURAL_SEED.nodes.findIndex(n=>n.id===a)],q=points[NEURAL_SEED.nodes.findIndex(n=>n.id===b)],g=ctx.createLinearGradient(p.x,p.y,q.x,q.y);g.addColorStop(0,"rgba(174,218,209,.12)");g.addColorStop(.5,"rgba(199,236,229,.55)");g.addColorStop(1,"rgba(174,218,209,.12)");ctx.strokeStyle=g;ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.quadraticCurveTo((p.x+q.x)/2,Math.min(p.y,q.y)-8,q.x,q.y);ctx.stroke();}points.forEach(p=>{const g=ctx.createRadialGradient(p.x-p.r*.2,p.y-p.r*.25,1,p.x,p.y,p.r*2.8);g.addColorStop(0,"#f7fffd");g.addColorStop(.18,"rgba(174,218,209,.8)");g.addColorStop(.48,"rgba(103,160,150,.16)");g.addColorStop(1,"rgba(80,140,130,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,p.r*2.8,0,Math.PI*2);ctx.fill();});}
-  destroy(){cancelAnimationFrame(this.#frame);this.#observer?.disconnect();document.removeEventListener("visibilitychange",this.#onVisibility);this.#renderer?.dispose();this.#host.replaceChildren();}
+
+  update(renderModel) {
+    this.#validateModel(renderModel);
+    this.#renderModel = structuredClone(renderModel);
+    this.#sceneView?.update(this.#renderModel);
+  }
+
+  async #createSceneView() {
+    try {
+      const three = await import(THREE_MODULE_URL);
+      return new ThreeSeedScene(three);
+    } catch {
+      return new CanvasSeedScene();
+    }
+  }
+
+  #validateModel(model) {
+    if (model?.stage !== "NEURAL_SEED") {
+      throw new Error(`Unsupported renderer stage: ${model?.stage ?? "unknown"}`);
+    }
+    if (!Array.isArray(model.nodes) || !Array.isArray(model.synapses)) {
+      throw new TypeError("Renderer model must contain nodes and synapses");
+    }
+  }
+
+  #start() {
+    if (!this.#frameId && !this.#paused) {
+      this.#frameId = requestAnimationFrame(this.#renderFrame);
+    }
+  }
+
+  #renderFrame = (time) => {
+    this.#frameId = null;
+    if (this.#paused) return;
+
+    const delta = Math.min((time - this.#lastTime) / 1000 || 0, 0.1);
+    this.#lastTime = time;
+    this.#sceneView.render(time / 1000, delta);
+    this.#start();
+  };
+
+  #resize() {
+    this.#sceneView?.resize(this.#host.clientWidth, this.#host.clientHeight);
+  }
+
+  #handleVisibility = () => {
+    this.#paused = document.hidden;
+    if (this.#paused && this.#frameId) {
+      cancelAnimationFrame(this.#frameId);
+      this.#frameId = null;
+    } else {
+      this.#lastTime = performance.now();
+      this.#start();
+    }
+  };
+
+  destroy() {
+    if (this.#frameId) cancelAnimationFrame(this.#frameId);
+    this.#resizeObserver?.disconnect();
+    document.removeEventListener("visibilitychange", this.#handleVisibility);
+    this.#sceneView?.destroy();
+    this.#host.replaceChildren();
+  }
 }
