@@ -1,4 +1,5 @@
 import { EVENTS } from "../app/events.js";
+import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
 
 export class Dashboard {
   #unsubscribe;
@@ -9,15 +10,26 @@ export class Dashboard {
   #state;
   #events;
   #onInput;
+  #mode = "TALK";
+  #eventUnsubscribes = [];
 
   constructor(events, onInput) {
     this.#events = events;
     this.#onInput = onInput;
     this.#unsubscribe = events.on(EVENTS.STATE_READY, (state) => this.render(state));
     this.#selectionUnsubscribe = events.on(EVENTS.SCENE_SELECTION, selection => this.#showSelection(selection));
+    this.#eventUnsubscribes = [
+      events.on(EVENTS.MEMORY_CREATED, () => this.#showStatus("Memory formed")),
+      events.on(EVENTS.MEMORY_REINFORCED, () => this.#showStatus("Memory reinforced")),
+      events.on(EVENTS.LEARNING_FAILED, () => this.#showStatus("Learning could not be saved"))
+    ];
     this.#form = document.querySelector("#interaction-form");
     this.#handleSubmit = (event) => this.#submitInteraction(event);
     this.#form.addEventListener("submit", this.#handleSubmit);
+    document.querySelectorAll("[data-input-mode]").forEach(button => button.addEventListener("click", () => this.#setMode(button.dataset.inputMode)));
+    document.querySelector("[data-view='memories']").addEventListener("click", () => { document.querySelector("#memory-view").hidden = false; });
+    document.querySelector("[data-close-memory]").addEventListener("click", () => { document.querySelector("#memory-view").hidden = true; });
+    document.querySelector("[data-download-profile]").addEventListener("click", () => downloadMindlingProfile(this.#state));
   }
 
   render(state) {
@@ -37,6 +49,32 @@ export class Dashboard {
     document.querySelector(".hero-copy span").textContent = "It starts with a few neurons. What it becomes is up to you.";
     document.querySelector(".pathways-copy").textContent = state.pathways.join(" · ");
     document.querySelector(".mindling-id").textContent = state.mindlingId;
+    document.querySelector("[data-profile-filename]").textContent = safeProfileFilename(state.name);
+    this.#renderMemories();
+  }
+
+  #setMode(mode) {
+    this.#mode = mode;
+    document.querySelectorAll("[data-input-mode]").forEach(button => { const selected = button.dataset.inputMode === mode; button.classList.toggle("selected", selected); button.setAttribute("aria-pressed", String(selected)); });
+    document.querySelector("#mindling-input").placeholder = mode === "TEACH" ? "Teach your Mindling something..." : "Talk to your Mindling...";
+    document.querySelector("#mindling-input").focus();
+  }
+
+  #renderMemories() {
+    const list = document.querySelector(".memory-list");
+    if (!this.#state.memories.length) { list.innerHTML = `<p class="memory-empty">No memories formed yet.</p>`; return; }
+    list.innerHTML = this.#state.memories.map(memory => `<button type="button" data-memory-id="${memory.id}"><span>${this.#escape(memory.content)}</span><small>${new Date(memory.createdAt).toLocaleDateString()} · ${Math.round(memory.strength * 100)}% strength · ${memory.activations} activation${memory.activations === 1 ? "" : "s"}</small></button>`).join("");
+    list.querySelectorAll("[data-memory-id]").forEach(button => button.addEventListener("click", () => {
+      const memory = this.#state.memories.find(item => item.id === button.dataset.memoryId);
+      this.#events.emit(EVENTS.MEMORY_SELECTED, { id: memory.id, neuronIds: [...memory.neuronIds], synapseIds: [...memory.synapseIds] });
+      list.querySelectorAll("button").forEach(item => item.classList.toggle("selected", item === button));
+    }));
+  }
+
+  #showStatus(message) {
+    const status = this.#form.querySelector(".interaction-status");
+    status.textContent = message; status.classList.add("visible"); clearTimeout(this.#messageTimer);
+    this.#messageTimer = setTimeout(() => status.classList.remove("visible"), 2800);
   }
 
   #showSelection(selection) {
@@ -51,7 +89,7 @@ export class Dashboard {
       const synapse = this.#state.synapses[index];
       const from = this.#state.nodes.findIndex(node => node.id === synapse.from) + 1;
       const to = this.#state.nodes.findIndex(node => node.id === synapse.to) + 1;
-      inspector.innerHTML = `<button type="button" aria-label="Close inspector">×</button><p>Synapse ${String(index + 1).padStart(2, "0")}</p><dl><div><dt>Connection</dt><dd>Neuron ${String(from).padStart(2, "0")} → ${String(to).padStart(2, "0")}</dd></div><div><dt>State</dt><dd>Quiet</dd></div><div><dt>Strength</dt><dd>Baseline</dd></div></dl>`;
+      inspector.innerHTML = `<button type="button" aria-label="Close inspector">×</button><p>Synapse ${String(index + 1).padStart(2, "0")}</p><dl><div><dt>Connection</dt><dd>Neuron ${String(from).padStart(2, "0")} → ${String(to).padStart(2, "0")}</dd></div><div><dt>State</dt><dd>Quiet</dd></div><div><dt>Strength</dt><dd>${Math.round((synapse.strength ?? .2) * 100)}%</dd></div></dl>`;
     }
     inspector.hidden = false;
     inspector.querySelector("button").addEventListener("click", () => { inspector.hidden = true; });
@@ -69,21 +107,18 @@ export class Dashboard {
   #submitInteraction(event) {
     event.preventDefault();
     const input = document.querySelector("#mindling-input");
-    const status = this.#form.querySelector(".interaction-status");
     const text = input.value.trim();
     if (!text) return;
     input.value = "";
-    this.#onInput(text);
-    status.textContent = "Neural input received";
-    status.classList.add("visible");
-    clearTimeout(this.#messageTimer);
-    this.#messageTimer = setTimeout(() => status.classList.remove("visible"), 2800);
+    this.#onInput(text, this.#mode).catch(() => {});
+    this.#showStatus("Processing signal");
     input.focus();
   }
 
   destroy() {
     this.#unsubscribe?.();
     this.#selectionUnsubscribe?.();
+    this.#eventUnsubscribes.forEach(unsubscribe => unsubscribe());
     this.#form?.removeEventListener("submit", this.#handleSubmit);
     clearTimeout(this.#messageTimer);
   }

@@ -7,10 +7,10 @@ const nodes = [
 ];
 
 const synapses = [
-  { id: "origin-upper", from: "origin", to: "upper" },
-  { id: "origin-right", from: "origin", to: "right" },
-  { id: "origin-lower", from: "origin", to: "lower" },
-  { id: "origin-left", from: "origin", to: "left" }
+  { id: "origin-upper", from: "origin", to: "upper", strength: 0.2, activations: 0 },
+  { id: "origin-right", from: "origin", to: "right", strength: 0.2, activations: 0 },
+  { id: "origin-lower", from: "origin", to: "lower", strength: 0.2, activations: 0 },
+  { id: "origin-left", from: "origin", to: "left", strength: 0.2, activations: 0 }
 ];
 
 export const createNeuralSeedState = () => ({

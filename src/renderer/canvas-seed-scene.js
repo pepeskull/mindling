@@ -16,6 +16,7 @@ export class CanvasSeedScene {
   #signal = null;
   #nextAmbient = 7;
   #ambientIndex = 0;
+  #routeHighlight = { neuronIds: [], synapseIds: [] };
 
   constructor(onSelection) { this.#onSelection = onSelection; }
 
@@ -54,11 +55,13 @@ export class CanvasSeedScene {
     for (const synapse of this.#model.synapses) {
       const start = points.get(synapse.from);
       const end = points.get(synapse.to);
-      if (start && end) this.#drawSynapse(start, end);
+      if (start && end) this.#drawSynapse(start, end, synapse);
     }
     this.#drawActivationPulse(points, elapsed);
     for (const point of points.values()) this.#drawNeuron(point);
   }
+
+  highlightRoute(route) { this.#routeHighlight = route || { neuronIds: [], synapseIds: [] }; }
 
   #pick(event) {
     const bounds = this.#host.getBoundingClientRect();
@@ -97,13 +100,13 @@ export class CanvasSeedScene {
     );
   }
 
-  #drawSynapse(start, end) {
+  #drawSynapse(start, end, synapse) {
     const gradient = this.#context.createLinearGradient(start.x, start.y, end.x, end.y);
     gradient.addColorStop(0, "rgba(174,218,209,.12)");
     gradient.addColorStop(0.5, "rgba(199,236,229,.55)");
     gradient.addColorStop(1, "rgba(174,218,209,.12)");
     this.#context.strokeStyle = gradient;
-    this.#context.lineWidth = 0.7;
+    this.#context.lineWidth = 0.55 + (synapse.strength ?? .2) * 1.2 + (this.#routeHighlight.synapseIds.includes(synapse.id) ? 0.8 : 0);
     this.#context.beginPath();
     this.#context.moveTo(start.x, start.y);
     this.#context.quadraticCurveTo(
@@ -140,7 +143,8 @@ export class CanvasSeedScene {
     for (let vertex = 0; vertex < 12; vertex += 1) {
       const angle = (vertex / 12) * Math.PI * 2;
       const irregularity = 0.84 + seededValue(point.index * 101 + vertex) * 0.24;
-      const radius = point.radius * irregularity * (this.#selected?.type === "neuron" && this.#selected.id === point.id ? 1.08 : 1);
+      const highlighted = this.#selected?.type === "neuron" && this.#selected.id === point.id || this.#routeHighlight.neuronIds.includes(point.id);
+      const radius = point.radius * irregularity * (highlighted ? 1.08 : 1);
       const x = point.x + Math.cos(angle) * radius;
       const y = point.y + Math.sin(angle) * radius * 0.9;
       if (vertex === 0) context.moveTo(x, y); else context.lineTo(x, y);
@@ -199,7 +203,8 @@ export class CanvasSeedScene {
     const controlX = (start.x + end.x) / 2; const controlY = Math.min(start.y, end.y) - 8;
     const x = oneMinus * oneMinus * start.x + 2 * oneMinus * travel * controlX + travel * travel * end.x;
     const y = oneMinus * oneMinus * start.y + 2 * oneMinus * travel * controlY + travel * travel * end.y;
-    const alpha = Math.sin(travel * Math.PI) * (this.#signal.ambient ? .3 : .65);
+    const consolidation = this.#signal.route.outcome === "MEMORY_FORMATION" ? Math.max(0, Math.sin(progress * Math.PI * 2) * .18) : 0;
+    const alpha = Math.sin(travel * Math.PI) * (this.#signal.ambient ? .3 : .65) + consolidation;
     const glow = this.#context.createRadialGradient(x, y, 0, x, y, 11);
     glow.addColorStop(0, `rgba(225,255,249,${alpha})`);
     glow.addColorStop(1, "rgba(225,255,249,0)");
@@ -215,6 +220,11 @@ export class CanvasSeedScene {
     if (id === this.#signal.route.source) return Math.max(0, 1 - progress * 4) * .8;
     if (id === this.#signal.route.destination) return Math.max(0, 1 - Math.abs(progress - .82) * 7);
     return 0;
+  }
+
+  signal(route, ambient = false) {
+    const duration = ambient ? 1.8 : route.outcome === "MEMORY_FORMATION" ? 3.2 : route.outcome === "REINFORCEMENT" ? 2.8 : 2.5;
+    this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration };
   }
 
   signal(route, ambient = false) { this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration: ambient ? 1.8 : 2.5 }; }

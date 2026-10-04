@@ -46,6 +46,7 @@ export class BrainRenderer {
   }
 
   signal(route) { this.#sceneView?.signal(route); }
+  highlightRoute(route) { this.#sceneView?.highlightRoute(route); }
 
   async #createSceneView() {
     try {

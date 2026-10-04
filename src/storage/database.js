@@ -21,6 +21,7 @@ export class MindlingDatabase {
     return this;
   }
   async get(store, id) { return this.#request(store, "readonly", target => target.get(id)); }
+  async getAll(store) { return this.#request(store, "readonly", target => target.getAll()); }
   async put(store, value) { return this.#request(store, "readwrite", target => target.put(value)); }
   async createMindling({ identity, pathways, mindling, neurons, synapses }) {
     if (!this.#db) throw new Error("Database is not open");
@@ -37,6 +38,17 @@ export class MindlingDatabase {
       transaction.oncomplete = () => resolve(mindling);
       transaction.onerror = () => reject(transaction.error || new Error("Creation could not be saved"));
       transaction.onabort = () => reject(transaction.error || new Error("Creation was cancelled"));
+    });
+  }
+  async commitLearning({ memory, synapse }) {
+    if (!this.#db) throw new Error("Database is not open");
+    return new Promise((resolve, reject) => {
+      const transaction = this.#db.transaction(["memories", "synapses"], "readwrite");
+      transaction.objectStore("memories").put(memory);
+      transaction.objectStore("synapses").put(synapse);
+      transaction.oncomplete = () => resolve({ memory, synapse });
+      transaction.onerror = () => reject(transaction.error || new Error("Learning could not be saved"));
+      transaction.onabort = () => reject(transaction.error || new Error("Learning was cancelled"));
     });
   }
   #request(store, mode, operation) {

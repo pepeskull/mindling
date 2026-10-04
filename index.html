@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#030303">
-  <meta name="description" content="Play Mindling — raise your own AI, beginning with a few neurons.">
-  <title>Play Mindling — Raise Your Own AI</title>
+  <meta name="description" content="Socaiety — raise your own Mindling, beginning with a few neurons.">
+  <title>Socaiety — Raise Your Own AI</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./css/tokens.css">
   <link rel="stylesheet" href="./css/base.css">
@@ -22,16 +22,16 @@
 
     <div class="dashboard-chrome is-hidden">
     <header class="topbar glass-line">
-      <a class="brand" href="#dashboard" aria-label="Mindling dashboard">
+      <a class="brand" href="#dashboard" aria-label="Socaiety dashboard">
         <svg class="brand-mark" viewBox="0 0 34 30" aria-hidden="true">
           <path d="M17 5 7 23h20L17 5Z"/><circle cx="17" cy="5" r="3.2"/><circle cx="7" cy="23" r="3.2"/><circle cx="27" cy="23" r="3.2"/>
         </svg>
-        <span>MINDLING</span><small>PLAY</small>
+        <span>Soc<strong>ai</strong>ety</span>
       </a>
       <nav aria-label="Primary navigation">
         <a class="active" href="#dashboard" aria-current="page">Dashboard</a>
         <button type="button" disabled>Development</button>
-        <button type="button" disabled>Memory</button>
+        <button type="button" data-view="memories">Memory</button>
         <button type="button" disabled>Network</button>
       </nav>
       <div class="stage-chip"><span></span> Neural Seed</div>
@@ -90,6 +90,12 @@
             <div><dt>Neural Age</dt><dd>—</dd></div>
           </dl>
         </details>
+        <section class="mindling-file" aria-labelledby="mindling-file-title">
+          <p id="mindling-file-title">Mindling File</p>
+          <strong data-profile-filename>Mindling.md</strong>
+          <span>Living profile</span>
+          <button type="button" data-download-profile>Download</button>
+        </section>
         <details open>
           <summary><span>Today</span></summary>
           <div class="today-state"><i></i><p>Mindling not created yet.<small>The Neural Seed is waiting.</small></p></div>
@@ -98,7 +104,8 @@
 
       <form class="interaction glass-panel" id="interaction-form">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="6" cy="16" r="2"/><circle cx="18" cy="16" r="2"/><path d="m12 7-5 7m10 0-5-7m-4 9h8"/></svg>
-        <label class="sr-only" for="mindling-input">Talk to your Mindling</label>
+        <fieldset class="input-modes" aria-label="Input mode"><legend class="sr-only">Input mode</legend><button type="button" class="selected" data-input-mode="TALK" aria-pressed="true">Talk</button><button type="button" data-input-mode="TEACH" aria-pressed="false">Teach</button></fieldset>
+        <label class="sr-only" for="mindling-input">Talk to or teach your Mindling</label>
         <input id="mindling-input" maxlength="140" autocomplete="off" placeholder="Talk to your Mindling...">
         <span class="interaction-status" role="status" aria-live="polite"></span>
         <button type="submit" aria-label="Send message">
@@ -106,15 +113,16 @@
         </button>
       </form>
     </main>
+    <section id="memory-view" class="memory-view glass-panel" aria-labelledby="memory-title" hidden><header><div><p>Neural archive</p><h2 id="memory-title">Memory</h2></div><button type="button" data-close-memory aria-label="Close memory view">×</button></header><div class="memory-list"></div></section>
 
     <p class="mindling-id" aria-label="Mindling ID"></p>
     <aside id="neural-inspector" class="neural-inspector glass-panel" aria-live="polite" hidden></aside>
 
-    <footer><span>RAISE YOUR OWN AI.</span><span class="storage-status" role="status">Local-first · Preparing</span><span>Milestone 02</span></footer>
+    <footer><span>RAISE YOUR OWN AI.</span><span class="storage-status" role="status">Local-first · Preparing</span><span>Milestone 03</span></footer>
     </div>
     <div id="onboarding" class="onboarding" hidden></div>
   </div>
-  <noscript><div class="fatal-message">Play Mindling needs JavaScript to render its Neural Seed.</div></noscript>
+  <noscript><div class="fatal-message">Socaiety needs JavaScript to render its Neural Seed.</div></noscript>
   <script type="module" src="./js/bootstrap.js"></script>
 </body>
 </html>

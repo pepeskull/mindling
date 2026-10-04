@@ -24,6 +24,8 @@ export class ThreeSeedScene {
   #nextAmbient = 7;
   #ambientIndex = 0;
   #entryPulse;
+  #synapseVisuals = new Map();
+  #routeHighlight = { neuronIds: [], synapseIds: [] };
   #interaction = new SceneInteraction();
   #reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -182,8 +184,11 @@ export class ThreeSeedScene {
       this.#synapseMaterial.clone()
     );
     mesh.userData.selection = { type: "synapse", id: synapse.id };
+    mesh.userData.strength = synapse.strength ?? 0.2;
+    mesh.material.opacity = 0.16 + mesh.userData.strength * 0.25;
     this.#seedGroup.add(mesh);
     this.#interactiveObjects.push(mesh);
+    this.#synapseVisuals.set(synapse.id, mesh);
 
     const contact = new T.Sprite(new T.SpriteMaterial({ map: glowTexture, color: 0xbde2db, transparent: true, opacity: 0.18, depthWrite: false, blending: T.AdditiveBlending }));
     contact.position.copy(connectionEnd);
@@ -210,8 +215,11 @@ export class ThreeSeedScene {
   signal(route, ambient = false) {
     const pulseIndex = this.#activationPulses.findIndex(pulse => pulse.userData.route.synapse === route.synapse);
     if (pulseIndex < 0) return;
-    this.#signal = { route, pulseIndex, startedAt: performance.now() / 1000, duration: ambient ? 1.8 : 2.5, ambient };
+    const duration = ambient ? 1.8 : route.outcome === "MEMORY_FORMATION" ? 3.2 : route.outcome === "REINFORCEMENT" ? 2.8 : 2.5;
+    this.#signal = { route, pulseIndex, startedAt: performance.now() / 1000, duration, ambient };
   }
+
+  highlightRoute(route) { this.#routeHighlight = route || { neuronIds: [], synapseIds: [] }; }
 
   #pick(event, select) {
     if (!event) { this.#hovered = null; return; }
@@ -266,7 +274,12 @@ export class ThreeSeedScene {
     return new this.#three.CanvasTexture(canvas);
   }
 
-  update() {}
+  update(model) {
+    for (const synapse of model.synapses) {
+      const mesh = this.#synapseVisuals.get(synapse.id);
+      if (mesh) { mesh.userData.strength = synapse.strength ?? 0.2; mesh.material.opacity = 0.16 + mesh.userData.strength * 0.25; }
+    }
+  }
 
   resize(width, height) {
     if (!width || !height) return;
@@ -291,11 +304,12 @@ export class ThreeSeedScene {
         : Math.sin(elapsed * 1.15 + object.userData.phase) * 0.035;
       if (object.isSprite) object.material.opacity = 0.13 + breath;
       else {
-        const focused = this.#selected?.type === "neuron" && this.#selected.id === object.userData.selection?.id;
+        const focused = (this.#selected?.type === "neuron" && this.#selected.id === object.userData.selection?.id) || this.#routeHighlight.neuronIds.includes(object.userData.selection?.id);
         const hovered = this.#hovered?.type === "neuron" && this.#hovered.id === object.userData.selection?.id;
         object.scale.setScalar(object.userData.baseSize * (1 + breath) * (focused ? 1.1 : hovered ? 1.05 : 1));
       }
     }
+    for (const [id, mesh] of this.#synapseVisuals) mesh.material.opacity = (0.16 + (mesh.userData.strength ?? .2) * .25) * (this.#routeHighlight.synapseIds.includes(id) ? 1.8 : 1);
     this.#updateSignal(elapsed);
     if (!this.#reducedMotion) this.#particles.rotation.y = elapsed * 0.012;
     this.#renderer.render(this.#scene, this.#camera);
@@ -325,7 +339,8 @@ export class ThreeSeedScene {
       }
       const travel = this.#reducedMotion ? 1 : Math.max(0, Math.min(1, (normalized - .2) / .55));
       pulse.position.copy(pulse.userData.curve.getPoint(travel));
-      pulse.material.opacity = this.#reducedMotion ? (1 - normalized) * .35 : Math.sin(travel * Math.PI) * (signal.ambient ? .3 : .65);
+      const consolidation = signal.route.outcome === "MEMORY_FORMATION" ? Math.max(0, Math.sin(normalized * Math.PI * 2) * .18) : 0;
+      pulse.material.opacity = this.#reducedMotion ? (1 - normalized) * .35 : Math.sin(travel * Math.PI) * (signal.ambient ? .3 : .65) + consolidation;
       const sourceGlow = Math.max(0, 1 - normalized * 4);
       const destinationGlow = Math.max(0, 1 - Math.abs(normalized - .82) * 7);
       const source = this.#nodeVisuals.get(signal.route.source);
