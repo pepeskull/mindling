@@ -227,6 +227,8 @@ export class CanvasSeedScene {
     this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration };
   }
 
+  signal(route, ambient = false) { this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration: ambient ? 1.8 : 2.5 }; }
+
   destroy() {
     this.#interaction.disconnect();
   }
