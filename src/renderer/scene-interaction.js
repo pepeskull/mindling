@@ -8,6 +8,9 @@ export class SceneInteraction {
   #dragDistance = 0;
   #onTap;
   #onHover;
+  #pointers = new Map();
+  #pinchDistance = null;
+  #gestureWasPinch = false;
 
   connect(host, { onTap, onHover } = {}) {
     this.disconnect();
@@ -23,8 +26,12 @@ export class SceneInteraction {
   }
 
   #onPointerDown = (event) => {
-    if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) return;
+    if (event.pointerType === "mouse" && (!event.isPrimary || event.button !== 0)) return;
     event.preventDefault();
+    this.#pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, type: event.pointerType });
+    if (this.#pointers.size === 2) {
+      this.#pinchDistance = this.#distanceBetweenPointers(); this.#gestureWasPinch = true; this.#dragDistance = 100;
+    }
     this.#dragOrigin = { x: event.clientX, y: event.clientY };
     this.#pointerId = event.pointerId;
     this.#dragDistance = 0;
@@ -34,6 +41,13 @@ export class SceneInteraction {
 
   #onPointerMove = (event) => {
     if (!this.#dragOrigin) { this.#onHover?.(event); return; }
+    if (!this.#pointers.has(event.pointerId)) return;
+    this.#pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, type: event.pointerType });
+    if (this.#pointers.size > 1) {
+      const distance = this.#distanceBetweenPointers();
+      if (this.#pinchDistance) this.#targetZoom = Math.max(0.72, Math.min(1.48, this.#targetZoom * distance / this.#pinchDistance));
+      this.#pinchDistance = distance; return;
+    }
     if (event.pointerId !== this.#pointerId) return;
     this.#dragDistance += Math.hypot(event.clientX - this.#dragOrigin.x, event.clientY - this.#dragOrigin.y);
     this.rotation.y += (event.clientX - this.#dragOrigin.x) * 0.004;
@@ -45,13 +59,27 @@ export class SceneInteraction {
   };
 
   #onPointerUp = (event) => {
-    if (event.pointerId !== this.#pointerId) return;
+    if (!this.#pointers.has(event.pointerId)) return;
     if (this.#host.hasPointerCapture?.(event.pointerId)) this.#host.releasePointerCapture(event.pointerId);
-    if (this.#dragDistance < 6) this.#onTap?.(event);
+    const pointer = this.#pointers.get(event.pointerId);
+    this.#pointers.delete(event.pointerId);
+    const tapThreshold = pointer.type === "touch" ? 10 : 6;
+    if (!this.#gestureWasPinch && this.#dragDistance < tapThreshold) this.#onTap?.(event);
+    if (this.#pointers.size) {
+      const [id, remaining] = this.#pointers.entries().next().value;
+      this.#pointerId = id; this.#dragOrigin = { x: remaining.x, y: remaining.y }; this.#pinchDistance = null; return;
+    }
     this.#dragOrigin = null;
     this.#pointerId = null;
+    this.#pinchDistance = null;
+    this.#gestureWasPinch = false;
     this.#host.classList.remove("dragging");
   };
+
+  #distanceBetweenPointers() {
+    const [first, second] = [...this.#pointers.values()];
+    return Math.hypot(second.x - first.x, second.y - first.y);
+  }
 
   #onPointerLeave = () => { if (!this.#dragOrigin) this.#onHover?.(null); };
 
@@ -76,6 +104,9 @@ export class SceneInteraction {
     this.#host?.classList.remove("dragging");
     this.#dragOrigin = null;
     this.#pointerId = null;
+    this.#pointers.clear();
+    this.#pinchDistance = null;
+    this.#gestureWasPinch = false;
     this.#onTap = null;
     this.#onHover = null;
     this.#host = null;

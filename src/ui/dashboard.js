@@ -29,7 +29,11 @@ export class Dashboard {
     document.querySelectorAll("[data-input-mode]").forEach(button => button.addEventListener("click", () => this.#setMode(button.dataset.inputMode)));
     document.querySelector("[data-view='memories']").addEventListener("click", () => { document.querySelector("#memory-view").hidden = false; });
     document.querySelector("[data-close-memory]").addEventListener("click", () => { document.querySelector("#memory-view").hidden = true; });
+    document.querySelector("[data-close-network]").addEventListener("click", () => { document.querySelector("#network-view").hidden = true; });
+    document.querySelectorAll("[data-mobile-view]").forEach(button => button.addEventListener("click", () => this.#openMobileView(button.dataset.mobileView)));
     document.querySelector("[data-download-profile]").addEventListener("click", () => downloadMindlingProfile(this.#state));
+    document.querySelector("#mindling-input").addEventListener("focus", () => document.documentElement.classList.add("input-active"));
+    document.querySelector("#mindling-input").addEventListener("blur", () => document.documentElement.classList.remove("input-active"));
   }
 
   render(state) {
@@ -63,12 +67,24 @@ export class Dashboard {
   #renderMemories() {
     const list = document.querySelector(".memory-list");
     if (!this.#state.memories.length) { list.innerHTML = `<p class="memory-empty">No memories formed yet.</p>`; return; }
-    list.innerHTML = this.#state.memories.map(memory => `<button type="button" data-memory-id="${memory.id}"><span>${this.#escape(memory.content)}</span><small>${new Date(memory.createdAt).toLocaleDateString()} · ${Math.round(memory.strength * 100)}% strength · ${memory.activations} activation${memory.activations === 1 ? "" : "s"}</small></button>`).join("");
+    list.innerHTML = this.#state.memories.map(memory => `<button type="button" data-memory-id="${memory.id}"><span>${this.#escape(memory.content)}</span><small><time datetime="${memory.createdAt}">${new Date(memory.createdAt).toLocaleDateString()}</time><span>${Math.round(memory.strength * 100)}% strength · ${memory.activations} activation${memory.activations === 1 ? "" : "s"}</span></small></button>`).join("");
     list.querySelectorAll("[data-memory-id]").forEach(button => button.addEventListener("click", () => {
       const memory = this.#state.memories.find(item => item.id === button.dataset.memoryId);
       this.#events.emit(EVENTS.MEMORY_SELECTED, { id: memory.id, neuronIds: [...memory.neuronIds], synapseIds: [...memory.synapseIds] });
       list.querySelectorAll("button").forEach(item => item.classList.toggle("selected", item === button));
+      if (matchMedia("(max-width: 800px)").matches) {
+        document.querySelector("#memory-view").hidden = true;
+        document.querySelectorAll("[data-mobile-view]").forEach(item => item.classList.toggle("active", item.dataset.mobileView === "dashboard"));
+      }
     }));
+  }
+
+  #openMobileView(view) {
+    const left = document.querySelector(".left-panel"); const right = document.querySelector(".right-panel");
+    left.classList.toggle("mobile-open", view === "development"); right.classList.toggle("mobile-open", view === "dashboard");
+    document.querySelector("#memory-view").hidden = view !== "memories";
+    document.querySelector("#network-view").hidden = view !== "network";
+    document.querySelectorAll("[data-mobile-view]").forEach(button => button.classList.toggle("active", button.dataset.mobileView === view));
   }
 
   #showStatus(message) {

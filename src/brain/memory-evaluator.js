@@ -1,3 +1,5 @@
+import { compareConcepts, extractConcept, normalizeContent } from "./concept-extractor.js";
+
 export const MEMORY_RULES = Object.freeze({
   similarityThreshold: 0.68,
   formationThreshold: 0.58,
@@ -7,8 +9,7 @@ export const MEMORY_RULES = Object.freeze({
   weights: Object.freeze({ teaching: 0.48, quality: 0.3, novelty: 0.14, pathway: 0.08 })
 });
 
-export const normalizeContent = value => value
-  .normalize("NFKC").toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim().replace(/\s+/g, " ");
+export { normalizeContent };
 
 const tokensFor = value => normalizeContent(value).split(" ").filter(Boolean);
 
@@ -30,9 +31,13 @@ function inputQuality(tokens, normalized) {
 export function evaluateMemory({ content, mode, memories, pathways }) {
   const normalizedContent = normalizeContent(content);
   const tokens = tokensFor(normalizedContent);
-  const matches = memories.map(memory => ({ memory, similarity: tokenSimilarity(normalizedContent, memory.normalizedContent) })).sort((a, b) => b.similarity - a.similarity);
+  const conceptSignature = extractConcept(content);
+  const matches = memories.map(memory => {
+    const comparison = compareConcepts(conceptSignature, memory.conceptSignature || extractConcept(memory.content || memory.normalizedContent));
+    return { memory, similarity: comparison.score, matchType: comparison.type };
+  }).sort((a, b) => b.similarity - a.similarity);
   const closest = matches[0];
-  if (closest?.similarity >= MEMORY_RULES.similarityThreshold) return { outcome: "REINFORCEMENT", normalizedContent, existing: closest.memory, similarity: closest.similarity };
+  if (closest && closest.matchType !== "NO_MATCH") return { outcome: "REINFORCEMENT", normalizedContent, conceptSignature, existing: closest.memory, similarity: closest.similarity, matchType: closest.matchType };
   const pathwayIds = pathways.filter(pathway => {
     const pathwayTokens = tokensFor(typeof pathway === "string" ? pathway : pathway.name);
     return pathwayTokens.some(token => tokens.includes(token));
@@ -44,7 +49,7 @@ export function evaluateMemory({ content, mode, memories, pathways }) {
     quality * MEMORY_RULES.weights.quality + novelty * MEMORY_RULES.weights.novelty +
     (pathwayIds.length ? MEMORY_RULES.weights.pathway : 0)
   );
-  return { outcome: potential >= MEMORY_RULES.formationThreshold ? "MEMORY_FORMATION" : "STIMULATION", normalizedContent, pathwayIds, potential };
+  return { outcome: potential >= MEMORY_RULES.formationThreshold ? "MEMORY_FORMATION" : "STIMULATION", normalizedContent, conceptSignature, pathwayIds, potential };
 }
 
 export function reinforcedStrength(current) {

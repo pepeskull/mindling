@@ -1,6 +1,7 @@
 import { EVENTS } from "../app/events.js";
 import { createNeuralSeedState } from "./neural-seed-state.js";
 import { evaluateMemory, MEMORY_RULES, reinforcedStrength } from "./memory-evaluator.js";
+import { CONCEPT_MATCHING } from "./concept-extractor.js";
 
 export class BrainEngine {
   #events;
@@ -41,11 +42,13 @@ export class BrainEngine {
     const now = new Date().toISOString();
     let memory;
     if (evaluation.outcome === "REINFORCEMENT") {
-      memory = { ...evaluation.existing, lastActivatedAt: now, activations: evaluation.existing.activations + 1, strength: reinforcedStrength(evaluation.existing.strength) };
+      const variants = [...(evaluation.existing.matchedVariants || [])];
+      if (evaluation.matchType === "CONTENT_MATCH" && evaluation.normalizedContent !== evaluation.existing.normalizedContent && !variants.includes(value)) variants.push(value);
+      memory = { ...evaluation.existing, conceptSignature: evaluation.existing.conceptSignature || evaluation.conceptSignature, matchedVariants: variants.slice(-CONCEPT_MATCHING.maximumMatchedVariants), lastActivatedAt: now, activations: evaluation.existing.activations + 1, strength: reinforcedStrength(evaluation.existing.strength) };
     } else {
       memory = {
         id: `memory-${Date.now()}-${hash.toString(16)}`, type: "learned", content: value,
-        normalizedContent: evaluation.normalizedContent, createdAt: now, lastActivatedAt: now,
+        normalizedContent: evaluation.normalizedContent, conceptSignature: evaluation.conceptSignature, matchedVariants: [], createdAt: now, lastActivatedAt: now,
         strength: MEMORY_RULES.initialStrength, activations: 1, pathwayIds: evaluation.pathwayIds,
         neuronIds: [route.source, route.destination], synapseIds: [route.synapse], source: mode
       };

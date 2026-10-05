@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#030303">
-  <meta name="description" content="Socaiety — raise your own Mindling, beginning with a few neurons.">
-  <title>Socaiety — Raise Your Own AI</title>
+  <meta name="description" content="Mindling — raise your own AI, beginning with a few neurons.">
+  <title>Mindling — Raise Your Own AI</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./css/tokens.css">
   <link rel="stylesheet" href="./css/base.css">
@@ -26,7 +26,7 @@
         <svg class="brand-mark" viewBox="0 0 34 30" aria-hidden="true">
           <path d="M17 5 7 23h20L17 5Z"/><circle cx="17" cy="5" r="3.2"/><circle cx="7" cy="23" r="3.2"/><circle cx="27" cy="23" r="3.2"/>
         </svg>
-        <span>Soc<strong>ai</strong>ety</span>
+        <span>MINDLING</span>
       </a>
       <nav aria-label="Primary navigation">
         <a class="active" href="#dashboard" aria-current="page">Dashboard</a>
@@ -114,15 +114,17 @@
       </form>
     </main>
     <section id="memory-view" class="memory-view glass-panel" aria-labelledby="memory-title" hidden><header><div><p>Neural archive</p><h2 id="memory-title">Memory</h2></div><button type="button" data-close-memory aria-label="Close memory view">×</button></header><div class="memory-list"></div></section>
+    <section id="network-view" class="mobile-sheet glass-panel" aria-labelledby="network-title" hidden><button type="button" data-close-network aria-label="Close Network">×</button><p>Network</p><h2 id="network-title">Mindling Network</h2><span>Network capabilities have not awakened yet.</span></section>
 
     <p class="mindling-id" aria-label="Mindling ID"></p>
     <aside id="neural-inspector" class="neural-inspector glass-panel" aria-live="polite" hidden></aside>
+    <nav class="mobile-nav glass-line" aria-label="Mobile navigation"><button type="button" data-mobile-view="dashboard" class="active">Dashboard</button><button type="button" data-mobile-view="development">Development</button><button type="button" data-mobile-view="memories">Memory</button><button type="button" data-mobile-view="network">Network</button></nav>
 
     <footer><span>RAISE YOUR OWN AI.</span><span class="storage-status" role="status">Local-first · Preparing</span><span>Milestone 03</span></footer>
     </div>
     <div id="onboarding" class="onboarding" hidden></div>
   </div>
-  <noscript><div class="fatal-message">Socaiety needs JavaScript to render its Neural Seed.</div></noscript>
+  <noscript><div class="fatal-message">Mindling needs JavaScript to render its Neural Seed.</div></noscript>
   <script type="module" src="./js/bootstrap.js"></script>
 </body>
 </html>
