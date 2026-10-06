@@ -3,8 +3,10 @@ import { loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
 export const SEMANTIC_RULES = Object.freeze({
   candidateLimit: 3,
   retrievalFloor: 0.42,
-  sameMeaningSimilarity: 0.62,
-  sameMeaningEntailment: 0.78,
+  sameMeaningSimilarity: 0.68,
+  sameMeaningEntailment: 0.92,
+  sameMeaningMargin: 0.72,
+  sameMeaningMaximumNeutral: 0.12,
   relatedSimilarity: 0.52,
   relatedEntailment: 0.42,
   conflictProbability: 0.62,
@@ -21,6 +23,23 @@ export const cosineSimilarity = (left, right) => {
 };
 
 const probability = (scores, name) => scores[name] ?? scores[`label_${name}`] ?? 0;
+
+function decidePair(similarity, forward, reverse) {
+  const forwardEntailment = probability(forward, "entailment");
+  const reverseEntailment = probability(reverse, "entailment");
+  const entailment = Math.min(forwardEntailment, reverseEntailment);
+  const contradiction = Math.max(probability(forward, "contradiction"), probability(reverse, "contradiction"));
+  const neutral = Math.max(probability(forward, "neutral"), probability(reverse, "neutral"));
+  const forwardMargin = forwardEntailment - Math.max(probability(forward, "neutral"), probability(forward, "contradiction"));
+  const reverseMargin = reverseEntailment - Math.max(probability(reverse, "neutral"), probability(reverse, "contradiction"));
+  const mutualMargin = Math.min(forwardMargin, reverseMargin);
+  let relation = "DISTINCT";
+  if (contradiction >= SEMANTIC_RULES.conflictProbability) relation = "CONFLICTING";
+  else if (similarity >= SEMANTIC_RULES.sameMeaningSimilarity && entailment >= SEMANTIC_RULES.sameMeaningEntailment &&
+    mutualMargin >= SEMANTIC_RULES.sameMeaningMargin && neutral <= SEMANTIC_RULES.sameMeaningMaximumNeutral) relation = "SAME_MEANING";
+  else if (similarity >= SEMANTIC_RULES.relatedSimilarity || entailment >= SEMANTIC_RULES.relatedEntailment) relation = "RELATED";
+  return { relation, confidence: relation === "CONFLICTING" ? contradiction : relation === "SAME_MEANING" ? Math.min(similarity, entailment, mutualMargin) : relation === "RELATED" ? Math.max(similarity, entailment) : 1 - Math.max(similarity, entailment), similarity, mutualEntailment: entailment, mutualMargin, maximumNeutral: neutral };
+}
 
 export class SemanticEngine {
   #loader; #models; #readyPromise; #status = "idle";
@@ -45,12 +64,13 @@ export class SemanticEngine {
   async comparePair(input, memory, similarity) {
     if (normalizedExact(input) === normalizedExact(memory.content)) return { relation: "SAME_MEANING", confidence: 1, similarity };
     const [forward, reverse] = await Promise.all([this.#models.classify(input, memory.content), this.#models.classify(memory.content, input)]);
-    const entailment = Math.min(probability(forward, "entailment"), probability(reverse, "entailment"));
-    const contradiction = Math.max(probability(forward, "contradiction"), probability(reverse, "contradiction"));
-    if (contradiction >= SEMANTIC_RULES.conflictProbability) return { relation: "CONFLICTING", confidence: contradiction, similarity };
-    if (similarity >= SEMANTIC_RULES.sameMeaningSimilarity && entailment >= SEMANTIC_RULES.sameMeaningEntailment) return { relation: "SAME_MEANING", confidence: Math.min(similarity, entailment), similarity };
-    if (similarity >= SEMANTIC_RULES.relatedSimilarity || entailment >= SEMANTIC_RULES.relatedEntailment) return { relation: "RELATED", confidence: Math.max(similarity, entailment), similarity };
-    return { relation: "DISTINCT", confidence: 1 - Math.max(similarity, entailment), similarity };
+    return decidePair(similarity, forward, reverse);
+  }
+  async diagnosePair(left, right) {
+    const [leftEmbedding, rightEmbedding] = await Promise.all([this.encode(left), this.encode(right)]);
+    const cosine = cosineSimilarity(leftEmbedding, rightEmbedding);
+    const [forward, reverse] = await Promise.all([this.#models.classify(left, right), this.#models.classify(right, left)]);
+    return { left, right, cosine, forward, reverse, ...decidePair(cosine, forward, reverse) };
   }
   async evaluate(content, memories) {
     const embedding = await this.encode(content);

@@ -3,8 +3,13 @@ import assert from "node:assert/strict";
 import { SemanticEngine, SEMANTIC_RULES, cosineSimilarity } from "../src/semantic/semantic-engine.js";
 import { BrainEngine } from "../src/brain/brain-engine.js";
 import { EventBus } from "../src/app/events.js";
+import { SEMANTIC_CALIBRATION_PAIRS } from "../src/semantic/semantic-diagnostics.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
+
+test("development calibration covers the complete acceptance matrix", () => {
+  assert.equal(SEMANTIC_CALIBRATION_PAIRS.length, 18);
+});
 
 const vectors = new Map([
   ["You should learn to trade", [1, 0, 0]], ["You ought to learn trading", [.98, .02, 0]],
@@ -16,7 +21,10 @@ const entailments = new Map([
 ]);
 const loader = async () => ({
   encode: async text => new Float32Array(vectors.get(text) || [0, 0, 1]),
-  classify: async (left, right) => ({ entailment: entailments.get(`${left}|${right}`) || .04, neutral: .18, contradiction: left === "I hate trading" || right === "I hate trading" ? .78 : .08 })
+  classify: async (left, right) => {
+    const entailment = entailments.get(`${left}|${right}`) || .04;
+    return { entailment, neutral: entailment >= .9 ? .03 : .18, contradiction: left === "I hate trading" || right === "I hate trading" ? .78 : .08 };
+  }
 });
 
 test("embedding retrieval is bounded and pair inference decides canonical meaning", async () => {
@@ -30,6 +38,8 @@ test("embedding retrieval is bounded and pair inference decides canonical meanin
   assert.equal(distinct.relation, "DISTINCT");
   const conflict = await engine.evaluate("I hate trading", [original]);
   assert.equal(conflict.relation, "CONFLICTING");
+  const diagnostic = await engine.diagnosePair("You ought to learn trading", "You should learn to trade");
+  assert.equal(diagnostic.relation, "SAME_MEANING"); assert.equal(diagnostic.forward.entailment, .94); assert.equal(diagnostic.reverse.entailment, .92);
   assert.ok(cosineSimilarity(new Float32Array([1, 0]), new Float32Array([1, 0])) === 1);
   assert.equal(engine.retrieveCandidates(new Float32Array([1, 0, 0]), Array.from({ length: 8 }, (_, id) => ({ id, embedding: new Float32Array([1, 0, 0]) }))).length, SEMANTIC_RULES.candidateLimit);
 });

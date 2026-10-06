@@ -8,3 +8,7 @@ Mindling runs semantic inference in the browser with Transformers.js 3.8.1 (Apac
 The first semantic operation requires network access to acquire uncached runtime/model assets. Cached operation can work offline when the browser retains HTTP/Cache API entries, but this application does not install a service worker and therefore does not promise offline availability before or after cache eviction. The embedding model attempts WebGPU when exposed by the browser and falls back to WASM if initialization fails; the pair classifier uses WASM for broad compatibility. No server inference is used.
 
 Embeddings are stored per memory as structured-cloneable `Float32Array` values in the existing IndexedDB `memories` store. At 384 float32 values, the vector payload is 1,536 bytes per memory before record overhead.
+
+## Development calibration
+
+On `localhost`, or when the page is opened with `?semantic-debug=1`, a read-only diagnostic is available as `window.__MINDLING_SEMANTIC_DEBUG__`. `compare(left, right)` returns cosine similarity, both directional NLI probability sets, mutual-entailment evidence, and the final classification. `runMatrix()` runs the complete 18-pair acceptance matrix against the production models. Neither method mutates Mindling state or transmits the supplied text to an inference service.

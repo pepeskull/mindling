@@ -7,6 +7,7 @@ import { Onboarding } from "../ui/onboarding.js";
 import { createLocalIdentity } from "../identity/identity.js";
 import { neuralSeedRecords } from "../brain/neural-seed-state.js";
 import { SemanticEngine } from "../semantic/semantic-engine.js";
+import { runSemanticCalibration } from "../semantic/semantic-diagnostics.js";
 
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #learningQueue=Promise.resolve();
@@ -33,8 +34,20 @@ export class MindlingApp {
     this.#events.emit(EVENTS.SEMANTIC_STATUS, { status: "loading" });
     this.#semantic.initialize().then(() => {
       this.#events.emit(EVENTS.SEMANTIC_STATUS, { status: "ready" });
+      this.#installSemanticDiagnostics();
       this.#embedLegacyMemories();
     }).catch(() => this.#events.emit(EVENTS.SEMANTIC_STATUS, { status: "unavailable" }));
+  }
+  #installSemanticDiagnostics() {
+    const enabled = location.hostname === "localhost" || new URLSearchParams(location.search).has("semantic-debug");
+    if (!enabled) return;
+    Object.defineProperty(window, "__MINDLING_SEMANTIC_DEBUG__", {
+      configurable: true,
+      value: Object.freeze({
+        compare: (left, right) => this.#semantic.diagnosePair(left, right),
+        runMatrix: () => runSemanticCalibration(this.#semantic)
+      })
+    });
   }
   #queueInput(text, mode) {
     const task = this.#learningQueue.then(() => this.#processInput(text, mode));
