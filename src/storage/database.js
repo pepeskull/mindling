@@ -40,13 +40,14 @@ export class MindlingDatabase {
       transaction.onabort = () => reject(transaction.error || new Error("Creation was cancelled"));
     });
   }
-  async commitLearning({ memory, synapse }) {
+  async commitLearning({ memory, relatedMemories = [], synapse }) {
     if (!this.#db) throw new Error("Database is not open");
     return new Promise((resolve, reject) => {
       const transaction = this.#db.transaction(["memories", "synapses"], "readwrite");
       transaction.objectStore("memories").put(memory);
+      relatedMemories.forEach(related => transaction.objectStore("memories").put(related));
       transaction.objectStore("synapses").put(synapse);
-      transaction.oncomplete = () => resolve({ memory, synapse });
+      transaction.oncomplete = () => resolve({ memory, relatedMemories, synapse });
       transaction.onerror = () => reject(transaction.error || new Error("Learning could not be saved"));
       transaction.onabort = () => reject(transaction.error || new Error("Learning was cancelled"));
     });

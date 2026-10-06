@@ -16,3 +16,9 @@ test("storage, economy, topology, and static deployment invariants remain intact
   assert.equal(economyConfig.tokenPaymentsEnabled, false); assert.equal(existsSync(new URL("../api", import.meta.url)), false);
   const seed = createNeuralSeedState(); assert.equal(seed.nodes.length, 5); assert.equal(seed.synapses.length, 4); assert.equal(seed.memories.length, 0);
 });
+
+test("semantic matching has no manual dictionary authority", () => {
+  assert.equal(existsSync(new URL("../src/brain/concept-extractor.js", import.meta.url)), false);
+  const evaluator = readFileSync(new URL("../src/brain/memory-evaluator.js", import.meta.url), "utf8");
+  assert.doesNotMatch(evaluator, /Jaccard|compareConcepts|FUNCTION_WORDS|synonyms/i);
+});

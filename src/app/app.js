@@ -6,9 +6,10 @@ import { Dashboard } from "../ui/dashboard.js";
 import { Onboarding } from "../ui/onboarding.js";
 import { createLocalIdentity } from "../identity/identity.js";
 import { neuralSeedRecords } from "../brain/neural-seed-state.js";
+import { SemanticEngine } from "../semantic/semantic-engine.js";
 
 export class MindlingApp {
-  #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #dashboard; #renderer; #onboarding; #learningQueue=Promise.resolve();
+  #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #learningQueue=Promise.resolve();
   async start(){
     this.#dashboard=new Dashboard(this.#events, (text, mode) => this.#queueInput(text, mode));
     this.#events.on(EVENTS.NEURAL_INPUT, signal => this.#renderer?.signal(signal));
@@ -29,6 +30,11 @@ export class MindlingApp {
       this.#onboarding = new Onboarding(document.querySelector("#onboarding"), draft => this.#createMindling(draft));
       this.#onboarding.show();
     }
+    this.#events.emit(EVENTS.SEMANTIC_STATUS, { status: "loading" });
+    this.#semantic.initialize().then(() => {
+      this.#events.emit(EVENTS.SEMANTIC_STATUS, { status: "ready" });
+      this.#embedLegacyMemories();
+    }).catch(() => this.#events.emit(EVENTS.SEMANTIC_STATUS, { status: "unavailable" }));
   }
   #queueInput(text, mode) {
     const task = this.#learningQueue.then(() => this.#processInput(text, mode));
@@ -36,7 +42,10 @@ export class MindlingApp {
     return task;
   }
   async #processInput(text, mode) {
-    const result = this.#brain.evaluateInput(text, mode);
+    let semantic;
+    try { semantic = await this.#semantic.evaluate(text, this.#brain.getState().memories); }
+    catch { this.#events.emit(EVENTS.SEMANTIC_STATUS, { status: "unavailable" }); }
+    const result = this.#brain.evaluateInput(text, mode, semantic);
     if (!result) return null;
     this.#events.emit(EVENTS.NEURAL_INPUT, { ...result.route, outcome: result.outcome });
     if (result.outcome === "STIMULATION") return result;
@@ -49,6 +58,17 @@ export class MindlingApp {
     } catch (error) {
       this.#events.emit(EVENTS.LEARNING_FAILED, { message: error.message });
       throw error;
+    }
+  }
+  async #embedLegacyMemories() {
+    for (const memory of this.#brain.getState().memories.filter(item => !item.embedding)) {
+      try {
+        const embedding = await this.#semantic.encode(memory.content);
+        const updated = { ...memory, embedding };
+        await this.#db.put("memories", updated);
+        this.#brain.attachEmbedding(memory.id, embedding);
+      } catch { break; }
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
   }
   async #createMindling(draft) {

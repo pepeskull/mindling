@@ -21,7 +21,12 @@ export class Dashboard {
     this.#eventUnsubscribes = [
       events.on(EVENTS.MEMORY_CREATED, () => this.#showStatus("Memory formed")),
       events.on(EVENTS.MEMORY_REINFORCED, () => this.#showStatus("Memory reinforced")),
-      events.on(EVENTS.LEARNING_FAILED, () => this.#showStatus("Learning could not be saved"))
+      events.on(EVENTS.LEARNING_FAILED, () => this.#showStatus("Learning could not be saved")),
+      events.on(EVENTS.SEMANTIC_STATUS, ({ status }) => {
+        if (status === "loading") this.#showStatus("Semantic engine loading");
+        if (status === "ready") this.#showStatus("Semantic engine ready");
+        if (status === "unavailable") this.#showStatus("Semantic engine unavailable");
+      })
     ];
     this.#form = document.querySelector("#interaction-form");
     this.#handleSubmit = (event) => this.#submitInteraction(event);
