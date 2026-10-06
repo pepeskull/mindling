@@ -3,6 +3,7 @@ export const SEMANTIC_MODELS = Object.freeze({
   encoder: "Xenova/all-MiniLM-L6-v2",
   pairClassifier: "Xenova/nli-deberta-v3-xsmall",
   equivalenceCandidate: "Xenova/paraphrase-MiniLM-L3-v2",
+  propositionCandidate: "cross-encoder/stsb-TinyBERT-L4",
   revision: "main",
   embeddingDimensions: 384
 });
@@ -78,5 +79,22 @@ export async function loadEquivalenceCandidate() {
   return text => run(async () => {
     const output = await extractor(text, { pooling: "mean", normalize: true });
     return new Float32Array(output.data);
+  });
+}
+
+export async function loadPropositionCandidate() {
+  const { env, AutoTokenizer, AutoModelForSequenceClassification } = await import(SEMANTIC_MODELS.runtime);
+  env.useBrowserCache = true;
+  env.useWasmCache = true;
+  const options = { dtype: "fp32", revision: SEMANTIC_MODELS.revision, device: "wasm" };
+  const tokenizer = await AutoTokenizer.from_pretrained(SEMANTIC_MODELS.propositionCandidate, options);
+  const model = await AutoModelForSequenceClassification.from_pretrained(SEMANTIC_MODELS.propositionCandidate, options);
+  if (Object.keys(model.config.id2label || {}).length !== 1) throw new Error("Proposition candidate must expose one STS regression output");
+  const run = createInferenceQueue();
+  return (left, right) => run(async () => {
+    const inputs = await tokenizer(left, { text_pair: right, truncation: true });
+    const output = await model(inputs);
+    const rawLogit = Number(output.logits.data[0]);
+    return { rawLogit, score: 1 / (1 + Math.exp(-rawLogit)) };
   });
 }

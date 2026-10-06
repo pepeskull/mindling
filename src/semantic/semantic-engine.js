@@ -1,4 +1,4 @@
-import { loadEquivalenceCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
+import { loadEquivalenceCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
 
 export const SEMANTIC_RULES = Object.freeze({
   candidateLimit: 3,
@@ -52,8 +52,8 @@ function decidePair(similarity, forward, reverse) {
 }
 
 export class SemanticEngine {
-  #loader; #equivalenceLoader; #models; #readyPromise; #equivalencePromise; #status = "idle";
-  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; }
+  #loader; #equivalenceLoader; #propositionLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #status = "idle";
+  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate, propositionLoader = loadPropositionCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; this.#propositionLoader = propositionLoader; }
   get status() { return this.#status; }
   get modelInfo() { return SEMANTIC_MODELS; }
   get runtimeInfo() { return this.#models ? { backend: this.#models.backend, encoder: SEMANTIC_MODELS.encoder, pairClassifier: SEMANTIC_MODELS.pairClassifier } : null; }
@@ -103,7 +103,14 @@ export class SemanticEngine {
   async diagnoseWithEquivalence(left, right) {
     const semantic = await this.diagnosePair(left, right);
     const equivalence = await this.inspectEquivalence(left, right);
-    return { ...semantic, nli: { forward: semantic.forward, reverse: semantic.reverse }, equivalence };
+    const proposition = await this.inspectPropositionEquivalence(left, right);
+    return { ...semantic, retrievalEligible: semantic.cosine >= SEMANTIC_RULES.retrievalFloor, nli: { forward: semantic.forward, reverse: semantic.reverse }, equivalence, proposition };
+  }
+  async inspectPropositionEquivalence(left, right) {
+    this.#propositionPromise ||= this.#propositionLoader();
+    const compare = await this.#propositionPromise;
+    const output = await compare(left, right);
+    return { model: SEMANTIC_MODELS.propositionCandidate, label: "STS_SIMILARITY_REGRESSION", rawLogit: output.rawLogit, score: output.score, stsbScore: output.score * 5, canonicalAuthority: false };
   }
   async evaluate(content, memories) {
     const embedding = await this.encode(content);

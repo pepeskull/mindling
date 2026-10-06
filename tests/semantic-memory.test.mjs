@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { SemanticEngine, SEMANTIC_RULES, cosineSimilarity } from "../src/semantic/semantic-engine.js";
 import { BrainEngine } from "../src/brain/brain-engine.js";
 import { EventBus } from "../src/app/events.js";
-import { SEMANTIC_CALIBRATION_PAIRS, SEMANTIC_GENERALIZATION_PAIRS } from "../src/semantic/semantic-diagnostics.js";
+import { CANONICAL_CONSISTENCY_PAIRS, SEMANTIC_CALIBRATION_PAIRS, SEMANTIC_GENERALIZATION_PAIRS } from "../src/semantic/semantic-diagnostics.js";
 import { createInferenceQueue, resolveNliLabels } from "../src/semantic/semantic-model.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
@@ -11,17 +11,23 @@ if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { cons
 test("development calibration covers the complete acceptance matrix", () => {
   assert.equal(SEMANTIC_CALIBRATION_PAIRS.length, 19);
   assert.equal(SEMANTIC_GENERALIZATION_PAIRS.length, 12);
+  assert.equal(CANONICAL_CONSISTENCY_PAIRS.length, 17);
+  const diagnosticText = JSON.stringify(CANONICAL_CONSISTENCY_PAIRS);
+  for (const input of ["Learn how to trade", "Learn to trade", "Learn how trading works", "Learn how to become a trader", "Learn to be a trader", "Become a trader", "Become a better trader", "I want to become a trader", "I am a trader", "I do not want to become a trader"]) assert.match(diagnosticText, new RegExp(input));
 });
 
 test("equivalence candidate initializes once and remains diagnostic-only", async () => {
   let initializations = 0;
+  let propositionInitializations = 0; let propositionCalls = 0;
   const equivalenceLoader = async () => { initializations += 1; return async text => new Float32Array(text.length > 4 ? [1, 0] : [0, 1]); };
-  const engine = new SemanticEngine(loader, equivalenceLoader); await engine.initialize();
+  const propositionLoader = async () => { propositionInitializations += 1; return async () => { propositionCalls += 1; return { rawLogit: 2, score: .88 }; }; };
+  const engine = new SemanticEngine(loader, equivalenceLoader, propositionLoader); await engine.initialize();
   const first = await engine.inspectEquivalence("long sentence", "tiny");
   const second = await engine.inspectEquivalence("another sentence", "small");
   const combined = await engine.diagnoseWithEquivalence("You ought to learn trading", "You should learn to trade");
-  assert.equal(initializations, 1); assert.equal(first.canonicalAuthority, false); assert.equal(second.canonicalAuthority, false);
-  assert.equal(combined.equivalence.canonicalAuthority, false); assert.ok(combined.nli.forward);
+  assert.equal(initializations, 1); assert.equal(propositionInitializations, 1); assert.equal(propositionCalls, 1);
+  assert.equal(first.canonicalAuthority, false); assert.equal(second.canonicalAuthority, false);
+  assert.equal(combined.equivalence.canonicalAuthority, false); assert.equal(combined.proposition.canonicalAuthority, false); assert.ok(combined.nli.forward);
 });
 
 test("model inference is serialized and copied before a reusable buffer changes", async () => {

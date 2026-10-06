@@ -7,7 +7,7 @@ import { Onboarding } from "../ui/onboarding.js";
 import { createLocalIdentity } from "../identity/identity.js";
 import { neuralSeedRecords } from "../brain/neural-seed-state.js";
 import { SemanticEngine } from "../semantic/semantic-engine.js";
-import { runSemanticCalibration, runSemanticGeneralization } from "../semantic/semantic-diagnostics.js";
+import { runCanonicalConsistency, runPropositionMatrix, runSemanticCalibration, runSemanticGeneralization } from "../semantic/semantic-diagnostics.js";
 
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #learningQueue=Promise.resolve();
@@ -47,9 +47,12 @@ export class MindlingApp {
         compare: (left, right) => this.#semantic.diagnoseWithEquivalence(left, right),
         inspectEmbeddings: (left, right) => this.#semantic.inspectEmbeddings(left, right),
         inspectEquivalence: (left, right) => this.#semantic.inspectEquivalence(left, right),
+        inspectPropositionEquivalence: (left, right) => this.#semantic.inspectPropositionEquivalence(left, right),
         runtimeInfo: () => this.#semantic.runtimeInfo,
         runMatrix: () => runSemanticCalibration(this.#semantic),
-        runGeneralization: () => runSemanticGeneralization(this.#semantic)
+        runGeneralization: () => runSemanticGeneralization(this.#semantic),
+        runCanonicalConsistency: () => runCanonicalConsistency(this.#semantic),
+        runPropositionMatrix: () => runPropositionMatrix(this.#semantic)
       })
     });
   }

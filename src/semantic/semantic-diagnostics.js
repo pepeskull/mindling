@@ -35,6 +35,26 @@ export const SEMANTIC_GENERALIZATION_PAIRS = Object.freeze([
   ["Sam gave Lee the key", "Lee gave Sam the key"]
 ]);
 
+export const CANONICAL_CONSISTENCY_PAIRS = Object.freeze([
+  ["trader-a", "A-B", "Learn how to trade", "Learn to trade", "SAME_MEANING"],
+  ["trader-a", "A-C", "Learn how to trade", "Learn to be a trader", "SAME_MEANING"],
+  ["trader-a", "B-C", "Learn to trade", "Learn to be a trader", "SAME_MEANING"],
+  ["trader-b", "A-B", "Learn to trade", "Learn how to become a trader", "SAME_MEANING"],
+  ["trader-b", "A-C", "Learn to trade", "Become a trader", "SAME_MEANING"],
+  ["trader-b", "B-C", "Learn how to become a trader", "Become a trader", "SAME_MEANING"],
+  ["trader-boundary", "goal-knowledge", "Learn how trading works", "Learn to trade", "NOT_SAME_MEANING"],
+  ["trader-boundary", "qualifier", "Become a trader", "Become a better trader", "NOT_SAME_MEANING"],
+  ["trader-boundary", "intention-state", "I want to become a trader", "I am a trader", "NOT_SAME_MEANING"],
+  ["trader-boundary", "negated-intention", "I want to become a trader", "I do not want to become a trader", "CONFLICTING"],
+  ["roles", "sale-active-passive", "John sold the car to Mary", "The car was sold to Mary by John", "SAME_MEANING"],
+  ["roles", "sale-reversal", "John sold the car to Mary", "Mary sold the car to John", "NOT_SAME_MEANING"],
+  ["roles", "chase-active-passive", "The dog chased the cat", "The cat was chased by the dog", "SAME_MEANING"],
+  ["roles", "chase-reversal", "The dog chased the cat", "The cat chased the dog", "NOT_SAME_MEANING"],
+  ["entities", "location", "I live in Stockholm", "I live in Gothenburg", "NOT_SAME_MEANING"],
+  ["entities", "name-reversal", "Anna called Erik", "Erik called Anna", "NOT_SAME_MEANING"],
+  ["entities", "verb-paraphrase", "Anna called Erik", "Anna phoned Erik", "SAME_MEANING"]
+]);
+
 export async function runSemanticCalibration(engine) {
   const results = [];
   for (const [left, right, expected] of SEMANTIC_CALIBRATION_PAIRS) {
@@ -48,4 +68,32 @@ export async function runSemanticGeneralization(engine) {
   const results = [];
   for (const [left, right] of SEMANTIC_GENERALIZATION_PAIRS) results.push(await engine.diagnoseWithEquivalence(left, right));
   return results;
+}
+
+const compactResult = ({ left, right, expected, group = "regression", pair = "", ...result }) => ({
+  group, pair, left, right, expected,
+  currentCanonicalRelation: result.relation,
+  retrievalCosine: result.cosine,
+  retrievalEligible: result.retrievalEligible,
+  nliForward: result.nli.forward,
+  nliReverse: result.nli.reverse,
+  paraphraseScore: result.equivalence.score,
+  propositionLabel: result.proposition.label,
+  propositionScore: result.proposition.score,
+  propositionRawLogit: result.proposition.rawLogit,
+  propositionConfidence: result.proposition.score
+});
+
+export async function runCanonicalConsistency(engine) {
+  const results = [];
+  for (const [group, pair, left, right, expected] of CANONICAL_CONSISTENCY_PAIRS) {
+    results.push(compactResult({ group, pair, left, right, expected, ...await engine.diagnoseWithEquivalence(left, right) }));
+  }
+  return results;
+}
+
+export async function runPropositionMatrix(engine) {
+  const regression = (await runSemanticCalibration(engine)).map(compactResult);
+  const generalization = (await runSemanticGeneralization(engine)).map(result => compactResult({ expected: "DIAGNOSTIC", group: "generalization", ...result }));
+  return [...regression, ...generalization, ...await runCanonicalConsistency(engine)];
 }
