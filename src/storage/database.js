@@ -21,7 +21,37 @@ export class MindlingDatabase {
     return this;
   }
   async get(store, id) { return this.#request(store, "readonly", target => target.get(id)); }
+  async getAll(store) { return this.#request(store, "readonly", target => target.getAll()); }
   async put(store, value) { return this.#request(store, "readwrite", target => target.put(value)); }
+  async createMindling({ identity, pathways, mindling, neurons, synapses }) {
+    if (!this.#db) throw new Error("Database is not open");
+    const stores = ["identity", "pathways", "neurons", "synapses", "mindling"];
+    return new Promise((resolve, reject) => {
+      const transaction = this.#db.transaction(stores, "readwrite");
+      const putAll = (name, values) => values.forEach(value => transaction.objectStore(name).put(value));
+      transaction.objectStore("identity").put(identity);
+      putAll("pathways", pathways);
+      putAll("neurons", neurons);
+      putAll("synapses", synapses);
+      // This authoritative record is queued last; IndexedDB commits the transaction atomically.
+      transaction.objectStore("mindling").put(mindling);
+      transaction.oncomplete = () => resolve(mindling);
+      transaction.onerror = () => reject(transaction.error || new Error("Creation could not be saved"));
+      transaction.onabort = () => reject(transaction.error || new Error("Creation was cancelled"));
+    });
+  }
+  async commitLearning({ memory, relatedMemories = [], synapse }) {
+    if (!this.#db) throw new Error("Database is not open");
+    return new Promise((resolve, reject) => {
+      const transaction = this.#db.transaction(["memories", "synapses"], "readwrite");
+      transaction.objectStore("memories").put(memory);
+      relatedMemories.forEach(related => transaction.objectStore("memories").put(related));
+      transaction.objectStore("synapses").put(synapse);
+      transaction.oncomplete = () => resolve({ memory, relatedMemories, synapse });
+      transaction.onerror = () => reject(transaction.error || new Error("Learning could not be saved"));
+      transaction.onabort = () => reject(transaction.error || new Error("Learning was cancelled"));
+    });
+  }
   #request(store, mode, operation) {
     if (!this.#db) return Promise.reject(new Error("Database is not open"));
     if (!STORES.includes(store)) return Promise.reject(new Error(`Unknown store: ${store}`));
