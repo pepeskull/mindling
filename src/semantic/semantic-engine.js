@@ -112,6 +112,26 @@ export class SemanticEngine {
     const output = await compare(left, right);
     return { model: SEMANTIC_MODELS.propositionCandidate, label: "STS_SIMILARITY_REGRESSION", rawLogit: output.rawLogit, score: output.score, stsbScore: output.score * 5, canonicalAuthority: false };
   }
+  async inspectSemanticIdentity(left, right) {
+    const evidence = await this.diagnoseWithEquivalence(left, right);
+    return {
+      left, right,
+      retrieval: { cosine: evidence.cosine, eligible: evidence.retrievalEligible, floor: SEMANTIC_RULES.retrievalFloor },
+      nli: {
+        forward: evidence.forward,
+        reverse: evidence.reverse,
+        mutualEntailment: evidence.mutualEntailment,
+        mutualMargin: evidence.mutualMargin,
+        maximumNeutral: evidence.maximumNeutral,
+        maximumContradiction: Math.max(evidence.forward.contradiction, evidence.reverse.contradiction)
+      },
+      paraphrase: evidence.equivalence,
+      stsb: evidence.proposition,
+      currentCanonicalRelation: evidence.relation,
+      currentDecisionReason: evidence.reason,
+      canonicalAuthority: false
+    };
+  }
   async evaluate(content, memories) {
     const embedding = await this.encode(content);
     const exact = memories.find(memory => normalizedExact(memory.content) === normalizedExact(content));

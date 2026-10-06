@@ -32,7 +32,17 @@ export const SEMANTIC_GENERALIZATION_PAIRS = Object.freeze([
   ["Employees are required to attend", "Employees may attend"],
   ["The train might be late", "The train is definitely late"],
   ["If it rains, the match is cancelled", "The match is cancelled"],
-  ["Sam gave Lee the key", "Lee gave Sam the key"]
+  ["Sam gave Lee the key", "Lee gave Sam the key"],
+  ["The chef prepared the meal", "The meal was prepared by the chef"],
+  ["The teacher praised the student", "The student praised the teacher"],
+  ["Maya sent a letter to Noah", "Noah sent a letter to Maya"],
+  ["Pack four boxes", "Pack nine boxes"],
+  ["The appointment is on Thursday", "The appointment is on Friday"],
+  ["The conference is in Oslo", "The conference is in Helsinki"],
+  ["I plan to become a pilot", "I am a pilot"],
+  ["Write the report", "Write the final report"],
+  ["The storm delayed the flight", "The flight was delayed by the storm"],
+  ["Please close the window", "Shut the window"]
 ]);
 
 export const CANONICAL_CONSISTENCY_PAIRS = Object.freeze([
@@ -52,7 +62,11 @@ export const CANONICAL_CONSISTENCY_PAIRS = Object.freeze([
   ["roles", "chase-reversal", "The dog chased the cat", "The cat chased the dog", "NOT_SAME_MEANING"],
   ["entities", "location", "I live in Stockholm", "I live in Gothenburg", "NOT_SAME_MEANING"],
   ["entities", "name-reversal", "Anna called Erik", "Erik called Anna", "NOT_SAME_MEANING"],
-  ["entities", "verb-paraphrase", "Anna called Erik", "Anna phoned Erik", "SAME_MEANING"]
+  ["entities", "verb-paraphrase", "Anna called Erik", "Anna phoned Erik", "SAME_MEANING"],
+  ["clean-slate-b", "want-paraphrase", "I want to learn trading", "I want to learn how to trade", "SAME_MEANING"],
+  ["clean-slate-b", "want-need", "I want to learn trading", "I need to learn trading", "RELATED_OR_DISTINCT"],
+  ["clean-slate-b", "quantity", "Buy three shares", "Buy five shares", "NOT_SAME_MEANING"],
+  ["clean-slate-b", "preference-conflict", "I like trading", "I hate trading", "CONFLICTING"]
 ]);
 
 export async function runSemanticCalibration(engine) {
@@ -77,6 +91,10 @@ const compactResult = ({ left, right, expected, group = "regression", pair = "",
   retrievalEligible: result.retrievalEligible,
   nliForward: result.nli.forward,
   nliReverse: result.nli.reverse,
+  nliMutualEntailment: result.mutualEntailment,
+  nliMutualMargin: result.mutualMargin,
+  nliMaximumNeutral: result.maximumNeutral,
+  nliMaximumContradiction: Math.max(result.nli.forward.contradiction, result.nli.reverse.contradiction),
   paraphraseScore: result.equivalence.score,
   propositionLabel: result.proposition.label,
   propositionScore: result.proposition.score,

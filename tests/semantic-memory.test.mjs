@@ -10,8 +10,8 @@ if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { cons
 
 test("development calibration covers the complete acceptance matrix", () => {
   assert.equal(SEMANTIC_CALIBRATION_PAIRS.length, 19);
-  assert.equal(SEMANTIC_GENERALIZATION_PAIRS.length, 12);
-  assert.equal(CANONICAL_CONSISTENCY_PAIRS.length, 17);
+  assert.equal(SEMANTIC_GENERALIZATION_PAIRS.length, 22);
+  assert.equal(CANONICAL_CONSISTENCY_PAIRS.length, 21);
   const diagnosticText = JSON.stringify(CANONICAL_CONSISTENCY_PAIRS);
   for (const input of ["Learn how to trade", "Learn to trade", "Learn how trading works", "Learn how to become a trader", "Learn to be a trader", "Become a trader", "Become a better trader", "I want to become a trader", "I am a trader", "I do not want to become a trader"]) assert.match(diagnosticText, new RegExp(input));
 });
@@ -25,9 +25,12 @@ test("equivalence candidate initializes once and remains diagnostic-only", async
   const first = await engine.inspectEquivalence("long sentence", "tiny");
   const second = await engine.inspectEquivalence("another sentence", "small");
   const combined = await engine.diagnoseWithEquivalence("You ought to learn trading", "You should learn to trade");
-  assert.equal(initializations, 1); assert.equal(propositionInitializations, 1); assert.equal(propositionCalls, 1);
+  const identity = await engine.inspectSemanticIdentity("You ought to learn trading", "You should learn to trade");
+  assert.equal(initializations, 1); assert.equal(propositionInitializations, 1); assert.equal(propositionCalls, 2);
   assert.equal(first.canonicalAuthority, false); assert.equal(second.canonicalAuthority, false);
   assert.equal(combined.equivalence.canonicalAuthority, false); assert.equal(combined.proposition.canonicalAuthority, false); assert.ok(combined.nli.forward);
+  assert.equal(identity.canonicalAuthority, false); assert.ok(identity.nli.forward); assert.ok(identity.nli.reverse);
+  assert.equal(typeof identity.nli.mutualEntailment, "number"); assert.equal(identity.retrieval.floor, SEMANTIC_RULES.retrievalFloor);
 });
 
 test("model inference is serialized and copied before a reusable buffer changes", async () => {

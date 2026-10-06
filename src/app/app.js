@@ -48,11 +48,13 @@ export class MindlingApp {
         inspectEmbeddings: (left, right) => this.#semantic.inspectEmbeddings(left, right),
         inspectEquivalence: (left, right) => this.#semantic.inspectEquivalence(left, right),
         inspectPropositionEquivalence: (left, right) => this.#semantic.inspectPropositionEquivalence(left, right),
+        inspectSemanticIdentity: (left, right) => this.#semantic.inspectSemanticIdentity(left, right),
         runtimeInfo: () => this.#semantic.runtimeInfo,
         runMatrix: () => runSemanticCalibration(this.#semantic),
         runGeneralization: () => runSemanticGeneralization(this.#semantic),
         runCanonicalConsistency: () => runCanonicalConsistency(this.#semantic),
-        runPropositionMatrix: () => runPropositionMatrix(this.#semantic)
+        runPropositionMatrix: () => runPropositionMatrix(this.#semantic),
+        runSemanticIdentityMatrix: () => runPropositionMatrix(this.#semantic)
       })
     });
   }
