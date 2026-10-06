@@ -16,7 +16,8 @@ export const SEMANTIC_CALIBRATION_PAIRS = Object.freeze([
   ["Buy three shares", "Buy five shares", "NOT_SAME_MEANING"],
   ["The meeting is on Monday", "The meeting is on Tuesday", "NOT_SAME_MEANING"],
   ["I enjoy playing games", "Playing games is something I enjoy", "SAME_MEANING"],
-  ["Learning programming is useful", "It is useful to learn programming", "SAME_MEANING"]
+  ["Learning programming is useful", "It is useful to learn programming", "SAME_MEANING"],
+  ["Learn how to trade", "Learn to trade", "SAME_MEANING"]
 ]);
 
 export const SEMANTIC_GENERALIZATION_PAIRS = Object.freeze([
@@ -37,7 +38,7 @@ export const SEMANTIC_GENERALIZATION_PAIRS = Object.freeze([
 export async function runSemanticCalibration(engine) {
   const results = [];
   for (const [left, right, expected] of SEMANTIC_CALIBRATION_PAIRS) {
-    const measured = await engine.diagnosePair(left, right);
+    const measured = await engine.diagnoseWithEquivalence(left, right);
     results.push({ expected, ...measured });
   }
   return results;
@@ -45,6 +46,6 @@ export async function runSemanticCalibration(engine) {
 
 export async function runSemanticGeneralization(engine) {
   const results = [];
-  for (const [left, right] of SEMANTIC_GENERALIZATION_PAIRS) results.push(await engine.diagnosePair(left, right));
+  for (const [left, right] of SEMANTIC_GENERALIZATION_PAIRS) results.push(await engine.diagnoseWithEquivalence(left, right));
   return results;
 }

@@ -1,4 +1,4 @@
-import { loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
+import { loadEquivalenceCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
 
 export const SEMANTIC_RULES = Object.freeze({
   candidateLimit: 3,
@@ -52,10 +52,11 @@ function decidePair(similarity, forward, reverse) {
 }
 
 export class SemanticEngine {
-  #loader; #models; #readyPromise; #status = "idle";
-  constructor(loader = loadSemanticModels) { this.#loader = loader; }
+  #loader; #equivalenceLoader; #models; #readyPromise; #equivalencePromise; #status = "idle";
+  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; }
   get status() { return this.#status; }
   get modelInfo() { return SEMANTIC_MODELS; }
+  get runtimeInfo() { return this.#models ? { backend: this.#models.backend, encoder: SEMANTIC_MODELS.encoder, pairClassifier: SEMANTIC_MODELS.pairClassifier } : null; }
   initialize() {
     if (!this.#readyPromise) {
       this.#status = "loading";
@@ -91,6 +92,18 @@ export class SemanticEngine {
       sameBuffer: leftEmbedding.buffer === rightEmbedding.buffer,
       cosine: cosineSimilarity(leftEmbedding, rightEmbedding)
     };
+  }
+  async inspectEquivalence(left, right) {
+    this.#equivalencePromise ||= this.#equivalenceLoader();
+    const encode = await this.#equivalencePromise;
+    const leftEmbedding = await encode(left);
+    const rightEmbedding = await encode(right);
+    return { model: SEMANTIC_MODELS.equivalenceCandidate, score: cosineSimilarity(leftEmbedding, rightEmbedding), dimensions: leftEmbedding.length, label: "CANDIDATE_SCORE_ONLY", canonicalAuthority: false };
+  }
+  async diagnoseWithEquivalence(left, right) {
+    const semantic = await this.diagnosePair(left, right);
+    const equivalence = await this.inspectEquivalence(left, right);
+    return { ...semantic, nli: { forward: semantic.forward, reverse: semantic.reverse }, equivalence };
   }
   async evaluate(content, memories) {
     const embedding = await this.encode(content);

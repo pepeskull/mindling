@@ -44,8 +44,10 @@ export class MindlingApp {
     Object.defineProperty(window, "__MINDLING_SEMANTIC_DEBUG__", {
       configurable: true,
       value: Object.freeze({
-        compare: (left, right) => this.#semantic.diagnosePair(left, right),
+        compare: (left, right) => this.#semantic.diagnoseWithEquivalence(left, right),
         inspectEmbeddings: (left, right) => this.#semantic.inspectEmbeddings(left, right),
+        inspectEquivalence: (left, right) => this.#semantic.inspectEquivalence(left, right),
+        runtimeInfo: () => this.#semantic.runtimeInfo,
         runMatrix: () => runSemanticCalibration(this.#semantic),
         runGeneralization: () => runSemanticGeneralization(this.#semantic)
       })

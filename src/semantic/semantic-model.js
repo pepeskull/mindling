@@ -2,6 +2,7 @@ export const SEMANTIC_MODELS = Object.freeze({
   runtime: "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/+esm",
   encoder: "Xenova/all-MiniLM-L6-v2",
   pairClassifier: "Xenova/nli-deberta-v3-xsmall",
+  equivalenceCandidate: "Xenova/paraphrase-MiniLM-L3-v2",
   revision: "main",
   embeddingDimensions: 384
 });
@@ -66,4 +67,16 @@ export async function loadSemanticModels() {
       });
     }
   };
+}
+
+export async function loadEquivalenceCandidate() {
+  const { env, pipeline } = await import(SEMANTIC_MODELS.runtime);
+  env.useBrowserCache = true;
+  env.useWasmCache = true;
+  const extractor = await pipeline("feature-extraction", SEMANTIC_MODELS.equivalenceCandidate, { dtype: "q8", revision: SEMANTIC_MODELS.revision, device: "wasm" });
+  const run = createInferenceQueue();
+  return text => run(async () => {
+    const output = await extractor(text, { pooling: "mean", normalize: true });
+    return new Float32Array(output.data);
+  });
 }
