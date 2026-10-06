@@ -12,6 +12,7 @@ const matches = [
   ["You will learn to play games", "Learn play games", "CONTENT_MATCH"],
   ["You will learn to play games", "You will learn playing games", "CONTENT_MATCH"],
   ["I enjoy playing games", "I enjoy games", "CONTENT_MATCH"],
+  ["Learn to trade", "You should learn to trade", "CONTENT_MATCH"],
   ["You will leanr to play games", "You will learn to play games", "CONTENT_MATCH"]
 ];
 const distinct = [
@@ -34,6 +35,20 @@ test("legacy memories derive missing concept metadata at evaluation time", () =>
   const legacy = { id: "legacy", content: "You will learn to play games", normalizedContent: "you will learn to play games", strength: .32, activations: 1, synapseIds: ["origin-upper"] };
   const result = evaluateMemory({ content: "Learn play games", mode: "TALK", memories: [legacy], pathways: [] });
   assert.equal(result.outcome, "REINFORCEMENT"); assert.equal(result.existing, legacy);
+});
+
+test("modal phrasing reinforces the same trade memory", () => {
+  const brain = new BrainEngine(new EventBus());
+  brain.create({ id: "primary", name: "Test", stage: "NEURAL_SEED", traits: {}, pathways: [] });
+  brain.commitLearning(brain.evaluateInput("Learn to trade", "TEACH"));
+  const result = brain.evaluateInput("You should learn to trade", "TEACH");
+  assert.equal(result.outcome, "REINFORCEMENT");
+  brain.commitLearning(result);
+  const [memory] = brain.getState().memories;
+  assert.equal(brain.getState().memories.length, 1);
+  assert.equal(memory.content, "Learn to trade");
+  assert.equal(memory.activations, 2);
+  assert.deepEqual(memory.matchedVariants, ["You should learn to trade"]);
 });
 
 test("reinforcement preserves original text, increments activation, and bounds variants", () => {

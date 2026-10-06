@@ -4,7 +4,9 @@ export const CONCEPT_MATCHING = Object.freeze({
   weights: Object.freeze({ anchors: 0.45, terms: 0.3, relations: 0.2, rawTokens: 0.05 })
 });
 
-const FUNCTION_WORDS = new Set(["a", "an", "and", "are", "as", "at", "be", "for", "from", "i", "in", "is", "it", "of", "on", "that", "the", "this", "to", "we", "will", "with", "you"]);
+// Modal auxiliaries describe how an utterance is phrased, not the object/action
+// pair used by the conservative concept matcher. Original content is retained.
+const FUNCTION_WORDS = new Set(["a", "an", "and", "are", "as", "at", "be", "can", "could", "for", "from", "i", "in", "is", "it", "may", "might", "must", "of", "on", "shall", "should", "that", "the", "this", "to", "we", "will", "with", "would", "you"]);
 const RELATIONS = new Set(["enjoy", "hate", "learn", "like", "love", "play"]);
 const NEGATIONS = new Set(["no", "not", "never"]);
 const OPPOSITES = [["enjoy", "hate"], ["like", "hate"], ["love", "hate"]];
