@@ -7,7 +7,7 @@ import { Onboarding } from "../ui/onboarding.js";
 import { createLocalIdentity } from "../identity/identity.js";
 import { neuralSeedRecords } from "../brain/neural-seed-state.js";
 import { SemanticEngine } from "../semantic/semantic-engine.js";
-import { runCanonicalConsistency, runPropositionMatrix, runSemanticCalibration, runSemanticGeneralization } from "../semantic/semantic-diagnostics.js";
+import { runCanonicalConsistency, runCanonicalIdentityEvaluation, runPropositionMatrix, runSemanticCalibration, runSemanticGeneralization } from "../semantic/semantic-diagnostics.js";
 
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #learningQueue=Promise.resolve();
@@ -41,6 +41,7 @@ export class MindlingApp {
   #installSemanticDiagnostics() {
     const enabled = location.hostname === "localhost" || new URLSearchParams(location.search).has("semantic-debug");
     if (!enabled) return;
+    this.#semantic.enableDiagnosticTracing();
     Object.defineProperty(window, "__MINDLING_SEMANTIC_DEBUG__", {
       configurable: true,
       value: Object.freeze({
@@ -49,12 +50,14 @@ export class MindlingApp {
         inspectEquivalence: (left, right) => this.#semantic.inspectEquivalence(left, right),
         inspectPropositionEquivalence: (left, right) => this.#semantic.inspectPropositionEquivalence(left, right),
         inspectSemanticIdentity: (left, right) => this.#semantic.inspectSemanticIdentity(left, right),
+        lastProductionTrace: () => this.#semantic.lastProductionTrace,
         runtimeInfo: () => this.#semantic.runtimeInfo,
         runMatrix: () => runSemanticCalibration(this.#semantic),
         runGeneralization: () => runSemanticGeneralization(this.#semantic),
         runCanonicalConsistency: () => runCanonicalConsistency(this.#semantic),
         runPropositionMatrix: () => runPropositionMatrix(this.#semantic),
-        runSemanticIdentityMatrix: () => runPropositionMatrix(this.#semantic)
+        runSemanticIdentityMatrix: () => runPropositionMatrix(this.#semantic),
+        runCanonicalIdentityEvaluation: () => runCanonicalIdentityEvaluation(this.#semantic)
       })
     });
   }

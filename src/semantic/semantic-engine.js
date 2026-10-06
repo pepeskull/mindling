@@ -1,4 +1,5 @@
 import { loadEquivalenceCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
+import { evaluateShadowIdentity, selectShadowCandidate } from "./canonical-identity.js";
 
 export const SEMANTIC_RULES = Object.freeze({
   candidateLimit: 3,
@@ -52,11 +53,13 @@ function decidePair(similarity, forward, reverse) {
 }
 
 export class SemanticEngine {
-  #loader; #equivalenceLoader; #propositionLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #status = "idle";
+  #loader; #equivalenceLoader; #propositionLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #status = "idle"; #diagnosticTracing = false; #lastProductionTrace = null;
   constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate, propositionLoader = loadPropositionCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; this.#propositionLoader = propositionLoader; }
   get status() { return this.#status; }
   get modelInfo() { return SEMANTIC_MODELS; }
   get runtimeInfo() { return this.#models ? { backend: this.#models.backend, encoder: SEMANTIC_MODELS.encoder, pairClassifier: SEMANTIC_MODELS.pairClassifier } : null; }
+  enableDiagnosticTracing() { this.#diagnosticTracing = true; }
+  get lastProductionTrace() { return this.#lastProductionTrace ? structuredClone(this.#lastProductionTrace) : null; }
   initialize() {
     if (!this.#readyPromise) {
       this.#status = "loading";
@@ -114,7 +117,7 @@ export class SemanticEngine {
   }
   async inspectSemanticIdentity(left, right) {
     const evidence = await this.diagnoseWithEquivalence(left, right);
-    return {
+    const identityEvidence = {
       left, right,
       retrieval: { cosine: evidence.cosine, eligible: evidence.retrievalEligible, floor: SEMANTIC_RULES.retrievalFloor },
       nli: {
@@ -131,11 +134,29 @@ export class SemanticEngine {
       currentDecisionReason: evidence.reason,
       canonicalAuthority: false
     };
+    return { ...identityEvidence, shadow: evaluateShadowIdentity(identityEvidence) };
+  }
+  async inspectCandidateIdentities(input, memories) {
+    const embedding = await this.encode(input);
+    const candidates = this.retrieveCandidates(embedding, memories);
+    const evaluated = [];
+    for (let index = 0; index < candidates.length; index += 1) {
+      const candidate = candidates[index];
+      const evidence = await this.inspectSemanticIdentity(input, candidate.memory.content);
+      evaluated.push({ rank: index + 1, memoryId: candidate.memory.id, canonicalContent: candidate.memory.content,
+        retrieval: { cosine: candidate.similarity, eligible: true }, productionDecision: evidence.currentCanonicalRelation,
+        productionDecisionReason: evidence.currentDecisionReason, shadow: evidence.shadow, canonicalAuthority: false });
+    }
+    const selected = selectShadowCandidate(evaluated);
+    return { input, candidates: evaluated, shadowSelection: selected ? { memoryId: selected.memoryId, rank: selected.rank } : null, canonicalAuthority: false };
   }
   async evaluate(content, memories) {
     const embedding = await this.encode(content);
     const exact = memories.find(memory => normalizedExact(memory.content) === normalizedExact(content));
-    if (exact) return { embedding, match: exact, relation: "SAME_MEANING", confidence: 1, related: [] };
+    if (exact) {
+      if (this.#diagnosticTracing) this.#lastProductionTrace = { input: content, selectedMemoryId: exact.id, selectedCanonicalContent: exact.content, productionDecision: "SAME_MEANING", productionDecisionReason: "exact normalized duplicate", candidates: [], canonicalAuthority: false };
+      return { embedding, match: exact, relation: "SAME_MEANING", confidence: 1, related: [] };
+    }
     // Legacy records are embedded lazily on the first comparison. Startup stays
     // responsive, while the first decision still considers every prior memory.
     for (const memory of memories) if (!memory.embedding) memory.embedding = await this.encode(memory.content);
@@ -143,6 +164,13 @@ export class SemanticEngine {
     const decisions = [];
     for (const candidate of candidates) decisions.push({ ...await this.comparePair(content, candidate.memory, candidate.similarity), memory: candidate.memory });
     const match = decisions.find(decision => decision.relation === "SAME_MEANING");
+    if (this.#diagnosticTracing) this.#lastProductionTrace = {
+      input: content, selectedMemoryId: match?.memory.id || null, selectedCanonicalContent: match?.memory.content || null,
+      productionDecision: match ? "SAME_MEANING" : decisions[0]?.relation || "DISTINCT",
+      productionDecisionReason: match?.reason || decisions[0]?.reason || "no retrieved candidate",
+      candidates: decisions.map((decision, index) => ({ rank: index + 1, memoryId: decision.memory.id, canonicalContent: decision.memory.content, retrievalScore: decision.similarity, productionDecision: decision.relation, productionDecisionReason: decision.reason })),
+      canonicalAuthority: false
+    };
     return { embedding, match: match?.memory || null, relation: match ? "SAME_MEANING" : decisions[0]?.relation || "DISTINCT", confidence: match?.confidence || decisions[0]?.confidence || 0, related: decisions.filter(decision => ["RELATED", "CONFLICTING"].includes(decision.relation)) };
   }
 }

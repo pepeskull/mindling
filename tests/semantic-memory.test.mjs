@@ -3,8 +3,9 @@ import assert from "node:assert/strict";
 import { SemanticEngine, SEMANTIC_RULES, cosineSimilarity } from "../src/semantic/semantic-engine.js";
 import { BrainEngine } from "../src/brain/brain-engine.js";
 import { EventBus } from "../src/app/events.js";
-import { CANONICAL_CONSISTENCY_PAIRS, SEMANTIC_CALIBRATION_PAIRS, SEMANTIC_GENERALIZATION_PAIRS } from "../src/semantic/semantic-diagnostics.js";
-import { createInferenceQueue, resolveNliLabels } from "../src/semantic/semantic-model.js";
+import { CANONICAL_CONSISTENCY_PAIRS, CLEAN_SLATE_IDENTITY_10, CLEAN_SLATE_TRADER_10, SEMANTIC_CALIBRATION_PAIRS, SEMANTIC_GENERALIZATION_PAIRS, SEMANTIC_IDENTITY_HELD_OUT } from "../src/semantic/semantic-diagnostics.js";
+import { createInferenceQueue, resolveNliLabels, SEMANTIC_MODELS } from "../src/semantic/semantic-model.js";
+import { analyzeIdentityTriangle, evaluateShadowIdentity, selectShadowCandidate } from "../src/semantic/canonical-identity.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
 
@@ -12,8 +13,46 @@ test("development calibration covers the complete acceptance matrix", () => {
   assert.equal(SEMANTIC_CALIBRATION_PAIRS.length, 19);
   assert.equal(SEMANTIC_GENERALIZATION_PAIRS.length, 22);
   assert.equal(CANONICAL_CONSISTENCY_PAIRS.length, 21);
+  assert.equal(SEMANTIC_CALIBRATION_PAIRS.length + SEMANTIC_GENERALIZATION_PAIRS.length + CANONICAL_CONSISTENCY_PAIRS.length, 62);
   const diagnosticText = JSON.stringify(CANONICAL_CONSISTENCY_PAIRS);
   for (const input of ["Learn how to trade", "Learn to trade", "Learn how trading works", "Learn how to become a trader", "Learn to be a trader", "Become a trader", "Become a better trader", "I want to become a trader", "I am a trader", "I do not want to become a trader"]) assert.match(diagnosticText, new RegExp(input));
+});
+
+test("shadow identity corpus is held out and clean-slate scenarios are isolated data", () => {
+  assert.equal(SEMANTIC_IDENTITY_HELD_OUT.length, 40);
+  assert.equal(CLEAN_SLATE_IDENTITY_10.length, 10);
+  assert.equal(CLEAN_SLATE_TRADER_10.length, 10);
+  assert.notEqual(CLEAN_SLATE_IDENTITY_10, CLEAN_SLATE_TRADER_10);
+  assert.deepEqual(Object.keys(SEMANTIC_MODELS).filter(key => key.endsWith("Candidate")), ["equivalenceCandidate", "propositionCandidate"]);
+});
+
+test("shadow identity separates identity from relationship and preserves uncertainty", () => {
+  const evidence = (entailment, neutral, contradiction, reverseEntailment = entailment) => ({
+    nli: { forward: { entailment, neutral, contradiction }, reverse: { entailment: reverseEntailment, neutral, contradiction } },
+    paraphrase: { score: .8 }, stsb: { score: .8 }, currentCanonicalRelation: "RELATED"
+  });
+  const same = evaluateShadowIdentity(evidence(.96, .02, .02));
+  const notSame = evaluateShadowIdentity(evidence(.01, .01, .98));
+  const asymmetric = evaluateShadowIdentity(evidence(.98, .18, .02, .62));
+  const uncertain = evaluateShadowIdentity(evidence(.66, .25, .09, .64));
+  assert.equal(same.identity, "SAME"); assert.equal(notSame.identity, "NOT_SAME");
+  assert.equal(asymmetric.identity, "NOT_SAME"); assert.equal(uncertain.identity, "UNCERTAIN");
+  for (const result of [same, notSame, asymmetric, uncertain]) {
+    assert.equal(result.canonicalAuthority, false);
+    assert.equal(result.relationship.decision, "UNRESOLVED");
+  }
+});
+
+test("shadow candidate selection is deterministic and triangle analysis does not merge", () => {
+  const candidates = [
+    { rank: 1, retrieval: { cosine: .98 }, shadow: { identity: "SAME", evidence: { mutualEntailment: .91 } } },
+    { rank: 2, retrieval: { cosine: .82 }, shadow: { identity: "SAME", evidence: { mutualEntailment: .97 } } }
+  ];
+  assert.equal(selectShadowCandidate(candidates).rank, 2);
+  const triangle = analyzeIdentityTriangle([
+    { shadow: { identity: "SAME" } }, { shadow: { identity: "SAME" } }, { shadow: { identity: "NOT_SAME" } }
+  ]);
+  assert.equal(triangle.status, "INCONSISTENT"); assert.equal(triangle.canonicalAuthority, false);
 });
 
 test("equivalence candidate initializes once and remains diagnostic-only", async () => {
@@ -64,12 +103,14 @@ const loader = async () => ({
 });
 
 test("embedding retrieval is bounded and pair inference decides canonical meaning", async () => {
-  const engine = new SemanticEngine(loader); await engine.initialize();
+  const engine = new SemanticEngine(loader); await engine.initialize(); engine.enableDiagnosticTracing();
   const original = { id: "one", content: "You should learn to trade", embedding: new Float32Array([1, 0, 0]) };
   const same = await engine.evaluate("You ought to learn trading", [original]);
   assert.equal(same.relation, "SAME_MEANING"); assert.equal(same.match, original);
   const related = await engine.evaluate("You need to learn to trade", [original]);
   assert.equal(related.relation, "RELATED"); assert.equal(related.match, null);
+  assert.equal(engine.lastProductionTrace.productionDecision, "RELATED");
+  assert.equal(engine.lastProductionTrace.candidates[0].memoryId, "one");
   const distinct = await engine.evaluate("Learn to play games", [original]);
   assert.equal(distinct.relation, "DISTINCT");
   const conflict = await engine.evaluate("I hate trading", [original]);

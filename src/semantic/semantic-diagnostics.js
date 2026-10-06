@@ -1,3 +1,5 @@
+import { analyzeIdentityTriangle, evaluateShadowIdentity } from "./canonical-identity.js";
+
 export const SEMANTIC_CALIBRATION_PAIRS = Object.freeze([
   ["You should learn to trade", "You ought to learn trading", "SAME_MEANING"],
   ["You should learn to trade", "You need to learn to trade", "RELATED"],
@@ -69,6 +71,52 @@ export const CANONICAL_CONSISTENCY_PAIRS = Object.freeze([
   ["clean-slate-b", "preference-conflict", "I like trading", "I hate trading", "CONFLICTING"]
 ]);
 
+export const SEMANTIC_IDENTITY_HELD_OUT = Object.freeze([
+  ["active-passive", "The gardener watered the roses", "The roses were watered by the gardener", "SAME"],
+  ["active-passive", "Lena designed the poster", "The poster was designed by Lena", "SAME"],
+  ["active-passive", "The mechanic repaired the bicycle", "The bicycle was repaired by the mechanic", "SAME"],
+  ["active-passive", "Omar delivered the parcel", "The parcel was delivered by Omar", "SAME"],
+  ["active-passive", "The jury selected the winner", "The winner was selected by the jury", "SAME"],
+  ["role-reversal", "The nurse thanked the doctor", "The doctor thanked the nurse", "NOT_SAME"],
+  ["role-reversal", "Priya invited Marco", "Marco invited Priya", "NOT_SAME"],
+  ["role-reversal", "The fox followed the rabbit", "The rabbit followed the fox", "NOT_SAME"],
+  ["role-reversal", "Nora lent a book to Liam", "Liam lent a book to Nora", "NOT_SAME"],
+  ["role-reversal", "The editor questioned the author", "The author questioned the editor", "NOT_SAME"],
+  ["paraphrase", "Please switch off the lamp", "Turn the lamp off", "SAME"],
+  ["paraphrase", "The child is very tired", "The child is exhausted", "SAME"],
+  ["paraphrase", "Ravi purchased a new coat", "Ravi bought a new coat", "SAME"],
+  ["paraphrase", "The path ends beside the lake", "The trail finishes next to the lake", "SAME"],
+  ["paraphrase", "Keep the door closed", "Do not leave the door open", "SAME"],
+  ["related", "Mira started a bakery", "Mira enjoys baking bread", "NOT_SAME"],
+  ["related", "The museum opens at nine", "The museum attracts tourists", "NOT_SAME"],
+  ["related", "Kai studies astronomy", "Astronomy examines celestial objects", "NOT_SAME"],
+  ["related", "Repair the roof", "Inspect the roof for damage", "NOT_SAME"],
+  ["related", "The team won the semifinal", "The team will play in the final", "NOT_SAME"],
+  ["negation", "The gate is locked", "The gate is not locked", "NOT_SAME"],
+  ["negation", "Sofia remembers the address", "Sofia does not remember the address", "NOT_SAME"],
+  ["negation", "The device supports wireless charging", "The device does not support wireless charging", "NOT_SAME"],
+  ["negation", "We approved the proposal", "We rejected the proposal", "NOT_SAME"],
+  ["negation", "The reservoir is full", "The reservoir is empty", "NOT_SAME"],
+  ["value-change", "Order six notebooks", "Order eleven notebooks", "NOT_SAME"],
+  ["value-change", "The workshop is on Wednesday", "The workshop is on Saturday", "NOT_SAME"],
+  ["value-change", "Elin moved to Bergen", "Elin moved to Madrid", "NOT_SAME"],
+  ["value-change", "Tariq emailed Zoe", "Tariq emailed Hana", "NOT_SAME"],
+  ["value-change", "The train leaves at eight", "The train leaves at ten", "NOT_SAME"],
+  ["asymmetric", "A sparrow is a bird", "A bird is a sparrow", "NOT_SAME"],
+  ["asymmetric", "The vase shattered because it fell", "The vase fell", "NOT_SAME"],
+  ["asymmetric", "Every cabin has a fireplace", "Some cabins have a fireplace", "NOT_SAME"],
+  ["asymmetric", "No guests arrived early", "No guests arrived", "NOT_SAME"],
+  ["asymmetric", "The red folder is on the desk", "A folder is on the desk", "NOT_SAME"],
+  ["modality", "You could submit the form", "You must submit the form", "NOT_SAME"],
+  ["modality", "I hope to visit Kyoto", "I will visit Kyoto", "NOT_SAME"],
+  ["modality", "The package might arrive today", "The package will arrive today", "NOT_SAME"],
+  ["modality", "Lea intends to lead the project", "Lea leads the project", "NOT_SAME"],
+  ["modality", "Guests are advised to register", "Guests are required to register", "NOT_SAME"]
+]);
+
+export const CLEAN_SLATE_IDENTITY_10 = Object.freeze(["Learn how to trade", "Learn to trade", "I want to learn trading", "I want to learn how to trade", "I need to learn trading", "John sold the car to Mary", "The car was sold to Mary by John", "Mary sold the car to John", "I like trading", "I hate trading"]);
+export const CLEAN_SLATE_TRADER_10 = Object.freeze(["Learn how to trade", "Learn to trade", "Learn how trading works", "Learn how to become a trader", "Learn to be a trader", "Become a trader", "Become a better trader", "I want to become a trader", "I am a trader", "I do not want to become a trader"]);
+
 export async function runSemanticCalibration(engine) {
   const results = [];
   for (const [left, right, expected] of SEMANTIC_CALIBRATION_PAIRS) {
@@ -84,8 +132,9 @@ export async function runSemanticGeneralization(engine) {
   return results;
 }
 
-const compactResult = ({ left, right, expected, group = "regression", pair = "", ...result }) => ({
-  group, pair, left, right, expected,
+const compactResult = ({ left, right, expected, group = "regression", pair = "", ...result }) => {
+  const shadow = evaluateShadowIdentity({ nli: result.nli, paraphrase: result.equivalence, stsb: result.proposition, currentCanonicalRelation: result.relation });
+  return ({ group, pair, left, right, expected,
   currentCanonicalRelation: result.relation,
   retrievalCosine: result.cosine,
   retrievalEligible: result.retrievalEligible,
@@ -99,8 +148,11 @@ const compactResult = ({ left, right, expected, group = "regression", pair = "",
   propositionLabel: result.proposition.label,
   propositionScore: result.proposition.score,
   propositionRawLogit: result.proposition.rawLogit,
-  propositionConfidence: result.proposition.score
+  propositionConfidence: result.proposition.score,
+  shadow,
+  canonicalAuthority: false
 });
+};
 
 export async function runCanonicalConsistency(engine) {
   const results = [];
@@ -114,4 +166,45 @@ export async function runPropositionMatrix(engine) {
   const regression = (await runSemanticCalibration(engine)).map(compactResult);
   const generalization = (await runSemanticGeneralization(engine)).map(result => compactResult({ expected: "DIAGNOSTIC", group: "generalization", ...result }));
   return [...regression, ...generalization, ...await runCanonicalConsistency(engine)];
+}
+
+async function inspectSet(engine, pairs) {
+  const rows = [];
+  for (const [group, left, right, expected] of pairs) rows.push({ group, expected, ...await engine.inspectSemanticIdentity(left, right) });
+  return rows;
+}
+
+async function simulateCleanSlate(engine, inputs) {
+  const memories = []; const steps = [];
+  for (const [index, input] of inputs.entries()) {
+    const diagnostics = await engine.inspectCandidateIdentities(input, memories);
+    const selected = diagnostics.shadowSelection;
+    if (!selected) memories.push({ id: `shadow-${index + 1}`, content: input, embedding: await engine.encode(input) });
+    steps.push({ index: index + 1, ...diagnostics, shadowAction: selected ? "REUSE" : "CREATE" });
+  }
+  return { steps, projectedMemories: memories.map(({ id, content }) => ({ id, content })), canonicalAuthority: false, persistence: "NONE" };
+}
+
+const scoreIdentity = rows => rows.reduce((summary, row) => {
+  const actual = row.shadow.identity;
+  if (["DIAGNOSTIC", "SAME_MEANING_OR_RELATED", "RELATED_OR_DISTINCT"].includes(row.expected)) { summary.skipped += 1; return summary; }
+  const expectedSame = row.expected === "SAME" || row.expected === "SAME_MEANING";
+  if (actual === "UNCERTAIN") summary.uncertain += 1;
+  else if ((actual === "SAME") === expectedSame) summary.correct += 1;
+  else summary.wrong += 1;
+  return summary;
+}, { correct: 0, uncertain: 0, wrong: 0, skipped: 0 });
+
+export async function runCanonicalIdentityEvaluation(engine) {
+  const existingMatrix = await runPropositionMatrix(engine);
+  const heldOutMatrix = await inspectSet(engine, SEMANTIC_IDENTITY_HELD_OUT);
+  const triangleRows = await inspectSet(engine, CANONICAL_CONSISTENCY_PAIRS.slice(0, 6).map(([group, , left, right, expected]) => [group, left, right, expected]));
+  const triangleAnalysis = [0, 3].map(start => analyzeIdentityTriangle(triangleRows.slice(start, start + 3)));
+  const cleanSlateIdentity10 = await simulateCleanSlate(engine, CLEAN_SLATE_IDENTITY_10);
+  const cleanSlateTrader10 = await simulateCleanSlate(engine, CLEAN_SLATE_TRADER_10);
+  return {
+    existingMatrix, heldOutMatrix, triangleAnalysis, cleanSlateIdentity10, cleanSlateTrader10,
+    summary: { existing: scoreIdentity(existingMatrix), heldOut: scoreIdentity(heldOutMatrix) },
+    canonicalAuthority: false, productionMutation: false
+  };
 }
