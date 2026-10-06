@@ -3,12 +3,28 @@ import assert from "node:assert/strict";
 import { SemanticEngine, SEMANTIC_RULES, cosineSimilarity } from "../src/semantic/semantic-engine.js";
 import { BrainEngine } from "../src/brain/brain-engine.js";
 import { EventBus } from "../src/app/events.js";
-import { SEMANTIC_CALIBRATION_PAIRS } from "../src/semantic/semantic-diagnostics.js";
+import { SEMANTIC_CALIBRATION_PAIRS, SEMANTIC_GENERALIZATION_PAIRS } from "../src/semantic/semantic-diagnostics.js";
+import { createInferenceQueue, resolveNliLabels } from "../src/semantic/semantic-model.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
 
 test("development calibration covers the complete acceptance matrix", () => {
   assert.equal(SEMANTIC_CALIBRATION_PAIRS.length, 18);
+  assert.equal(SEMANTIC_GENERALIZATION_PAIRS.length, 12);
+});
+
+test("model inference is serialized and copied before a reusable buffer changes", async () => {
+  const enqueue = createInferenceQueue();
+  const shared = new Float32Array(3);
+  const infer = values => enqueue(async () => { shared.set(values); await new Promise(resolve => setTimeout(resolve, 1)); return new Float32Array(shared); });
+  const [left, right] = await Promise.all([infer([1, 2, 3]), infer([4, 5, 6])]);
+  assert.deepEqual([...left], [1, 2, 3]); assert.deepEqual([...right], [4, 5, 6]);
+  assert.notEqual(left.buffer, right.buffer);
+});
+
+test("NLI labels are resolved from model metadata rather than assumed", () => {
+  assert.deepEqual(resolveNliLabels({ 0: "contradiction", 1: "entailment", 2: "neutral" }), { contradiction: 0, entailment: 1, neutral: 2 });
+  assert.throws(() => resolveNliLabels({ 0: "LABEL_0", 1: "LABEL_1", 2: "LABEL_2" }), /mapping is incomplete/);
 });
 
 const vectors = new Map([
@@ -42,6 +58,9 @@ test("embedding retrieval is bounded and pair inference decides canonical meanin
   assert.equal(diagnostic.relation, "SAME_MEANING"); assert.equal(diagnostic.forward.entailment, .94); assert.equal(diagnostic.reverse.entailment, .92);
   assert.ok(cosineSimilarity(new Float32Array([1, 0]), new Float32Array([1, 0])) === 1);
   assert.equal(engine.retrieveCandidates(new Float32Array([1, 0, 0]), Array.from({ length: 8 }, (_, id) => ({ id, embedding: new Float32Array([1, 0, 0]) }))).length, SEMANTIC_RULES.candidateLimit);
+  const inspection = await engine.inspectEmbeddings("You ought to learn trading", "You should learn to trade", 2);
+  assert.equal(inspection.left.dimensions, 3); assert.equal(inspection.left.preview.length, 2);
+  assert.equal(inspection.sameBuffer, false); assert.equal(inspection.identical, false);
 });
 
 test("same meaning reinforces while related meaning creates symmetric records", () => {

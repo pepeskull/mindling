@@ -21,6 +21,13 @@ export const cosineSimilarity = (left, right) => {
   for (let index = 0; index < left.length; index += 1) { dot += left[index] * right[index]; leftMagnitude += left[index] ** 2; rightMagnitude += right[index] ** 2; }
   return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude) || 1);
 };
+const vectorNorm = vector => Math.sqrt([...vector].reduce((sum, value) => sum + value * value, 0));
+const identicalVectors = (left, right) => {
+  if (left.byteLength !== right.byteLength) return false;
+  const leftBytes = new Uint8Array(left.buffer, left.byteOffset, left.byteLength);
+  const rightBytes = new Uint8Array(right.buffer, right.byteOffset, right.byteLength);
+  return leftBytes.every((value, index) => value === rightBytes[index]);
+};
 
 const probability = (scores, name) => scores[name] ?? scores[`label_${name}`] ?? 0;
 
@@ -38,7 +45,10 @@ function decidePair(similarity, forward, reverse) {
   else if (similarity >= SEMANTIC_RULES.sameMeaningSimilarity && entailment >= SEMANTIC_RULES.sameMeaningEntailment &&
     mutualMargin >= SEMANTIC_RULES.sameMeaningMargin && neutral <= SEMANTIC_RULES.sameMeaningMaximumNeutral) relation = "SAME_MEANING";
   else if (similarity >= SEMANTIC_RULES.relatedSimilarity || entailment >= SEMANTIC_RULES.relatedEntailment) relation = "RELATED";
-  return { relation, confidence: relation === "CONFLICTING" ? contradiction : relation === "SAME_MEANING" ? Math.min(similarity, entailment, mutualMargin) : relation === "RELATED" ? Math.max(similarity, entailment) : 1 - Math.max(similarity, entailment), similarity, mutualEntailment: entailment, mutualMargin, maximumNeutral: neutral };
+  const reason = relation === "CONFLICTING" ? "bidirectional NLI contradiction evidence" :
+    relation === "SAME_MEANING" ? "high semantic proximity with decisive mutual entailment" :
+      relation === "RELATED" ? "semantic proximity without sufficient equivalence evidence" : "insufficient semantic proximity";
+  return { relation, reason, confidence: relation === "CONFLICTING" ? contradiction : relation === "SAME_MEANING" ? Math.min(similarity, entailment, mutualMargin) : relation === "RELATED" ? Math.max(similarity, entailment) : 1 - Math.max(similarity, entailment), similarity, mutualEntailment: entailment, mutualMargin, maximumNeutral: neutral };
 }
 
 export class SemanticEngine {
@@ -71,6 +81,16 @@ export class SemanticEngine {
     const cosine = cosineSimilarity(leftEmbedding, rightEmbedding);
     const [forward, reverse] = await Promise.all([this.#models.classify(left, right), this.#models.classify(right, left)]);
     return { left, right, cosine, forward, reverse, ...decidePair(cosine, forward, reverse) };
+  }
+  async inspectEmbeddings(left, right, previewLength = 12) {
+    const [leftEmbedding, rightEmbedding] = await Promise.all([this.encode(left), this.encode(right)]);
+    return {
+      left: { dimensions: leftEmbedding.length, norm: vectorNorm(leftEmbedding), preview: [...leftEmbedding.slice(0, previewLength)] },
+      right: { dimensions: rightEmbedding.length, norm: vectorNorm(rightEmbedding), preview: [...rightEmbedding.slice(0, previewLength)] },
+      identical: identicalVectors(leftEmbedding, rightEmbedding),
+      sameBuffer: leftEmbedding.buffer === rightEmbedding.buffer,
+      cosine: cosineSimilarity(leftEmbedding, rightEmbedding)
+    };
   }
   async evaluate(content, memories) {
     const embedding = await this.encode(content);

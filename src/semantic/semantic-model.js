@@ -13,6 +13,23 @@ const softmax = values => {
   return exponentials.map(value => value / total);
 };
 
+export function createInferenceQueue() {
+  let tail = Promise.resolve();
+  return operation => {
+    const result = tail.then(operation, operation);
+    tail = result.catch(() => {});
+    return result;
+  };
+}
+
+export function resolveNliLabels(id2label) {
+  const entries = Object.entries(id2label || {}).map(([index, label]) => [Number(index), String(label).toLowerCase()]);
+  const required = ["contradiction", "entailment", "neutral"];
+  const resolved = Object.fromEntries(required.map(name => [name, entries.find(([, label]) => label === name)?.[0]]));
+  if (required.some(name => !Number.isInteger(resolved[name]))) throw new Error("NLI model label mapping is incomplete");
+  return resolved;
+}
+
 export async function loadSemanticModels() {
   const { env, pipeline, AutoTokenizer, AutoModelForSequenceClassification } = await import(SEMANTIC_MODELS.runtime);
   env.useBrowserCache = true;
@@ -26,19 +43,27 @@ export async function loadSemanticModels() {
   encoder ||= await pipeline("feature-extraction", SEMANTIC_MODELS.encoder, { ...options, device: "wasm" });
   const tokenizer = await AutoTokenizer.from_pretrained(SEMANTIC_MODELS.pairClassifier, options);
   const classifier = await AutoModelForSequenceClassification.from_pretrained(SEMANTIC_MODELS.pairClassifier, options);
+  const labels = resolveNliLabels(classifier.config.id2label);
+  const runEncoder = createInferenceQueue();
+  const runClassifier = createInferenceQueue();
 
   return {
     backend,
     async encode(text) {
-      const output = await encoder(text, { pooling: "mean", normalize: true });
-      return new Float32Array(output.data);
+      return runEncoder(async () => {
+        const output = await encoder(text, { pooling: "mean", normalize: true });
+        // Copy while the session owns the result. Some ONNX execution providers
+        // reuse output buffers on the next invocation.
+        return new Float32Array(output.data);
+      });
     },
     async classify(premise, hypothesis) {
-      const inputs = await tokenizer(premise, { text_pair: hypothesis, truncation: true });
-      const output = await classifier(inputs);
-      const probabilities = softmax([...output.logits.data]);
-      const labels = classifier.config.id2label || { 0: "contradiction", 1: "neutral", 2: "entailment" };
-      return Object.fromEntries(probabilities.map((score, index) => [String(labels[index] || labels[String(index)] || index).toLowerCase(), score]));
+      return runClassifier(async () => {
+        const inputs = await tokenizer(premise, { text_pair: hypothesis, truncation: true });
+        const output = await classifier(inputs);
+        const probabilities = softmax([...output.logits.data]);
+        return Object.fromEntries(Object.entries(labels).map(([name, index]) => [name, probabilities[index]]));
+      });
     }
   };
 }

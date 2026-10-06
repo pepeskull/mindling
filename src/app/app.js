@@ -7,7 +7,7 @@ import { Onboarding } from "../ui/onboarding.js";
 import { createLocalIdentity } from "../identity/identity.js";
 import { neuralSeedRecords } from "../brain/neural-seed-state.js";
 import { SemanticEngine } from "../semantic/semantic-engine.js";
-import { runSemanticCalibration } from "../semantic/semantic-diagnostics.js";
+import { runSemanticCalibration, runSemanticGeneralization } from "../semantic/semantic-diagnostics.js";
 
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #learningQueue=Promise.resolve();
@@ -45,7 +45,9 @@ export class MindlingApp {
       configurable: true,
       value: Object.freeze({
         compare: (left, right) => this.#semantic.diagnosePair(left, right),
-        runMatrix: () => runSemanticCalibration(this.#semantic)
+        inspectEmbeddings: (left, right) => this.#semantic.inspectEmbeddings(left, right),
+        runMatrix: () => runSemanticCalibration(this.#semantic),
+        runGeneralization: () => runSemanticGeneralization(this.#semantic)
       })
     });
   }

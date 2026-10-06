@@ -19,11 +19,32 @@ export const SEMANTIC_CALIBRATION_PAIRS = Object.freeze([
   ["Learning programming is useful", "It is useful to learn programming", "SAME_MEANING"]
 ]);
 
+export const SEMANTIC_GENERALIZATION_PAIRS = Object.freeze([
+  ["Although it rained, we continued walking", "We continued our walk despite the rain"],
+  ["The package arrived", "The package did not arrive"],
+  ["Reserve two seats", "Reserve seven seats"],
+  ["Alex called Morgan", "Morgan called Alex"],
+  ["The launch happens next week", "The launch happened last week"],
+  ["Rain caused the delay", "The delay caused the rain"],
+  ["I prefer tea to coffee", "I prefer coffee to tea"],
+  ["Mina is able to swim", "Mina is unable to swim"],
+  ["Employees are required to attend", "Employees may attend"],
+  ["The train might be late", "The train is definitely late"],
+  ["If it rains, the match is cancelled", "The match is cancelled"],
+  ["Sam gave Lee the key", "Lee gave Sam the key"]
+]);
+
 export async function runSemanticCalibration(engine) {
   const results = [];
   for (const [left, right, expected] of SEMANTIC_CALIBRATION_PAIRS) {
     const measured = await engine.diagnosePair(left, right);
     results.push({ expected, ...measured });
   }
+  return results;
+}
+
+export async function runSemanticGeneralization(engine) {
+  const results = [];
+  for (const [left, right] of SEMANTIC_GENERALIZATION_PAIRS) results.push(await engine.diagnosePair(left, right));
   return results;
 }
