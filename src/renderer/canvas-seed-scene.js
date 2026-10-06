@@ -1,6 +1,14 @@
 import { SceneInteraction } from "./scene-interaction.js";
 import { NEURAL_SEED_MORPHOLOGY as MORPHOLOGY, seededValue } from "./neural-morphology.js";
 
+function activityLevelFor(signal, neuronId, now = performance.now() / 1000) {
+  if (!signal) return 0;
+  const progress = (now - signal.startedAt) / signal.duration;
+  if (neuronId === signal.route.source) return Math.max(0, 1 - progress * 4) * 0.8;
+  if (neuronId === signal.route.destination) return Math.max(0, 1 - Math.abs(progress - 0.82) * 7);
+  return 0;
+}
+
 export class CanvasSeedScene {
   #host;
   #canvas;
@@ -120,7 +128,7 @@ export class CanvasSeedScene {
 
   #drawNeuron(point) {
     this.#drawDendrites(point);
-    const activity = this.#activityFor(point.id);
+    const activity = activityLevelFor(this.#signal, point.id);
     const glow = this.#context.createRadialGradient(
       point.x - point.radius * 0.2,
       point.y - point.radius * 0.25,
@@ -211,15 +219,6 @@ export class CanvasSeedScene {
     this.#context.fillStyle = glow;
     this.#context.fillRect(x - 11, y - 11, 22, 22);
     if (progress >= 1) this.#signal = null;
-  }
-
-  #activityFor(id) {
-    if (!this.#signal) return 0;
-    const elapsed = performance.now() / 1000 - this.#signal.startedAt;
-    const progress = elapsed / this.#signal.duration;
-    if (id === this.#signal.route.source) return Math.max(0, 1 - progress * 4) * .8;
-    if (id === this.#signal.route.destination) return Math.max(0, 1 - Math.abs(progress - .82) * 7);
-    return 0;
   }
 
   signal(route, ambient = false) {
