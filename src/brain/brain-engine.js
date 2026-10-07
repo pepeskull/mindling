@@ -2,6 +2,19 @@ import { EVENTS } from "../app/events.js";
 import { createNeuralSeedState } from "./neural-seed-state.js";
 import { evaluateMemory, MEMORY_RULES, reinforcedStrength } from "./memory-evaluator.js";
 import { SEMANTIC_RULES } from "../semantic/semantic-engine.js";
+import { deriveKnowledgeDevelopment } from "./knowledge-development.js";
+
+function semanticRoute(state, content, embedding, fallback) {
+  if (!embedding?.length || !state.memories.length) return fallback;
+  const probeId = "__route-probe__";
+  const development = deriveKnowledgeDevelopment([...state.memories, { id: probeId, content, normalizedContent: content, embedding, strength: 0, activations: 0, createdAt: "9999" }]);
+  const area = development.areas.find(item => item.memoryIds.includes(probeId));
+  const participating = area ? state.memories.filter(memory => area.memoryIds.includes(memory.id)) : [];
+  const counts = new Map();
+  for (const memory of participating) for (const synapseId of memory.synapseIds || []) counts.set(synapseId, (counts.get(synapseId) || 0) + 1);
+  const selected = state.synapses.reduce((best, synapse) => (counts.get(synapse.id) || 0) > (counts.get(best?.id) || 0) ? synapse : best, null);
+  return selected && counts.get(selected.id) ? { source: selected.from, synapse: selected.id, destination: selected.to } : fallback;
+}
 
 export class BrainEngine {
   #events;
@@ -36,10 +49,11 @@ export class BrainEngine {
     if (!value) return null;
     const hash = [...value].reduce((total, character) => (total * 31 + character.codePointAt(0)) >>> 0, 7);
     const synapse = this.#state.synapses[hash % this.#state.synapses.length];
-    const route = { source: synapse.from, synapse: synapse.id, destination: synapse.to };
+    let route = { source: synapse.from, synapse: synapse.id, destination: synapse.to };
     if (!semantic) return { outcome: "STIMULATION", route };
     const evaluation = evaluateMemory({ content: value, mode, memories: this.#state.memories, pathways: this.#state.pathwayRecords?.length ? this.#state.pathwayRecords : this.#state.pathways, semantic });
     if (evaluation.outcome === "STIMULATION") return { outcome: evaluation.outcome, route };
+    if (evaluation.outcome === "MEMORY_FORMATION") route = semanticRoute(this.#state, value, semantic.embedding, route);
     const now = new Date().toISOString();
     let memory;
     if (evaluation.outcome === "REINFORCEMENT") {

@@ -182,8 +182,20 @@ test("knowledge development is deterministic, derived, and preserves canonical m
   ];
   const before = structuredClone(memories); const first = deriveKnowledgeDevelopment(memories); const second = deriveKnowledgeDevelopment(memories);
   assert.deepEqual(first, second); assert.equal(first.areas.length, 2); assert.equal(first.canonicalMemoryCount, 3);
-  assert.ok(first.areas.every(area => /^Emerging Knowledge \d{2}$/.test(area.label)));
+  assert.ok(first.areas.every(area => area.label.length > 0)); assert.ok(first.areas.every(area => area.id.startsWith("area-") && area.representativeMemoryIds.length));
   assert.deepEqual(memories, before); assert.ok(first.overall >= 0 && first.overall <= 1);
+});
+
+test("bounded representatives resist semantic chain drift", () => {
+  const vector = degrees => { const radians = degrees * Math.PI / 180; return new Float32Array([Math.cos(radians), Math.sin(radians)]); };
+  const memories = [
+    { id: "a", content: "alpha source", embedding: vector(0), strength: .3, activations: 1, createdAt: "1" },
+    { id: "b", content: "bridge concept", embedding: vector(50), strength: .3, activations: 1, createdAt: "2" },
+    { id: "c", content: "distant target", embedding: vector(70), strength: .3, activations: 1, createdAt: "3" }
+  ];
+  const development = deriveKnowledgeDevelopment(memories);
+  assert.equal(development.areas.length, 2);
+  assert.ok(development.areas.some(area => area.memoryIds.includes("a") && area.memoryIds.includes("b") && !area.memoryIds.includes("c")));
 });
 
 test("neuron participation is local to deterministic memory routes", () => {
@@ -196,4 +208,22 @@ test("neuron participation is local to deterministic memory routes", () => {
   assert.equal(origin.memoryCount, 2); assert.equal(upper.memoryCount, 1); assert.equal(lower.memoryCount, 0);
   assert.deepEqual(upper.memoryIds, ["a"]); assert.ok(!upper.memoryIds.includes("b"));
   assert.notDeepEqual(origin.areaParticipation, upper.areaParticipation);
+  assert.equal(upper.specialization, "UNSPECIALIZED");
+});
+
+test("neuron specialization requires sufficient concentrated participation", () => {
+  const memories = Array.from({ length: 3 }, (_, index) => ({ id: `m${index}`, content: `shared concept ${index}`, neuronIds: ["upper"], embedding: new Float32Array([1, index * .01]), strength: .6, activations: 2, createdAt: String(index) }));
+  const state = { memories }; const profile = deriveNeuronParticipation(state, "upper", deriveKnowledgeDevelopment(memories));
+  assert.equal(profile.memoryCount, 3); assert.equal(profile.specialization, "EMERGING_SPECIALIZATION"); assert.ok(profile.dominantShare >= .6);
+});
+
+test("semantic area continuity reuses a neural route while unrelated areas may diverge", () => {
+  const brain = new BrainEngine(new EventBus()); brain.create({ id: "primary", name: "Routes", stage: "NEURAL_SEED", traits: {}, pathways: [] });
+  const evidence = embedding => ({ embedding, match: null, relation: "DISTINCT", related: [] });
+  const first = brain.evaluateInput("first route memory", "TEACH", evidence(new Float32Array([1, 0]))); brain.commitLearning(first);
+  const related = brain.evaluateInput("related route memory", "TEACH", evidence(new Float32Array([.99, .01]))); brain.commitLearning(related);
+  assert.equal(related.route.synapse, first.route.synapse);
+  let unrelated;
+  for (let index = 0; index < 20; index += 1) { const candidate = brain.evaluateInput(`unrelated route ${index}`, "TEACH", evidence(new Float32Array([0, 1]))); if (candidate.route.synapse !== first.route.synapse) { unrelated = candidate; break; } }
+  assert.ok(unrelated); assert.notEqual(unrelated.route.synapse, first.route.synapse);
 });
