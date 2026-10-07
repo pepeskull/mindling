@@ -29,7 +29,7 @@
         <span>MINDLING</span>
       </a>
       <nav aria-label="Primary navigation">
-        <a class="active" href="#dashboard" aria-current="page">Dashboard</a>
+        <a class="active" href="#dashboard" data-view="dashboard" aria-current="page">Dashboard</a>
         <button type="button" disabled>Development</button>
         <button type="button" data-view="memories">Memory</button>
         <button type="button" disabled>Network</button>
@@ -113,7 +113,7 @@
         </button>
       </form>
     </main>
-    <section id="memory-view" class="memory-view glass-panel" aria-labelledby="memory-title" hidden><header><div><p>Neural archive</p><h2 id="memory-title">Memory</h2></div><button type="button" data-close-memory aria-label="Close memory view">×</button></header><div class="memory-list"></div></section>
+    <section id="memory-view" class="memory-view" aria-labelledby="memory-title" hidden><header><div><p>Semantic organization</p><h2 id="memory-title">Memory Development</h2><span>Canonical memories organized into emerging knowledge areas.</span></div><button type="button" data-close-memory>Dashboard</button></header><div class="memory-overall"></div><div class="knowledge-area-list"></div></section>
     <section id="network-view" class="mobile-sheet glass-panel" aria-labelledby="network-title" hidden><button type="button" data-close-network aria-label="Close Network">×</button><p>Network</p><h2 id="network-title">Mindling Network</h2><span>Network capabilities have not awakened yet.</span></section>
 
     <p class="mindling-id" aria-label="Mindling ID"></p>

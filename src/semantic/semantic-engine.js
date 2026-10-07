@@ -115,7 +115,7 @@ export class SemanticEngine {
     const output = await compare(left, right);
     return { model: SEMANTIC_MODELS.propositionCandidate, label: "STS_SIMILARITY_REGRESSION", rawLogit: output.rawLogit, score: output.score, stsbScore: output.score * 5, canonicalAuthority: false };
   }
-  async inspectSemanticIdentity(left, right) {
+  async inspectSemanticIdentity(left, right, canonicalAuthority = false) {
     const evidence = await this.diagnoseWithEquivalence(left, right);
     const identityEvidence = {
       left, right,
@@ -132,9 +132,9 @@ export class SemanticEngine {
       stsb: evidence.proposition,
       currentCanonicalRelation: evidence.relation,
       currentDecisionReason: evidence.reason,
-      canonicalAuthority: false
+      canonicalAuthority
     };
-    return { ...identityEvidence, shadow: evaluateShadowIdentity(identityEvidence) };
+    return { ...identityEvidence, shadow: { ...evaluateShadowIdentity(identityEvidence), canonicalAuthority } };
   }
   async inspectCandidateIdentities(input, memories) {
     const embedding = await this.encode(input);
@@ -162,15 +162,24 @@ export class SemanticEngine {
     for (const memory of memories) if (!memory.embedding) memory.embedding = await this.encode(memory.content);
     const candidates = this.retrieveCandidates(embedding, memories);
     const decisions = [];
-    for (const candidate of candidates) decisions.push({ ...await this.comparePair(content, candidate.memory, candidate.similarity), memory: candidate.memory });
-    const match = decisions.find(decision => decision.relation === "SAME_MEANING");
+    for (const candidate of candidates) {
+      const representatives = [candidate.memory.content, ...(candidate.memory.matchedVariants || []).slice(-1)];
+      const evidence = [];
+      for (const representative of [...new Set(representatives)]) evidence.push(await this.inspectSemanticIdentity(content, representative, true));
+      const sameCluster = evidence.length && evidence.every(item => item.shadow.identity === "SAME");
+      const strongest = [...evidence].sort((left, right) => right.shadow.evidence.mutualEntailment - left.shadow.evidence.mutualEntailment)[0];
+      decisions.push({ relation: sameCluster ? "SAME_MEANING" : "RELATED", reason: sameCluster ? "shadow identity agrees across bounded representatives" : "identity uncertain or not same",
+        confidence: strongest?.shadow.evidence.mutualEntailment || 0, similarity: candidate.similarity, memory: candidate.memory, identityEvidence: evidence });
+    }
+    const match = decisions.filter(decision => decision.relation === "SAME_MEANING").sort((left, right) => right.confidence - left.confidence || right.similarity - left.similarity)[0];
     if (this.#diagnosticTracing) this.#lastProductionTrace = {
       input: content, selectedMemoryId: match?.memory.id || null, selectedCanonicalContent: match?.memory.content || null,
       productionDecision: match ? "SAME_MEANING" : decisions[0]?.relation || "DISTINCT",
       productionDecisionReason: match?.reason || decisions[0]?.reason || "no retrieved candidate",
-      candidates: decisions.map((decision, index) => ({ rank: index + 1, memoryId: decision.memory.id, canonicalContent: decision.memory.content, retrievalScore: decision.similarity, productionDecision: decision.relation, productionDecisionReason: decision.reason })),
+      candidates: decisions.map((decision, index) => ({ rank: index + 1, memoryId: decision.memory.id, canonicalContent: decision.memory.content, retrievalScore: decision.similarity, productionDecision: decision.relation, productionDecisionReason: decision.reason,
+        representativeIdentities: decision.identityEvidence.map(item => ({ representative: item.right, identity: item.shadow.identity, reasons: item.shadow.reasons })) })),
       canonicalAuthority: false
     };
-    return { embedding, match: match?.memory || null, relation: match ? "SAME_MEANING" : decisions[0]?.relation || "DISTINCT", confidence: match?.confidence || decisions[0]?.confidence || 0, related: decisions.filter(decision => ["RELATED", "CONFLICTING"].includes(decision.relation)) };
+    return { embedding, match: match?.memory || null, relation: match ? "SAME_MEANING" : decisions[0]?.relation || "DISTINCT", confidence: match?.confidence || decisions[0]?.confidence || 0, related: decisions.filter(decision => decision.relation === "RELATED") };
   }
 }

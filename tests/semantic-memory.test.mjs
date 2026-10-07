@@ -6,6 +6,7 @@ import { EventBus } from "../src/app/events.js";
 import { CANONICAL_CONSISTENCY_PAIRS, CLEAN_SLATE_IDENTITY_10, CLEAN_SLATE_TRADER_10, SEMANTIC_CALIBRATION_PAIRS, SEMANTIC_GENERALIZATION_PAIRS, SEMANTIC_IDENTITY_HELD_OUT } from "../src/semantic/semantic-diagnostics.js";
 import { createInferenceQueue, resolveNliLabels, SEMANTIC_MODELS } from "../src/semantic/semantic-model.js";
 import { analyzeIdentityTriangle, evaluateShadowIdentity, selectShadowCandidate } from "../src/semantic/canonical-identity.js";
+import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../src/brain/knowledge-development.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
 
@@ -98,12 +99,14 @@ const loader = async () => ({
   encode: async text => new Float32Array(vectors.get(text) || [0, 0, 1]),
   classify: async (left, right) => {
     const entailment = entailments.get(`${left}|${right}`) || .04;
-    return { entailment, neutral: entailment >= .9 ? .03 : .18, contradiction: left === "I hate trading" || right === "I hate trading" ? .78 : .08 };
+    return { entailment, neutral: entailment >= .9 ? .03 : .18, contradiction: left === "I hate trading" || right === "I hate trading" ? .78 : .01 };
   }
 });
 
 test("embedding retrieval is bounded and pair inference decides canonical meaning", async () => {
-  const engine = new SemanticEngine(loader); await engine.initialize(); engine.enableDiagnosticTracing();
+  const equivalenceLoader = async () => async text => new Float32Array(vectors.get(text) || [0, 0, 1]);
+  const propositionLoader = async () => async () => ({ rawLogit: 2, score: .88 });
+  const engine = new SemanticEngine(loader, equivalenceLoader, propositionLoader); await engine.initialize(); engine.enableDiagnosticTracing();
   const original = { id: "one", content: "You should learn to trade", embedding: new Float32Array([1, 0, 0]) };
   const same = await engine.evaluate("You ought to learn trading", [original]);
   assert.equal(same.relation, "SAME_MEANING"); assert.equal(same.match, original);
@@ -114,7 +117,7 @@ test("embedding retrieval is bounded and pair inference decides canonical meanin
   const distinct = await engine.evaluate("Learn to play games", [original]);
   assert.equal(distinct.relation, "DISTINCT");
   const conflict = await engine.evaluate("I hate trading", [original]);
-  assert.equal(conflict.relation, "CONFLICTING");
+  assert.equal(conflict.relation, "RELATED"); assert.equal(conflict.match, null);
   const diagnostic = await engine.diagnosePair("You ought to learn trading", "You should learn to trade");
   assert.equal(diagnostic.relation, "SAME_MEANING"); assert.equal(diagnostic.forward.entailment, .94); assert.equal(diagnostic.reverse.entailment, .92);
   assert.ok(cosineSimilarity(new Float32Array([1, 0]), new Float32Array([1, 0])) === 1);
@@ -144,4 +147,53 @@ test("missing semantic evidence degrades to stimulation without mutating memory"
   const brain = new BrainEngine(new EventBus()); const before = brain.initialize();
   assert.equal(brain.evaluateInput("A meaningful teaching", "TEACH").outcome, "STIMULATION");
   assert.deepEqual(brain.getState(), before);
+});
+
+test("production identity reuses SAME but keeps NOT_SAME, UNCERTAIN, and cosine-only inputs separate", async () => {
+  const outcomes = new Map([
+    ["same|canonical", [.96, .02, .02]], ["canonical|same", [.95, .03, .02]],
+    ["not-same|canonical", [.01, .01, .98]], ["canonical|not-same", [.01, .01, .98]],
+    ["uncertain|canonical", [.65, .28, .07]], ["canonical|uncertain", [.64, .29, .07]],
+    ["cosine-only|canonical", [.08, .84, .08]], ["canonical|cosine-only", [.08, .84, .08]]
+  ]);
+  const semanticLoader = async () => ({ backend: "mock", encode: async () => new Float32Array([1, 0]), classify: async (left, right) => { const [entailment, neutral, contradiction] = outcomes.get(`${left}|${right}`) || [.05, .9, .05]; return { entailment, neutral, contradiction }; } });
+  const support = async () => async () => new Float32Array([1, 0]); const proposition = async () => async () => ({ rawLogit: 2, score: .88 });
+  const engine = new SemanticEngine(semanticLoader, support, proposition); await engine.initialize();
+  const canonical = { id: "canonical", content: "canonical", embedding: new Float32Array([1, 0]), matchedVariants: [] };
+  assert.equal((await engine.evaluate("same", [canonical])).match.id, "canonical");
+  for (const input of ["not-same", "uncertain", "cosine-only"]) assert.equal((await engine.evaluate(input, [canonical])).match, null);
+});
+
+test("cluster membership requires bounded representative agreement", async () => {
+  const semanticLoader = async () => ({ backend: "mock", encode: async () => new Float32Array([1, 0]), classify: async (left, right) => {
+    const disagreement = left === "drift" || right === "drift"; return disagreement ? { entailment: .55, neutral: .4, contradiction: .05 } : { entailment: .97, neutral: .02, contradiction: .01 };
+  } });
+  const support = async () => async () => new Float32Array([1, 0]); const proposition = async () => async () => ({ rawLogit: 2, score: .88 });
+  const engine = new SemanticEngine(semanticLoader, support, proposition); await engine.initialize();
+  const clustered = { id: "cluster", content: "canonical", embedding: new Float32Array([1, 0]), matchedVariants: ["drift"] };
+  assert.equal((await engine.evaluate("candidate", [clustered])).match, null);
+});
+
+test("knowledge development is deterministic, derived, and preserves canonical memories", () => {
+  const memories = [
+    { id: "a", createdAt: "2026-01-01", embedding: new Float32Array([1, 0]), strength: .5, activations: 2 },
+    { id: "b", createdAt: "2026-01-02", embedding: new Float32Array([.99, .01]), strength: .7, activations: 3 },
+    { id: "c", createdAt: "2026-01-03", embedding: new Float32Array([0, 1]), strength: .4, activations: 1 }
+  ];
+  const before = structuredClone(memories); const first = deriveKnowledgeDevelopment(memories); const second = deriveKnowledgeDevelopment(memories);
+  assert.deepEqual(first, second); assert.equal(first.areas.length, 2); assert.equal(first.canonicalMemoryCount, 3);
+  assert.ok(first.areas.every(area => /^Emerging Knowledge \d{2}$/.test(area.label)));
+  assert.deepEqual(memories, before); assert.ok(first.overall >= 0 && first.overall <= 1);
+});
+
+test("neuron participation is local to deterministic memory routes", () => {
+  const state = { memories: [
+    { id: "a", neuronIds: ["origin", "upper"], embedding: new Float32Array([1, 0]), strength: .5, activations: 2, createdAt: "1" },
+    { id: "b", neuronIds: ["origin", "right"], embedding: new Float32Array([0, 1]), strength: .7, activations: 3, createdAt: "2" }
+  ] };
+  const development = deriveKnowledgeDevelopment(state.memories);
+  const origin = deriveNeuronParticipation(state, "origin", development); const upper = deriveNeuronParticipation(state, "upper", development); const lower = deriveNeuronParticipation(state, "lower", development);
+  assert.equal(origin.memoryCount, 2); assert.equal(upper.memoryCount, 1); assert.equal(lower.memoryCount, 0);
+  assert.deepEqual(upper.memoryIds, ["a"]); assert.ok(!upper.memoryIds.includes("b"));
+  assert.notDeepEqual(origin.areaParticipation, upper.areaParticipation);
 });

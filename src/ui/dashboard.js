@@ -1,5 +1,6 @@
 import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
+import { deriveKnowledgeDevelopment, deriveNeuronParticipation, KNOWLEDGE_RULES } from "../brain/knowledge-development.js";
 
 export class Dashboard {
   #unsubscribe;
@@ -12,6 +13,7 @@ export class Dashboard {
   #onInput;
   #mode = "TALK";
   #eventUnsubscribes = [];
+  #knowledgeDevelopment = { overall: 0, areas: [] };
 
   constructor(events, onInput) {
     this.#events = events;
@@ -32,8 +34,9 @@ export class Dashboard {
     this.#handleSubmit = (event) => this.#submitInteraction(event);
     this.#form.addEventListener("submit", this.#handleSubmit);
     document.querySelectorAll("[data-input-mode]").forEach(button => button.addEventListener("click", () => this.#setMode(button.dataset.inputMode)));
-    document.querySelector("[data-view='memories']").addEventListener("click", () => { document.querySelector("#memory-view").hidden = false; });
-    document.querySelector("[data-close-memory]").addEventListener("click", () => { document.querySelector("#memory-view").hidden = true; });
+    document.querySelector("[data-view='memories']").addEventListener("click", () => this.#setPrimaryView("memories"));
+    document.querySelector("[data-view='dashboard']").addEventListener("click", event => { event.preventDefault(); this.#setPrimaryView("dashboard"); });
+    document.querySelector("[data-close-memory]").addEventListener("click", () => this.#setPrimaryView("dashboard"));
     document.querySelector("[data-close-network]").addEventListener("click", () => { document.querySelector("#network-view").hidden = true; });
     document.querySelectorAll("[data-mobile-view]").forEach(button => button.addEventListener("click", () => this.#openMobileView(button.dataset.mobileView)));
     document.querySelector("[data-download-profile]").addEventListener("click", () => downloadMindlingProfile(this.#state));
@@ -59,7 +62,8 @@ export class Dashboard {
     document.querySelector(".pathways-copy").textContent = state.pathways.join(" · ");
     document.querySelector(".mindling-id").textContent = state.mindlingId;
     document.querySelector("[data-profile-filename]").textContent = safeProfileFilename(state.name);
-    this.#renderMemories();
+    this.#knowledgeDevelopment = deriveKnowledgeDevelopment(state.memories);
+    this.#renderMemoryDevelopment();
   }
 
   #setMode(mode) {
@@ -69,25 +73,26 @@ export class Dashboard {
     document.querySelector("#mindling-input").focus();
   }
 
-  #renderMemories() {
-    const list = document.querySelector(".memory-list");
-    if (!this.#state.memories.length) { list.innerHTML = `<p class="memory-empty">No memories formed yet.</p>`; return; }
-    list.innerHTML = this.#state.memories.map(memory => `<button type="button" data-memory-id="${memory.id}"><span>${this.#escape(memory.content)}</span><small><time datetime="${memory.createdAt}">${new Date(memory.createdAt).toLocaleDateString()}</time><span>${Math.round(memory.strength * 100)}% strength · ${memory.activations} activation${memory.activations === 1 ? "" : "s"}</span></small></button>`).join("");
-    list.querySelectorAll("[data-memory-id]").forEach(button => button.addEventListener("click", () => {
-      const memory = this.#state.memories.find(item => item.id === button.dataset.memoryId);
-      this.#events.emit(EVENTS.MEMORY_SELECTED, { id: memory.id, neuronIds: [...memory.neuronIds], synapseIds: [...memory.synapseIds] });
-      list.querySelectorAll("button").forEach(item => item.classList.toggle("selected", item === button));
-      if (matchMedia("(max-width: 800px)").matches) {
-        document.querySelector("#memory-view").hidden = true;
-        document.querySelectorAll("[data-mobile-view]").forEach(item => item.classList.toggle("active", item.dataset.mobileView === "dashboard"));
-      }
-    }));
+  #renderMemoryDevelopment() {
+    const overall = document.querySelector(".memory-overall"); const list = document.querySelector(".knowledge-area-list");
+    const percent = Math.round(this.#knowledgeDevelopment.overall * 100);
+    overall.innerHTML = `<div><span>Overall Development</span><strong>${percent}%</strong></div><progress max="100" value="${percent}">${percent}%</progress><small>Bounded internal development · ${this.#state.memories.length} canonical ${this.#state.memories.length === 1 ? "memory" : "memories"}</small>`;
+    if (!this.#knowledgeDevelopment.areas.length) { list.innerHTML = `<p class="memory-empty">Knowledge areas will emerge as canonical memories form.</p>`; return; }
+    list.innerHTML = this.#knowledgeDevelopment.areas.slice(0, KNOWLEDGE_RULES.displayedAreas).map(area => { const value = Math.round(area.progress * 100); return `<article><div><span>${this.#escape(area.label)}</span><strong>${value}%</strong></div><progress max="100" value="${value}">${value}%</progress><small>${area.memoryCount} canonical ${area.memoryCount === 1 ? "memory" : "memories"} · ${Math.round(area.cohesion * 100)}% semantic cohesion</small></article>`; }).join("");
+  }
+
+  #setPrimaryView(view) {
+    const memory = view === "memories";
+    document.querySelector("#memory-view").hidden = !memory;
+    document.querySelector("#app").classList.toggle("memory-mode", memory);
+    document.querySelectorAll("[data-view]").forEach(item => { const active = item.dataset.view === view; item.classList.toggle("active", active); if (item.matches("a")) item.toggleAttribute("aria-current", active); });
+    document.querySelectorAll("[data-mobile-view]").forEach(item => item.classList.toggle("active", item.dataset.mobileView === (memory ? "memories" : "dashboard")));
   }
 
   #openMobileView(view) {
     const left = document.querySelector(".left-panel"); const right = document.querySelector(".right-panel");
     left.classList.toggle("mobile-open", view === "development"); right.classList.toggle("mobile-open", view === "dashboard");
-    document.querySelector("#memory-view").hidden = view !== "memories";
+    this.#setPrimaryView(view === "memories" ? "memories" : "dashboard");
     document.querySelector("#network-view").hidden = view !== "network";
     document.querySelectorAll("[data-mobile-view]").forEach(button => button.classList.toggle("active", button.dataset.mobileView === view));
   }
@@ -104,7 +109,10 @@ export class Dashboard {
     if (selection.type === "neuron") {
       const index = this.#state.nodes.findIndex(node => node.id === selection.id);
       const connections = this.#state.synapses.filter(item => item.from === selection.id || item.to === selection.id).length;
-      inspector.innerHTML = `<button type="button" aria-label="Close inspector">×</button><p>Neuron ${String(index + 1).padStart(2, "0")}</p><dl><div><dt>State</dt><dd>Quiet</dd></div><div><dt>Connections</dt><dd>${connections}</dd></div><div><dt>Memories</dt><dd>${this.#state.memories.length}</dd></div><div><dt>Development</dt><dd>Unspecialized</dd></div></dl>`;
+      const participation = deriveNeuronParticipation(this.#state, selection.id, this.#knowledgeDevelopment);
+      const dominant = participation.areaParticipation[0];
+      const knowledge = participation.areaParticipation.length ? `<div class="neuron-knowledge"><span>Knowledge participation</span>${participation.areaParticipation.slice(0, 3).map(area => `<p><i style="--share:${Math.round(area.share * 100)}%"></i><b>${this.#escape(area.label)}</b><em>${Math.round(area.share * 100)}%</em></p>`).join("")}</div>` : "";
+      inspector.innerHTML = `<button type="button" aria-label="Close inspector">×</button><p>Neuron ${String(index + 1).padStart(2, "0")}</p><dl><div><dt>Activity</dt><dd>${participation.activity}</dd></div><div><dt>Connections</dt><dd>${connections}</dd></div><div><dt>Memories</dt><dd>${participation.memoryCount}</dd></div><div><dt>Reinforcement</dt><dd>${Math.round(participation.reinforcement * 100)}%</dd></div><div><dt>Development</dt><dd>${dominant && participation.memoryCount >= 2 ? this.#escape(dominant.label) : "Unspecialized"}</dd></div></dl>${knowledge}`;
     } else {
       const index = this.#state.synapses.findIndex(item => item.id === selection.id);
       const synapse = this.#state.synapses[index];

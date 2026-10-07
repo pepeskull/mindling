@@ -8,6 +8,7 @@ import { createLocalIdentity } from "../identity/identity.js";
 import { neuralSeedRecords } from "../brain/neural-seed-state.js";
 import { SemanticEngine } from "../semantic/semantic-engine.js";
 import { runCanonicalConsistency, runCanonicalIdentityEvaluation, runPropositionMatrix, runSemanticCalibration, runSemanticGeneralization } from "../semantic/semantic-diagnostics.js";
+import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #learningQueue=Promise.resolve();
@@ -51,6 +52,9 @@ export class MindlingApp {
         inspectPropositionEquivalence: (left, right) => this.#semantic.inspectPropositionEquivalence(left, right),
         inspectSemanticIdentity: (left, right) => this.#semantic.inspectSemanticIdentity(left, right),
         lastProductionTrace: () => this.#semantic.lastProductionTrace,
+        canonicalMemories: () => this.#brain.getState().memories,
+        inspectKnowledgeDevelopment: () => deriveKnowledgeDevelopment(this.#brain.getState().memories),
+        inspectNeuralParticipation: () => { const state = this.#brain.getState(); const development = deriveKnowledgeDevelopment(state.memories); return state.nodes.map(node => deriveNeuronParticipation(state, node.id, development)); },
         runtimeInfo: () => this.#semantic.runtimeInfo,
         runMatrix: () => runSemanticCalibration(this.#semantic),
         runGeneralization: () => runSemanticGeneralization(this.#semantic),

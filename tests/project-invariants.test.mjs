@@ -22,3 +22,11 @@ test("semantic matching has no manual dictionary authority", () => {
   const evaluator = readFileSync(new URL("../src/brain/memory-evaluator.js", import.meta.url), "utf8");
   assert.doesNotMatch(evaluator, /Jaccard|compareConcepts|FUNCTION_WORDS|synonyms/i);
 });
+
+test("Memory is a reversible main view and keeps the renderer mounted", () => {
+  const markup = readFileSync(new URL("../index.html", import.meta.url), "utf8");
+  const dashboard = readFileSync(new URL("../src/ui/dashboard.js", import.meta.url), "utf8");
+  assert.match(markup, /data-view="dashboard"/); assert.match(markup, /Memory Development/);
+  assert.match(dashboard, /#setPrimaryView\("dashboard"\)/); assert.match(dashboard, /classList\.toggle\("memory-mode"/);
+  assert.doesNotMatch(dashboard, /renderer\.(destroy|initialize)/);
+});

@@ -1,5 +1,5 @@
-// Shadow-only confidence bands. They describe model evidence, not language.
-// Production memory decisions do not import or call this module.
+// Model-evidence confidence bands. They describe confidence, not language.
+// Diagnostics keep authority false; production opts in explicitly after retrieval.
 export const SHADOW_IDENTITY_BANDS = Object.freeze({
   strongEntailment: 0.90,
   strongMargin: 0.75,
@@ -21,6 +21,7 @@ export function evaluateShadowIdentity(evidence) {
   const forwardMargin = forwardEntailment - Math.max(score(evidence.nli.forward, "neutral"), score(evidence.nli.forward, "contradiction"));
   const reverseMargin = reverseEntailment - Math.max(score(evidence.nli.reverse, "neutral"), score(evidence.nli.reverse, "contradiction"));
   const mutualMargin = Math.min(forwardMargin, reverseMargin);
+  const similaritySupport = evidence.paraphrase?.score >= 0.75 || evidence.stsb?.score >= 0.75;
   const reasons = [];
   let identity = "UNCERTAIN";
 
@@ -33,14 +34,15 @@ export function evaluateShadowIdentity(evidence) {
   } else if (mutualEntailment >= SHADOW_IDENTITY_BANDS.strongEntailment &&
     mutualMargin >= SHADOW_IDENTITY_BANDS.strongMargin &&
     contradiction <= SHADOW_IDENTITY_BANDS.maximumContradiction &&
-    neutral <= SHADOW_IDENTITY_BANDS.maximumNeutral) {
+    neutral <= SHADOW_IDENTITY_BANDS.maximumNeutral && similaritySupport) {
     identity = "SAME";
     reasons.push("STRONG_MUTUAL_ENTAILMENT");
   } else {
     reasons.push(neutral > SHADOW_IDENTITY_BANDS.maximumNeutral ? "HIGH_NEUTRALITY" : "INSUFFICIENT_IDENTITY_EVIDENCE");
   }
 
-  if (evidence.paraphrase?.score >= 0.75 || evidence.stsb?.score >= 0.75) reasons.push("SIMILARITY_SUPPORT");
+  if (similaritySupport) reasons.push("SIMILARITY_SUPPORT");
+  else if (mutualEntailment >= SHADOW_IDENTITY_BANDS.strongEntailment) reasons.push("EVIDENCE_DISAGREEMENT");
   if (identity === "SAME" && evidence.currentCanonicalRelation !== "SAME_MEANING") reasons.push("PRODUCTION_DISAGREEMENT");
   return {
     identity,
