@@ -65,6 +65,7 @@ export class MindlingApp {
         simulateKnowledgeAreas: () => this.#semantic.simulateKnowledgeAreas(this.#brain.getState().memories),
         e5Status: () => this.#semantic.knowledgeTopicE5Status,
         inspectKnowledgeTopicE5: (left, right) => this.#semantic.inspectKnowledgeTopicE5(left, right),
+        auditE5Implementation: () => this.#semantic.auditE5Implementation(),
         runKnowledgeTopicE5Matrix: () => this.#semantic.runKnowledgeTopicE5Matrix(),
         runKnowledgeTopicE5Multilingual: () => this.#semantic.runKnowledgeTopicE5Multilingual(),
         simulateKnowledgeAreasE5: options => this.#semantic.simulateKnowledgeAreasE5(this.#brain.getState().memories, options),

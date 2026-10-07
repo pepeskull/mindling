@@ -38,7 +38,8 @@ test("E5 topic experiment is debug-gated and absent from normal startup", () => 
   const model = readFileSync(new URL("../src/semantic/semantic-model.js", import.meta.url), "utf8");
   assert.match(app, /location\.hostname === "localhost"/); assert.match(app, /semantic-debug/);
   assert.match(app, /runKnowledgeTopicE5Matrix/); assert.match(app, /simulateKnowledgeAreasE5/);
-  assert.doesNotMatch(app.split("#installSemanticDiagnostics")[0], /inspectKnowledgeTopicE5|runKnowledgeTopicE5Matrix|simulateKnowledgeAreasE5/);
+  assert.match(app, /auditE5Implementation/);
+  assert.doesNotMatch(app.split("#installSemanticDiagnostics")[0], /inspectKnowledgeTopicE5|runKnowledgeTopicE5Matrix|simulateKnowledgeAreasE5|auditE5Implementation/);
   assert.match(model, /knowledgeTopicCandidate: "Xenova\/multilingual-e5-small"/);
-  assert.match(model, /`passage: \$\{text\}`/); assert.match(model, /new Float32Array\(output\.data\)/);
+  assert.match(model, /`\$\{prefix\}: \$\{text\}`/); assert.match(model, /new Float32Array\(embedding\)/);
 });

@@ -30,6 +30,132 @@ const quantile = (sorted, position) => {
   return sorted[lower] + (sorted[lower + 1] === undefined ? 0 : fraction * (sorted[lower + 1] - sorted[lower]));
 };
 
+export const dotProduct = (left, right) => {
+  if (!left?.length || left.length !== right?.length) return NaN;
+  let dot = 0;
+  for (let index = 0; index < left.length; index += 1) dot += left[index] * right[index];
+  return dot;
+};
+
+export const vectorNorm = vector => Math.sqrt(dotProduct(vector, vector));
+
+export function vectorStatistics(vector) {
+  const values = [...vector]; const mean = values.reduce((sum, value) => sum + value, 0) / (values.length || 1);
+  return { dimension: values.length, norm: vectorNorm(vector), componentMin: Math.min(...values), componentMax: Math.max(...values), componentMean: mean,
+    componentStdDev: Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length || 1)) };
+}
+
+export function normalizeEmbedding(vector) {
+  const norm = vectorNorm(vector);
+  if (!Number.isFinite(norm) || norm === 0) throw new Error("E5 pooled embedding has an invalid norm");
+  return new Float32Array([...vector].map(value => value / norm));
+}
+
+export function meanPoolWithAttentionMask(tokenData, tensorShape, attentionMask) {
+  if (tensorShape.length !== 3 || tensorShape[0] !== 1) throw new Error(`Expected E5 token tensor [1, sequence, hidden], received [${tensorShape}]`);
+  const [, sequenceLength, hiddenSize] = tensorShape;
+  if (tokenData.length !== sequenceLength * hiddenSize || attentionMask.length !== sequenceLength) throw new Error("E5 tensor and attention-mask shapes do not align");
+  const pooled = new Float32Array(hiddenSize); let includedTokens = 0;
+  for (let token = 0; token < sequenceLength; token += 1) {
+    const weight = Number(attentionMask[token]);
+    if (!weight) continue;
+    includedTokens += weight;
+    for (let hidden = 0; hidden < hiddenSize; hidden += 1) pooled[hidden] += Number(tokenData[token * hiddenSize + hidden]) * weight;
+  }
+  if (!includedTokens) throw new Error("E5 attention mask contains no tokens");
+  for (let hidden = 0; hidden < hiddenSize; hidden += 1) pooled[hidden] /= includedTokens;
+  return { pooled, includedTokens };
+}
+
+export function compareEmbeddingVectors(left, right) {
+  if (left.length !== right.length) return { vectorLength: Math.max(left.length, right.length), maxAbsoluteDifference: Infinity, meanAbsoluteDifference: Infinity, identicalComponentCount: 0 };
+  let maximum = 0; let total = 0; let identical = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    const difference = Math.abs(left[index] - right[index]); maximum = Math.max(maximum, difference); total += difference;
+    if (left[index] === right[index]) identical += 1;
+  }
+  return { vectorLength: left.length, maxAbsoluteDifference: maximum, meanAbsoluteDifference: total / (left.length || 1), identicalComponentCount: identical };
+}
+
+const E5_AUDIT_SENTENCES = Object.freeze({
+  trading: "Stock trading involves buying and selling shares",
+  risk: "Risk management is important when trading",
+  dogs: "Dogs need regular exercise",
+  earth: "The Earth orbits the Sun",
+  javascript: "JavaScript is used for web development"
+});
+
+export async function runE5ImplementationAudit(model, cosine) {
+  const inspect = (text, prefix = "passage") => model.inspect(text, prefix);
+  const inspected = {};
+  for (const [name, text] of Object.entries(E5_AUDIT_SENTENCES)) inspected[name] = await inspect(text);
+  const retained = Object.fromEntries(["trading", "dogs", "javascript"].map(name => [name, new Float32Array(inspected[name].embedding)]));
+  await inspect("A completely unrelated sentence used after retained vectors");
+  const retention = Object.fromEntries(Object.entries(retained).map(([name, snapshot]) => [name, compareEmbeddingVectors(snapshot, inspected[name].embedding)]));
+  const independence = {
+    tradingVsDogs: compareEmbeddingVectors(inspected.trading.embedding, inspected.dogs.embedding),
+    dogsVsJavaScript: compareEmbeddingVectors(inspected.dogs.embedding, inspected.javascript.embedding),
+    tradingVsJavaScript: compareEmbeddingVectors(inspected.trading.embedding, inspected.javascript.embedding),
+    retainedAfterAdditionalInference: retention,
+    independentBuffers: new Set([inspected.trading.embedding.buffer, inspected.dogs.embedding.buffer, inspected.javascript.embedding.buffer]).size === 3
+  };
+
+  const repeated = [await inspect(E5_AUDIT_SENTENCES.risk), await inspect(E5_AUDIT_SENTENCES.risk), await inspect(E5_AUDIT_SENTENCES.risk)];
+  await inspect("The ocean contains salt water");
+  const repeatedAfterOtherInputs = await inspect(E5_AUDIT_SENTENCES.risk);
+  const repeatedComparisons = repeated.slice(1).map(item => compareEmbeddingVectors(repeated[0].embedding, item.embedding));
+  repeatedComparisons.push(compareEmbeddingVectors(repeated[0].embedding, repeatedAfterOtherInputs.embedding));
+
+  const rawPrefix = await inspect(E5_AUDIT_SENTENCES.risk, "none"); const queryPrefix = await inspect(E5_AUDIT_SENTENCES.risk, "query");
+  const prefixAudit = {
+    conclusion: "CORRECT",
+    rationale: "E5 requires task prefixes; peer canonical memories are encoded symmetrically as corpus passages.",
+    passageVsRawCosine: cosine(inspected.risk.embedding, rawPrefix.embedding),
+    passageVsQueryCosine: cosine(inspected.risk.embedding, queryPrefix.embedding),
+    rawVsQueryCosine: cosine(rawPrefix.embedding, queryPrefix.embedding),
+    passageVsRawDifference: compareEmbeddingVectors(inspected.risk.embedding, rawPrefix.embedding),
+    passageVsQueryDifference: compareEmbeddingVectors(inspected.risk.embedding, queryPrefix.embedding)
+  };
+
+  const sanityPairs = [
+    [E5_AUDIT_SENTENCES.trading, E5_AUDIT_SENTENCES.risk],
+    [E5_AUDIT_SENTENCES.trading, E5_AUDIT_SENTENCES.dogs],
+    [E5_AUDIT_SENTENCES.javascript, "Developers use code to build software"],
+    [E5_AUDIT_SENTENCES.javascript, E5_AUDIT_SENTENCES.earth],
+    [E5_AUDIT_SENTENCES.dogs, "Computers need regular maintenance"],
+    [E5_AUDIT_SENTENCES.risk, "Sleep is important when recovering"],
+    [E5_AUDIT_SENTENCES.risk, "Riskhantering är viktig vid handel"]
+  ];
+  const cache = new Map(Object.values(inspected).map(item => [item.originalText, item]));
+  const get = async text => { if (!cache.has(text)) cache.set(text, await inspect(text)); return cache.get(text); };
+  const pairSanity = [];
+  for (const [left, right] of sanityPairs) pairSanity.push({ left, right, e5Cosine: cosine((await get(left)).embedding, (await get(right)).embedding) });
+
+  const cosineBetween = cosine(inspected.trading.embedding, inspected.dogs.embedding);
+  const dotBetween = dotProduct(inspected.trading.embedding, inspected.dogs.embedding);
+  const normsValid = Object.values(inspected).every(item => Math.abs(item.normalization.postNorm - 1) <= 1e-5);
+  const retainedValid = Object.values(retention).every(item => item.maxAbsoluteDifference === 0);
+  const independentValues = [independence.tradingVsDogs, independence.dogsVsJavaScript, independence.tradingVsJavaScript].every(item => item.maxAbsoluteDifference > 0);
+  const repeatedValid = repeatedComparisons.every(item => item.maxAbsoluteDifference <= 1e-5);
+  const contractValid = inspected.risk.modelContract.selectedTensor === "last_hidden_state" && inspected.risk.modelContract.selectedTensorShape.length === 3 &&
+    inspected.risk.normalization.dimension === (model.expectedDimensions || inspected.risk.normalization.dimension);
+  const implementationCorrect = normsValid && retainedValid && independentValues && repeatedValid && independence.independentBuffers && contractValid && Math.abs(cosineBetween - dotBetween) <= 1e-5;
+  return {
+    model: model.model, backend: model.backend, inputStrategy: model.inputStrategy, modelContract: inspected.risk.modelContract,
+    normalization: inspected.risk.normalization,
+    cosineValidation: { selfCosine: cosine(inspected.risk.embedding, inspected.risk.embedding), cosine: cosineBetween, dotProduct: dotBetween,
+      absoluteDifference: Math.abs(cosineBetween - dotBetween) },
+    bufferIndependence: independence,
+    repeatedInput: { comparisons: repeatedComparisons, deterministicWithinTolerance: repeatedValid, tolerance: 1e-5 },
+    prefixAudit,
+    tokenSanity: ["trading", "risk", "dogs", "earth"].map(name => ({ sentence: inspected[name].originalText, ...inspected[name].tokenSanity })),
+    pairSanity,
+    backendComparison: { status: "NOT_TESTED", reason: "The audit does not initialize a second 118 MB session solely to force another provider." },
+    conclusion: implementationCorrect ? "IMPLEMENTATION_CORRECT" : "IMPLEMENTATION_UNCERTAIN",
+    canonicalAuthority: false, persistence: "NONE"
+  };
+}
+
 export function summarizeTopicScores(rows) {
   const summarize = values => {
     const sorted = values.filter(Number.isFinite).sort((left, right) => left - right);

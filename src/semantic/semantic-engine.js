@@ -1,7 +1,7 @@
 import { loadEquivalenceCandidate, loadKnowledgeTopicCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
 import { evaluateShadowIdentity, selectShadowCandidate } from "./canonical-identity.js";
 import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, productionKnowledgeFloor, shadowKnowledgeDecision } from "./knowledge-relation.js";
-import { inspectTopicPair, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, simulateTopicAreas, summarizeTopicScores } from "./knowledge-topic-e5.js";
+import { inspectTopicPair, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, runE5ImplementationAudit, simulateTopicAreas, summarizeTopicScores } from "./knowledge-topic-e5.js";
 import { deriveKnowledgeDevelopment } from "../brain/knowledge-development.js";
 
 export const SEMANTIC_RULES = Object.freeze({
@@ -178,7 +178,8 @@ export class SemanticEngine {
   get knowledgeTopicE5Status() {
     return { model: SEMANTIC_MODELS.knowledgeTopicCandidate, status: this.#knowledgeTopicModel ? "ready" : this.#knowledgeTopicError ? "unavailable" : this.#knowledgeTopicPromise ? "loading" : "idle",
       debugOnly: true, canonicalAuthority: false, ...(this.#knowledgeTopicModel ? { backend: this.#knowledgeTopicModel.backend, loadMilliseconds: this.#knowledgeTopicModel.loadMilliseconds,
-        attempts: this.#knowledgeTopicModel.attempts, artifact: this.#knowledgeTopicModel.artifact, inputStrategy: this.#knowledgeTopicModel.inputStrategy } : {}),
+        attempts: this.#knowledgeTopicModel.attempts, artifact: this.#knowledgeTopicModel.artifact, inputStrategy: this.#knowledgeTopicModel.inputStrategy,
+        modelContract: this.#knowledgeTopicModel.contract } : {}),
       ...(this.#knowledgeTopicError ? { error: String(this.#knowledgeTopicError.message || this.#knowledgeTopicError) } : {}) };
   }
   async #getKnowledgeTopicModel() {
@@ -196,6 +197,10 @@ export class SemanticEngine {
     return inspectTopicPair({ left, right,
       productionEncode: text => cached(caches?.production, text, () => this.encode(text)),
       e5Encode: text => cached(caches?.e5, text, () => model.encode(text)), cosine: cosineSimilarity });
+  }
+  async auditE5Implementation() {
+    const model = await this.#getKnowledgeTopicModel();
+    return runE5ImplementationAudit(model, cosineSimilarity);
   }
   async runKnowledgeTopicE5Matrix() {
     const startedAt = globalThis.performance?.now?.() ?? Date.now(); const rows = []; const caches = { production: new Map(), e5: new Map() };

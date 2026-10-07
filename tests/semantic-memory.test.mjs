@@ -8,7 +8,7 @@ import { createInferenceQueue, resolveNliLabels, SEMANTIC_MODELS } from "../src/
 import { analyzeIdentityTriangle, evaluateShadowIdentity, selectShadowCandidate } from "../src/semantic/canonical-identity.js";
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../src/brain/knowledge-development.js";
 import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, shadowKnowledgeDecision } from "../src/semantic/knowledge-relation.js";
-import { KNOWLEDGE_TOPIC_E5_RULES, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, simulateTopicAreas, summarizeTopicScores } from "../src/semantic/knowledge-topic-e5.js";
+import { compareEmbeddingVectors, dotProduct, KNOWLEDGE_TOPIC_E5_RULES, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, meanPoolWithAttentionMask, normalizeEmbedding, runE5ImplementationAudit, simulateTopicAreas, summarizeTopicScores, vectorStatistics } from "../src/semantic/knowledge-topic-e5.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
 
@@ -380,4 +380,51 @@ test("E5 score summaries and multilingual diagnostics remain evaluation-only", (
   assert.equal(KNOWLEDGE_TOPIC_NINE.length, 9); assert.equal(KNOWLEDGE_TOPIC_MULTILINGUAL.length, 6);
   assert.ok(KNOWLEDGE_TOPIC_MULTILINGUAL.some(pair => pair.group.startsWith("swedish")));
   assert.ok(KNOWLEDGE_TOPIC_MULTILINGUAL.some(pair => pair.group.startsWith("cross-lingual")));
+});
+
+test("E5 manual pooling respects attention masks and normalizes only the final embedding", () => {
+  const tokens = new Float32Array([
+    1, 2, 3,
+    3, 4, 5,
+    10_000, 10_000, 10_000
+  ]);
+  const { pooled, includedTokens } = meanPoolWithAttentionMask(tokens, [1, 3, 3], new BigInt64Array([1n, 1n, 0n]));
+  assert.equal(includedTokens, 2); assert.deepEqual([...pooled], [2, 3, 4]);
+  const normalized = normalizeEmbedding(pooled); const stats = vectorStatistics(normalized);
+  assert.equal(normalized.length, 3); assert.ok(Math.abs(stats.norm - 1) < 1e-6);
+  assert.throws(() => meanPoolWithAttentionMask(tokens, [1, 3, 3], new BigInt64Array([0n, 0n, 0n])), /contains no tokens/);
+});
+
+test("E5 vector diagnostics validate cosine, copies, and numerical independence", () => {
+  const left = normalizeEmbedding(new Float32Array([3, 4])); const right = normalizeEmbedding(new Float32Array([4, -3]));
+  assert.ok(Math.abs(cosineSimilarity(left, right) - dotProduct(left, right)) < 1e-7);
+  assert.ok(Math.abs(cosineSimilarity(left, left) - 1) < 1e-7);
+  const comparison = compareEmbeddingVectors(left, new Float32Array(left));
+  assert.equal(comparison.maxAbsoluteDifference, 0); assert.equal(comparison.identicalComponentCount, left.length);
+  const changed = new Float32Array(left); changed[0] += .25;
+  assert.ok(compareEmbeddingVectors(left, changed).maxAbsoluteDifference > 0);
+});
+
+test("bounded E5 implementation audit reports contract checks without persistence", async () => {
+  const contract = { tokenizerInputs: ["input_ids", "attention_mask"], inputShapes: { input_ids: [1, 8], attention_mask: [1, 8] },
+    outputKeys: ["last_hidden_state"], outputTensorShapes: { last_hidden_state: [1, 8, 4] }, selectedTensor: "last_hidden_state",
+    selectedTensorShape: [1, 8, 4], tensorSemantics: "[batch, sequence_length, hidden_size]", poolingMethod: "ATTENTION_MASKED_MEAN",
+    normalizationMethod: "L2_ACROSS_FINAL_EMBEDDING" };
+  const embeddingFor = (text, prefix) => {
+    let hash = prefix === "passage" ? 3 : prefix === "query" ? 5 : 7;
+    for (const character of text) hash = (hash * 31 + character.codePointAt(0)) >>> 0;
+    return normalizeEmbedding(new Float32Array([1 + hash % 13, 2 + hash % 17, 3 + hash % 19, 4 + hash % 23]));
+  };
+  const model = { model: SEMANTIC_MODELS.knowledgeTopicCandidate, backend: "mock-webgpu", inputStrategy: "SYMMETRIC_PASSAGE_PREFIX", expectedDimensions: 4,
+    inspect: async (text, prefix = "passage") => { const embedding = embeddingFor(text, prefix); const stats = vectorStatistics(embedding); return {
+      originalText: text, embedding: new Float32Array(embedding), modelContract: contract,
+      normalization: { dimension: 4, preNorm: 8, postNorm: stats.norm, componentMin: stats.componentMin, componentMax: stats.componentMax,
+        componentMean: stats.componentMean, componentStdDev: stats.componentStdDev },
+      tokenSanity: { tokenCount: 8, nonPaddingTokenCount: 8, sequenceLength: 8, embeddingDimension: 4, finalEmbeddingNorm: stats.norm, tokenTypeIdsPresent: true }
+    }; } };
+  const audit = await runE5ImplementationAudit(model, cosineSimilarity);
+  assert.equal(audit.conclusion, "IMPLEMENTATION_CORRECT"); assert.equal(audit.modelContract.poolingMethod, "ATTENTION_MASKED_MEAN");
+  assert.equal(audit.normalization.dimension, 4); assert.ok(Math.abs(audit.normalization.postNorm - 1) < 1e-6);
+  assert.equal(audit.bufferIndependence.independentBuffers, true); assert.equal(audit.pairSanity.length, 7);
+  assert.equal(audit.backendComparison.status, "NOT_TESTED"); assert.equal(audit.canonicalAuthority, false); assert.equal(audit.persistence, "NONE");
 });
