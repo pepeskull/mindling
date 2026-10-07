@@ -4,6 +4,7 @@ export const SEMANTIC_MODELS = Object.freeze({
   pairClassifier: "Xenova/nli-deberta-v3-xsmall",
   equivalenceCandidate: "Xenova/paraphrase-MiniLM-L3-v2",
   propositionCandidate: "cross-encoder/stsb-TinyBERT-L4",
+  knowledgeTopicCandidate: "Xenova/multilingual-e5-small",
   revision: "main",
   embeddingDimensions: 384
 });
@@ -97,4 +98,41 @@ export async function loadPropositionCandidate() {
     const rawLogit = Number(output.logits.data[0]);
     return { rawLogit, score: 1 / (1 + Math.exp(-rawLogit)) };
   });
+}
+
+// Development-only candidate. Nothing in normal startup calls this loader.
+// E5 documents query:/passage: prefixes; canonical memories are symmetric
+// corpus items, so the diagnostic encodes both sides as passages.
+export async function loadKnowledgeTopicCandidate() {
+  const startedAt = globalThis.performance?.now?.() ?? Date.now();
+  const { env, pipeline } = await import(SEMANTIC_MODELS.runtime);
+  env.useBrowserCache = true;
+  env.useWasmCache = true;
+  const options = { dtype: "q8", revision: SEMANTIC_MODELS.revision };
+  const attempts = [];
+  let extractor; let backend = "wasm";
+  if (globalThis.navigator?.gpu) {
+    try { extractor = await pipeline("feature-extraction", SEMANTIC_MODELS.knowledgeTopicCandidate, { ...options, device: "webgpu" }); backend = "webgpu"; }
+    catch (error) { attempts.push({ backend: "webgpu", error: String(error?.message || error) }); }
+  }
+  if (!extractor) {
+    try { extractor = await pipeline("feature-extraction", SEMANTIC_MODELS.knowledgeTopicCandidate, { ...options, device: "wasm" }); }
+    catch (error) { attempts.push({ backend: "wasm", error: String(error?.message || error) }); throw error; }
+  }
+  const run = createInferenceQueue();
+  const loadMilliseconds = (globalThis.performance?.now?.() ?? Date.now()) - startedAt;
+  return {
+    model: SEMANTIC_MODELS.knowledgeTopicCandidate,
+    backend,
+    attempts,
+    loadMilliseconds,
+    artifact: { dtype: "q8", graphBytesApproximate: 118_000_000, verifiedAt: "https://huggingface.co/Xenova/multilingual-e5-small/tree/main/onnx" },
+    inputStrategy: "SYMMETRIC_PASSAGE_PREFIX",
+    async encode(text) {
+      return run(async () => {
+        const output = await extractor(`passage: ${text}`, { pooling: "mean", normalize: true });
+        return new Float32Array(output.data);
+      });
+    }
+  };
 }

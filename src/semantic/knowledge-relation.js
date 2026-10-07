@@ -37,7 +37,8 @@ const GENERALIZATION = Object.freeze({
   music: ["Chord progressions create harmonic movement", "Tempo determines the speed of a piece", "Musicians use rhythm to organize timing"]
 });
 
-const browserCorpus = [...TRADING, ...PROGRAMMING, ...SINGLETONS];
+export const KNOWLEDGE_BROWSER_CORPUS = Object.freeze([...TRADING, ...PROGRAMMING, ...SINGLETONS]);
+const browserCorpus = KNOWLEDGE_BROWSER_CORPUS;
 const browserPairs = [];
 for (let left = 0; left < browserCorpus.length; left += 1) for (let right = left + 1; right < browserCorpus.length; right += 1) {
   const same = (left < 3 && right < 3) || (left >= 3 && left < 6 && right >= 3 && right < 6);

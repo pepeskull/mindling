@@ -1,6 +1,7 @@
-import { loadEquivalenceCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
+import { loadEquivalenceCandidate, loadKnowledgeTopicCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
 import { evaluateShadowIdentity, selectShadowCandidate } from "./canonical-identity.js";
 import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, productionKnowledgeFloor, shadowKnowledgeDecision } from "./knowledge-relation.js";
+import { inspectTopicPair, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, simulateTopicAreas, summarizeTopicScores } from "./knowledge-topic-e5.js";
 import { deriveKnowledgeDevelopment } from "../brain/knowledge-development.js";
 
 export const SEMANTIC_RULES = Object.freeze({
@@ -55,8 +56,8 @@ function decidePair(similarity, forward, reverse) {
 }
 
 export class SemanticEngine {
-  #loader; #equivalenceLoader; #propositionLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #status = "idle"; #diagnosticTracing = false; #lastProductionTrace = null;
-  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate, propositionLoader = loadPropositionCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; this.#propositionLoader = propositionLoader; }
+  #loader; #equivalenceLoader; #propositionLoader; #knowledgeTopicLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #knowledgeTopicPromise; #knowledgeTopicModel; #knowledgeTopicError; #status = "idle"; #diagnosticTracing = false; #lastProductionTrace = null;
+  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate, propositionLoader = loadPropositionCandidate, knowledgeTopicLoader = loadKnowledgeTopicCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; this.#propositionLoader = propositionLoader; this.#knowledgeTopicLoader = knowledgeTopicLoader; }
   get status() { return this.#status; }
   get modelInfo() { return SEMANTIC_MODELS; }
   get runtimeInfo() { return this.#models ? { backend: this.#models.backend, encoder: SEMANTIC_MODELS.encoder, pairClassifier: SEMANTIC_MODELS.pairClassifier } : null; }
@@ -173,6 +174,48 @@ export class SemanticEngine {
     const results = [];
     for (const pair of KNOWLEDGE_RELATION_MATRIX) results.push({ group: pair.group, expected: pair.expected, ...await this.inspectKnowledgeRelation(pair.left, pair.right) });
     return results;
+  }
+  get knowledgeTopicE5Status() {
+    return { model: SEMANTIC_MODELS.knowledgeTopicCandidate, status: this.#knowledgeTopicModel ? "ready" : this.#knowledgeTopicError ? "unavailable" : this.#knowledgeTopicPromise ? "loading" : "idle",
+      debugOnly: true, canonicalAuthority: false, ...(this.#knowledgeTopicModel ? { backend: this.#knowledgeTopicModel.backend, loadMilliseconds: this.#knowledgeTopicModel.loadMilliseconds,
+        attempts: this.#knowledgeTopicModel.attempts, artifact: this.#knowledgeTopicModel.artifact, inputStrategy: this.#knowledgeTopicModel.inputStrategy } : {}),
+      ...(this.#knowledgeTopicError ? { error: String(this.#knowledgeTopicError.message || this.#knowledgeTopicError) } : {}) };
+  }
+  async #getKnowledgeTopicModel() {
+    if (!this.#knowledgeTopicPromise) this.#knowledgeTopicPromise = this.#knowledgeTopicLoader().then(model => (this.#knowledgeTopicModel = model))
+      .catch(error => { this.#knowledgeTopicError = error; throw error; });
+    return this.#knowledgeTopicPromise;
+  }
+  async inspectKnowledgeTopicE5(left, right, caches = null) {
+    const model = await this.#getKnowledgeTopicModel();
+    const cached = (cache, text, operation) => {
+      if (!cache) return operation();
+      if (!cache.has(text)) cache.set(text, operation());
+      return cache.get(text);
+    };
+    return inspectTopicPair({ left, right,
+      productionEncode: text => cached(caches?.production, text, () => this.encode(text)),
+      e5Encode: text => cached(caches?.e5, text, () => model.encode(text)), cosine: cosineSimilarity });
+  }
+  async runKnowledgeTopicE5Matrix() {
+    const startedAt = globalThis.performance?.now?.() ?? Date.now(); const rows = []; const caches = { production: new Map(), e5: new Map() };
+    for (const pair of KNOWLEDGE_RELATION_MATRIX) rows.push({ group: pair.group, expected: pair.expected, ...await this.inspectKnowledgeTopicE5(pair.left, pair.right, caches) });
+    return { model: SEMANTIC_MODELS.knowledgeTopicCandidate, inputStrategy: "SYMMETRIC_PASSAGE_PREFIX", rows,
+      summary: summarizeTopicScores(rows), elapsedMilliseconds: (globalThis.performance?.now?.() ?? Date.now()) - startedAt,
+      uniqueInputs: caches.e5.size,
+      predeclaredCriteria: { hardNegativeRejection: 1, differentTopicRejection: .95, sameTopicRecall: .8 },
+      classificationStatus: "RAW_DISTRIBUTIONS_FIRST", canonicalAuthority: false, persistence: "NONE" };
+  }
+  async runKnowledgeTopicE5Multilingual() {
+    const rows = []; const caches = { production: new Map(), e5: new Map() };
+    for (const pair of KNOWLEDGE_TOPIC_MULTILINGUAL) rows.push({ ...pair, ...await this.inspectKnowledgeTopicE5(pair.left, pair.right, caches) });
+    return { rows, summary: summarizeTopicScores(rows), heldOut: true, thresholdTuningAllowed: false, canonicalAuthority: false, persistence: "NONE" };
+  }
+  async simulateKnowledgeAreasE5(memories = null, options = {}) {
+    const model = await this.#getKnowledgeTopicModel();
+    const expected = new Set(KNOWLEDGE_TOPIC_NINE); const activeIsFrozenCorpus = memories?.length === expected.size && memories.every(memory => expected.has(memory.content));
+    const source = activeIsFrozenCorpus ? memories.map(memory => ({ id: memory.id, content: memory.content })) : KNOWLEDGE_TOPIC_NINE.map((content, index) => ({ id: `e5-nine-${index + 1}`, content }));
+    return simulateTopicAreas(source, text => model.encode(text), cosineSimilarity, options.threshold ?? null);
   }
   async simulateKnowledgeAreas(memories) {
     const local = [];

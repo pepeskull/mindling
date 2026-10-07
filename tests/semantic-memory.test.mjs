@@ -8,6 +8,7 @@ import { createInferenceQueue, resolveNliLabels, SEMANTIC_MODELS } from "../src/
 import { analyzeIdentityTriangle, evaluateShadowIdentity, selectShadowCandidate } from "../src/semantic/canonical-identity.js";
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../src/brain/knowledge-development.js";
 import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, shadowKnowledgeDecision } from "../src/semantic/knowledge-relation.js";
+import { KNOWLEDGE_TOPIC_E5_RULES, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, simulateTopicAreas, summarizeTopicScores } from "../src/semantic/knowledge-topic-e5.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
 
@@ -25,7 +26,7 @@ test("shadow identity corpus is held out and clean-slate scenarios are isolated 
   assert.equal(CLEAN_SLATE_IDENTITY_10.length, 10);
   assert.equal(CLEAN_SLATE_TRADER_10.length, 10);
   assert.notEqual(CLEAN_SLATE_IDENTITY_10, CLEAN_SLATE_TRADER_10);
-  assert.deepEqual(Object.keys(SEMANTIC_MODELS).filter(key => key.endsWith("Candidate")), ["equivalenceCandidate", "propositionCandidate"]);
+  assert.deepEqual(Object.keys(SEMANTIC_MODELS).filter(key => key.endsWith("Candidate")), ["equivalenceCandidate", "propositionCandidate", "knowledgeTopicCandidate"]);
 });
 
 test("shadow identity separates identity from relationship and preserves uncertainty", () => {
@@ -310,4 +311,73 @@ test("knowledge diagnostics reuse model evidence and remain read-only", async ()
   assert.equal(simulation.canonicalAuthority, false); assert.equal(simulation.persistence, "NONE");
   assert.ok(simulation.candidatePairs.length <= KNOWLEDGE_RELATION_RULES.maximumCandidatePairs);
   assert.deepEqual(memories, before);
+});
+
+test("E5 topic candidate is lazy, copied, reused, and diagnostic-only", async () => {
+  let initializations = 0; const source = new Float32Array([1, 0, 0]);
+  const topicLoader = async () => { initializations += 1; return { model: SEMANTIC_MODELS.knowledgeTopicCandidate, backend: "mock-wasm", attempts: [], loadMilliseconds: 12,
+    artifact: { dtype: "q8", graphBytesApproximate: 118_000_000 }, inputStrategy: "SYMMETRIC_PASSAGE_PREFIX",
+    encode: async text => { source.set(text.includes("different") ? [0, 1, 0] : [1, 0, 0]); return new Float32Array(source); } }; };
+  const engine = new SemanticEngine(loader, async () => async () => new Float32Array([1, 0]), async () => async () => ({ rawLogit: 1, score: .7 }), topicLoader);
+  assert.equal(engine.knowledgeTopicE5Status.status, "idle"); assert.equal(initializations, 0);
+  await engine.initialize(); assert.equal(initializations, 0);
+  const first = await engine.inspectKnowledgeTopicE5("same left", "same right");
+  const second = await engine.inspectKnowledgeTopicE5("same left", "different right");
+  assert.equal(initializations, 1); assert.equal(engine.knowledgeTopicE5Status.status, "ready");
+  assert.equal(first.e5Cosine, 1); assert.equal(second.e5Cosine, 0);
+  assert.equal(first.canonicalAuthority, false); assert.equal(first.persistence, "NONE");
+  assert.equal(first.e5.inputStrategy, "SYMMETRIC_PASSAGE_PREFIX");
+});
+
+test("E5 matrix preserves 70 frozen pairs and reports raw distributions", async () => {
+  let initializations = 0;
+  const topicLoader = async () => { initializations += 1; return { backend: "mock", attempts: [], loadMilliseconds: 1, artifact: {}, inputStrategy: "SYMMETRIC_PASSAGE_PREFIX",
+    encode: async text => new Float32Array(text.includes("Dogs") ? [0, 1] : [1, 0]) }; };
+  const engine = new SemanticEngine(loader, async () => async () => new Float32Array([1, 0]), async () => async () => ({ rawLogit: 1, score: .7 }), topicLoader);
+  await engine.initialize(); const result = await engine.runKnowledgeTopicE5Matrix();
+  assert.equal(result.rows.length, 70); assert.equal(initializations, 1); assert.equal(result.classificationStatus, "RAW_DISTRIBUTIONS_FIRST");
+  assert.equal(result.canonicalAuthority, false); assert.equal(result.persistence, "NONE");
+  assert.equal(result.summary.distributions.HARD_NEGATIVE.count, 5);
+  assert.equal(result.summary.distributions.SAME_TOPIC_DIFFERENT_STRUCTURE.count, 4);
+  assert.ok(result.uniqueInputs > 0 && result.uniqueInputs < result.rows.length * 2);
+});
+
+test("E5 shadow clustering is nonpersistent, order resistant, and complete-link safe", async () => {
+  const vectors = { a: [1, 0], b: [.98, .2], bridge: [.75, .66], other: [0, 1] };
+  const encode = async text => new Float32Array(vectors[text]); const cosine = (left, right) => {
+    const dot = left[0] * right[0] + left[1] * right[1]; return dot / (Math.hypot(...left) * Math.hypot(...right));
+  };
+  const memories = Object.keys(vectors).map(id => ({ id, content: id })); const before = structuredClone(memories);
+  const raw = await simulateTopicAreas(memories, encode, cosine);
+  assert.equal(raw.shadowAreas.length, 4); assert.equal(raw.decisionPolicy, "RAW_EVIDENCE_ONLY");
+  assert.ok(raw.shadowAreas.every(area => area.uncertainty === "NO_DECISION_THRESHOLD_PROMOTED"));
+  assert.equal(raw.assignments.length, 4); assert.equal(raw.blockedMerges.length, 6); assert.ok(raw.blockedMerges.every(item => item.uncertainty));
+  const first = await simulateTopicAreas(memories, encode, cosine, .8); const reversed = await simulateTopicAreas([...memories].reverse(), encode, cosine, .8);
+  assert.deepEqual(first.shadowAreas, reversed.shadowAreas); assert.deepEqual(memories, before);
+  assert.ok(first.shadowAreas.some(area => area.memoryIds.includes("a") && area.memoryIds.includes("b")));
+  assert.ok(!first.shadowAreas.some(area => ["a", "b", "bridge"].every(id => area.memoryIds.includes(id))));
+  assert.equal(first.persistence, "NONE"); assert.equal(first.canonicalAuthority, false);
+  assert.equal(KNOWLEDGE_TOPIC_E5_RULES.maximumDiagnosticMemories, 9); assert.equal(KNOWLEDGE_TOPIC_E5_RULES.maximumPairEvidence, 36);
+  await assert.rejects(() => simulateTopicAreas(Array.from({ length: 10 }, (_, id) => ({ id: String(id), content: "a" })), encode, cosine), /exceeds its diagnostic memory bound/);
+});
+
+test("E5 initialization failure is explicit and never falls back to MiniLM evidence", async () => {
+  const engine = new SemanticEngine(loader, async () => async () => new Float32Array([1, 0]), async () => async () => ({ rawLogit: 1, score: .7 }),
+    async () => { throw new Error("unsupported E5 operator"); });
+  await engine.initialize();
+  await assert.rejects(() => engine.inspectKnowledgeTopicE5("left", "right"), /unsupported E5 operator/);
+  assert.equal(engine.knowledgeTopicE5Status.status, "unavailable");
+  assert.match(engine.knowledgeTopicE5Status.error, /unsupported E5 operator/);
+});
+
+test("E5 score summaries and multilingual diagnostics remain evaluation-only", () => {
+  const summary = summarizeTopicScores([
+    { group: "same", expected: "SAME_TOPIC", e5Cosine: .9 }, { group: "same", expected: "SAME_TOPIC", e5Cosine: .8 },
+    { group: "hard-negative", expected: "DIFFERENT_TOPIC", e5Cosine: .2 }, { group: "different", expected: "DIFFERENT_TOPIC", e5Cosine: .3 }
+  ]);
+  assert.equal(summary.distributions.SAME_TOPIC.count, 2); assert.equal(summary.distributions.DIFFERENT_TOPIC.count, 2);
+  assert.equal(summary.distributions.HARD_NEGATIVE.count, 1); assert.equal(summary.rawSeparation.separated, true); assert.equal(summary.decisionPromoted, false);
+  assert.equal(KNOWLEDGE_TOPIC_NINE.length, 9); assert.equal(KNOWLEDGE_TOPIC_MULTILINGUAL.length, 6);
+  assert.ok(KNOWLEDGE_TOPIC_MULTILINGUAL.some(pair => pair.group.startsWith("swedish")));
+  assert.ok(KNOWLEDGE_TOPIC_MULTILINGUAL.some(pair => pair.group.startsWith("cross-lingual")));
 });

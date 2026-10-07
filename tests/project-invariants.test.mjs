@@ -32,3 +32,13 @@ test("Memory is a reversible main view and keeps the renderer mounted", () => {
   assert.match(dashboard, /#setPrimaryView\("dashboard"\)/); assert.match(dashboard, /classList\.toggle\("memory-mode"/);
   assert.doesNotMatch(dashboard, /renderer\.(destroy|initialize)/);
 });
+
+test("E5 topic experiment is debug-gated and absent from normal startup", () => {
+  const app = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
+  const model = readFileSync(new URL("../src/semantic/semantic-model.js", import.meta.url), "utf8");
+  assert.match(app, /location\.hostname === "localhost"/); assert.match(app, /semantic-debug/);
+  assert.match(app, /runKnowledgeTopicE5Matrix/); assert.match(app, /simulateKnowledgeAreasE5/);
+  assert.doesNotMatch(app.split("#installSemanticDiagnostics")[0], /inspectKnowledgeTopicE5|runKnowledgeTopicE5Matrix|simulateKnowledgeAreasE5/);
+  assert.match(model, /knowledgeTopicCandidate: "Xenova\/multilingual-e5-small"/);
+  assert.match(model, /`passage: \$\{text\}`/); assert.match(model, /new Float32Array\(output\.data\)/);
+});
