@@ -21,6 +21,8 @@ test("semantic matching has no manual dictionary authority", () => {
   assert.equal(existsSync(new URL("../src/brain/concept-extractor.js", import.meta.url)), false);
   const evaluator = readFileSync(new URL("../src/brain/memory-evaluator.js", import.meta.url), "utf8");
   assert.doesNotMatch(evaluator, /Jaccard|compareConcepts|FUNCTION_WORDS|synonyms/i);
+  const knowledge = readFileSync(new URL("../src/brain/knowledge-development.js", import.meta.url), "utf8");
+  assert.doesNotMatch(knowledge, /stopwords?|keywordMap|topicMap|pathwayMap|synonym|\bTrading\b|\bProgramming\b|\bMusic\b/);
 });
 
 test("Memory is a reversible main view and keeps the renderer mounted", () => {

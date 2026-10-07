@@ -195,7 +195,54 @@ test("bounded representatives resist semantic chain drift", () => {
   ];
   const development = deriveKnowledgeDevelopment(memories);
   assert.equal(development.areas.length, 2);
-  assert.ok(development.areas.some(area => area.memoryIds.includes("a") && area.memoryIds.includes("b") && !area.memoryIds.includes("c")));
+  assert.ok(!development.areas.some(area => ["a", "b", "c"].every(id => area.memoryIds.includes(id))));
+  assert.ok(development.areas.some(area => area.memoryCount === 1));
+});
+
+test("complete-link grouping is order resistant with deterministic IDs and labels", () => {
+  const memories = [
+    { id: "z", content: "Camera aperture controls incoming light during exposure", embedding: new Float32Array([1, 0]), strength: .4, activations: 1 },
+    { id: "a", content: "Aperture changes depth of field in photographs", embedding: new Float32Array([.98, .02]), strength: .5, activations: 2 },
+    { id: "m", content: "Rain filled the empty reservoir", embedding: new Float32Array([0, 1]), strength: .3, activations: 1 }
+  ];
+  const forward = deriveKnowledgeDevelopment(memories); const reversed = deriveKnowledgeDevelopment([...memories].reverse());
+  assert.deepEqual(forward, reversed); assert.equal(forward.areas.length, 2);
+  const coherent = forward.areas.find(area => area.memoryCount === 2);
+  assert.equal(coherent.labelSource, "CENTRAL_MEMORY_EXCERPT"); assert.match(coherent.id, /^area-[a-f0-9]{8}$/);
+  const singleton = forward.areas.find(area => area.memoryCount === 1);
+  assert.equal(singleton.labelSource, "NEUTRAL_FALLBACK"); assert.match(singleton.label, /^Emerging Knowledge/);
+});
+
+test("browser regression corpus structure preserves coherent groups and unrelated singletons", () => {
+  const corpus = [
+    ["trade-1", "Stock trading involves buying and selling shares", [1, 0, 0, 0, 0]],
+    ["trade-2", "Risk management is important when trading", [.96, .1, 0, 0, 0]],
+    ["trade-3", "Traders study market prices", [.94, .12, 0, 0, 0]],
+    ["code-1", "JavaScript is used for web development", [0, 1, 0, 0, 0]],
+    ["code-2", "Programming requires writing instructions for computers", [.05, .96, .05, 0, 0]],
+    ["code-3", "Developers use code to build software", [0, .94, .12, 0, 0]],
+    ["music", "Anna enjoys classical music", [0, 0, 1, 0, 0]],
+    ["orbit", "The Earth orbits the Sun", [0, 0, 0, 1, 0]],
+    ["dog", "Dogs need regular exercise", [0, 0, 0, 0, 1]]
+  ].map(([id, content, embedding]) => ({ id, content, embedding: new Float32Array(embedding), strength: .32, activations: 1 }));
+  const development = deriveKnowledgeDevelopment(corpus);
+  assert.equal(development.areas.length, 5);
+  assert.ok(development.areas.some(area => ["trade-1", "trade-2", "trade-3"].every(id => area.memoryIds.includes(id))));
+  assert.ok(development.areas.some(area => ["code-1", "code-2", "code-3"].every(id => area.memoryIds.includes(id))));
+  for (const id of ["music", "orbit", "dog"]) assert.ok(development.areas.some(area => area.memoryIds.length === 1 && area.memoryIds[0] === id));
+  assert.equal(development.assignments.length, 9);
+});
+
+test("generalization corpora form coherent areas without a production taxonomy", () => {
+  const groups = [
+    ["Boiling pasta requires hot water", "Sauces can be prepared while pasta cooks", "Cooking time affects pasta texture"],
+    ["Mars has two small moons", "Telescopes help astronomers observe distant objects", "Planetary motion can be studied over time"],
+    ["Aperture affects how much light reaches the sensor", "Shutter speed changes motion blur", "ISO affects sensor sensitivity"]
+  ];
+  const memories = groups.flatMap((group, groupIndex) => group.map((content, index) => ({ id: `${groupIndex}-${index}`, content,
+    embedding: new Float32Array(groups.map((_, vectorIndex) => vectorIndex === groupIndex ? 1 : index * .01)), strength: .32, activations: 1 })));
+  const before = structuredClone(memories); const development = deriveKnowledgeDevelopment(memories);
+  assert.equal(development.areas.length, 3); assert.ok(development.areas.every(area => area.memoryCount === 3)); assert.deepEqual(memories, before);
 });
 
 test("neuron participation is local to deterministic memory routes", () => {

@@ -56,6 +56,7 @@ export class MindlingApp {
         inspectKnowledgeDevelopment: () => deriveKnowledgeDevelopment(this.#brain.getState().memories),
         inspectNeuralParticipation: () => { const state = this.#brain.getState(); const development = deriveKnowledgeDevelopment(state.memories); return state.nodes.map(node => deriveNeuronParticipation(state, node.id, development)); },
         knowledgeAreas: () => deriveKnowledgeDevelopment(this.#brain.getState().memories).areas,
+        knowledgeAreaAudit: () => deriveKnowledgeDevelopment(this.#brain.getState().memories),
         neuralSpecialization: () => { const state = this.#brain.getState(); const development = deriveKnowledgeDevelopment(state.memories); return state.nodes.map(node => deriveNeuronParticipation(state, node.id, development)); },
         memoryRoute: memoryId => { const state = this.#brain.getState(); const memory = state.memories.find(item => item.id === memoryId); if (!memory) return null; const areas = deriveKnowledgeDevelopment(state.memories).areas; return { memoryId, neuronIds: memory.neuronIds || [], synapseIds: memory.synapseIds || [], areaIds: areas.filter(area => area.memoryIds.includes(memoryId)).map(area => area.id) }; },
         runtimeInfo: () => this.#semantic.runtimeInfo,
