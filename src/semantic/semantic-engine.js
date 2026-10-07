@@ -1,5 +1,7 @@
 import { loadEquivalenceCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
 import { evaluateShadowIdentity, selectShadowCandidate } from "./canonical-identity.js";
+import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, productionKnowledgeFloor, shadowKnowledgeDecision } from "./knowledge-relation.js";
+import { deriveKnowledgeDevelopment } from "../brain/knowledge-development.js";
 
 export const SEMANTIC_RULES = Object.freeze({
   candidateLimit: 3,
@@ -149,6 +151,55 @@ export class SemanticEngine {
     }
     const selected = selectShadowCandidate(evaluated);
     return { input, candidates: evaluated, shadowSelection: selected ? { memoryId: selected.memoryId, rank: selected.rank } : null, canonicalAuthority: false };
+  }
+  async inspectKnowledgeRelation(left, right) {
+    const evidence = await this.diagnoseWithEquivalence(left, right);
+    const forwardEntailment = probability(evidence.forward, "entailment"); const reverseEntailment = probability(evidence.reverse, "entailment");
+    const result = {
+      left, right, embeddingCosine: evidence.cosine,
+      nli: { forward: evidence.forward, reverse: evidence.reverse, mutualEntailment: Math.min(forwardEntailment, reverseEntailment),
+        entailmentAsymmetry: Math.abs(forwardEntailment - reverseEntailment),
+        maxContradiction: Math.max(probability(evidence.forward, "contradiction"), probability(evidence.reverse, "contradiction")),
+        maxNeutral: Math.max(probability(evidence.forward, "neutral"), probability(evidence.reverse, "neutral")) },
+      paraphraseSimilarity: evidence.equivalence.score, stsScore: evidence.proposition.score,
+      productionKnowledgeEligible: evidence.cosine >= productionKnowledgeFloor,
+      productionAreaRelation: evidence.cosine >= productionKnowledgeFloor ? "EMBEDDING_CANDIDATE" : "NOT_ELIGIBLE",
+      canonicalAuthority: false
+    };
+    return { ...result, shadow: shadowKnowledgeDecision(result) };
+  }
+  async shadowKnowledgeRelation(left, right) { return (await this.inspectKnowledgeRelation(left, right)).shadow; }
+  async runKnowledgeRelationMatrix() {
+    const results = [];
+    for (const pair of KNOWLEDGE_RELATION_MATRIX) results.push({ group: pair.group, expected: pair.expected, ...await this.inspectKnowledgeRelation(pair.left, pair.right) });
+    return results;
+  }
+  async simulateKnowledgeAreas(memories) {
+    const local = [];
+    for (const memory of memories) local.push({ ...memory, embedding: memory.embedding ? new Float32Array(memory.embedding) : await this.encode(memory.content) });
+    const candidates = new Map();
+    for (const memory of local) {
+      const ranked = local.filter(other => other.id !== memory.id).map(other => ({ left: memory, right: other, similarity: cosineSimilarity(memory.embedding, other.embedding) }))
+        .sort((left, right) => right.similarity - left.similarity || String(left.right.id).localeCompare(String(right.right.id))).slice(0, KNOWLEDGE_RELATION_RULES.candidateLimit);
+      for (const pair of ranked) { const key = [pair.left.id, pair.right.id].sort().join("\u0000"); if (!candidates.has(key) || pair.similarity > candidates.get(key).similarity) candidates.set(key, pair); }
+    }
+    const bounded = [...candidates.values()].sort((left, right) => right.similarity - left.similarity).slice(0, KNOWLEDGE_RELATION_RULES.maximumCandidatePairs);
+    const relations = [];
+    for (const pair of bounded) relations.push({ leftId: pair.left.id, rightId: pair.right.id, ...await this.inspectKnowledgeRelation(pair.left.content, pair.right.content) });
+    let clusters = local.map(memory => [memory.id]); const relationFor = (left, right) => relations.find(item => (item.leftId === left && item.rightId === right) || (item.leftId === right && item.rightId === left));
+    const allowedMerges = []; const blockedMerges = [];
+    for (const relation of relations.filter(item => item.shadow.decision === "SAME_AREA")) {
+      const leftCluster = clusters.find(cluster => cluster.includes(relation.leftId)); const rightCluster = clusters.find(cluster => cluster.includes(relation.rightId));
+      if (leftCluster === rightCluster) continue;
+      const boundary = leftCluster.flatMap(left => rightCluster.map(right => relationFor(left, right)));
+      if (boundary.every(item => item?.shadow.decision === "SAME_AREA")) {
+        const merged = [...leftCluster, ...rightCluster].sort(); clusters = clusters.filter(cluster => cluster !== leftCluster && cluster !== rightCluster); clusters.push(merged);
+        allowedMerges.push({ left: leftCluster, right: rightCluster, evidence: boundary.map(item => ({ leftId: item.leftId, rightId: item.rightId, decision: item.shadow.decision })) });
+      } else blockedMerges.push({ left: leftCluster, right: rightCluster, reason: "UNCERTAIN_OR_MISSING_COMPLETE_LINK_EVIDENCE" });
+    }
+    return { productionAreas: deriveKnowledgeDevelopment(local).areas, shadowAreas: clusters.sort((left, right) => left[0].localeCompare(right[0])),
+      candidatePairs: relations, allowedMerges, blockedMerges, candidateLimit: KNOWLEDGE_RELATION_RULES.candidateLimit,
+      maximumCandidatePairs: KNOWLEDGE_RELATION_RULES.maximumCandidatePairs, canonicalAuthority: false, persistence: "NONE" };
   }
   async evaluate(content, memories) {
     const embedding = await this.encode(content);

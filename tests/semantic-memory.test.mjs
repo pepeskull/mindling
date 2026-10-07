@@ -7,6 +7,7 @@ import { CANONICAL_CONSISTENCY_PAIRS, CLEAN_SLATE_IDENTITY_10, CLEAN_SLATE_TRADE
 import { createInferenceQueue, resolveNliLabels, SEMANTIC_MODELS } from "../src/semantic/semantic-model.js";
 import { analyzeIdentityTriangle, evaluateShadowIdentity, selectShadowCandidate } from "../src/semantic/canonical-identity.js";
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../src/brain/knowledge-development.js";
+import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, shadowKnowledgeDecision } from "../src/semantic/knowledge-relation.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
 
@@ -273,4 +274,40 @@ test("semantic area continuity reuses a neural route while unrelated areas may d
   let unrelated;
   for (let index = 0; index < 20; index += 1) { const candidate = brain.evaluateInput(`unrelated route ${index}`, "TEACH", evidence(new Float32Array([0, 1]))); if (candidate.route.synapse !== first.route.synapse) { unrelated = candidate; break; } }
   assert.ok(unrelated); assert.notEqual(unrelated.route.synapse, first.route.synapse);
+});
+
+test("knowledge relation matrix is bounded and includes browser, generalization, and hard-negative evidence", () => {
+  assert.equal(KNOWLEDGE_RELATION_MATRIX.length, 70);
+  const content = JSON.stringify(KNOWLEDGE_RELATION_MATRIX);
+  for (const sentence of ["Stock trading involves buying and selling shares", "Programming requires writing instructions for computers", "Anna enjoys classical music", "Boiling pasta requires hot water", "Aperture affects how much light reaches the sensor", "Traders study market prices", "Astronomers study distant stars"]) assert.match(content, new RegExp(sentence));
+  assert.equal(KNOWLEDGE_RELATION_RULES.candidateLimit, 3); assert.equal(KNOWLEDGE_RELATION_RULES.maximumCandidatePairs, 24);
+});
+
+test("shadow knowledge mechanics distinguish consensus, weak evidence, and uncertainty without authority", () => {
+  const evidence = overrides => ({ embeddingCosine: .8, paraphraseSimilarity: .8, stsScore: .8, productionKnowledgeEligible: true,
+    nli: { maxContradiction: .1 }, ...overrides });
+  assert.equal(shadowKnowledgeDecision(evidence({})).decision, "SAME_AREA");
+  assert.equal(shadowKnowledgeDecision(evidence({ embeddingCosine: .2, paraphraseSimilarity: .2, stsScore: .2, productionKnowledgeEligible: false })).decision, "DIFFERENT_AREA");
+  const uncertain = shadowKnowledgeDecision(evidence({ stsScore: .4 }));
+  assert.equal(uncertain.decision, "UNCERTAIN"); assert.equal(uncertain.canonicalAuthority, false);
+});
+
+test("knowledge diagnostics reuse model evidence and remain read-only", async () => {
+  const semanticLoader = async () => ({ backend: "mock", encode: async text => new Float32Array(text.startsWith("same") ? [1, 0] : [0, 1]),
+    classify: async () => ({ entailment: .1, neutral: .8, contradiction: .1 }) });
+  const support = async () => async text => new Float32Array(text.startsWith("same") ? [1, 0] : [0, 1]);
+  const proposition = async () => async () => ({ rawLogit: 2, score: .88 });
+  const engine = new SemanticEngine(semanticLoader, support, proposition); await engine.initialize();
+  const relation = await engine.inspectKnowledgeRelation("same left", "same right");
+  assert.equal(relation.productionKnowledgeEligible, true); assert.equal(relation.shadow.decision, "SAME_AREA");
+  assert.ok(relation.nli.forward); assert.equal(relation.canonicalAuthority, false);
+  const memories = [
+    { id: "a", content: "same left", embedding: new Float32Array([1, 0]), strength: .32, activations: 1, neuronIds: ["origin", "upper"], synapseIds: ["origin-upper"] },
+    { id: "b", content: "same right", embedding: new Float32Array([1, 0]), strength: .32, activations: 1, neuronIds: ["origin", "upper"], synapseIds: ["origin-upper"] },
+    { id: "c", content: "different", embedding: new Float32Array([0, 1]), strength: .32, activations: 1, neuronIds: ["origin", "right"], synapseIds: ["origin-right"] }
+  ];
+  const before = structuredClone(memories); const simulation = await engine.simulateKnowledgeAreas(memories);
+  assert.equal(simulation.canonicalAuthority, false); assert.equal(simulation.persistence, "NONE");
+  assert.ok(simulation.candidatePairs.length <= KNOWLEDGE_RELATION_RULES.maximumCandidatePairs);
+  assert.deepEqual(memories, before);
 });
