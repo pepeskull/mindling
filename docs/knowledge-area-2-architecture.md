@@ -288,3 +288,15 @@ No semantic classifier, arbitrary score, similarity threshold, model loader, per
 ## Preservation statement
 
 Canonical identity, canonical memories, Teach, production Knowledge Areas and `0.62` threshold, complete-link, neural specialization, semantic routing, five neurons, four synapses, IndexedDB v1, UI, renderer, onboarding, static deployment, and disabled token payments are unchanged. No model, dependency, backend, `/api`, wallet, Stage Preview, M4, taxonomy, dictionary, or benchmark-specific runtime rule was introduced.
+
+## Debug panel
+
+Open the application with `?semantic-debug=1` and select **Knowledge Area 2.0 Debug**. The read-only panel compares current canonical memories and production-derived areas with one neutral provisional shadow area per canonical memory. It exposes actual memory IDs, content, strength, activations, production membership, participating neurons, and `UNCERTAIN` shadow verification state. It refreshes from the existing `STATE_READY` event while open or from its explicit refresh button.
+
+The corresponding copied, serializable snapshot is available after semantic diagnostics initialize:
+
+```js
+window.__MINDLING_SEMANTIC_DEBUG__.knowledgeArea2Audit()
+```
+
+Normal URLs do not construct the panel. The panel performs no IndexedDB operation, semantic inference, merge, canonical mutation, or production-area mutation. Its singleton count is explicitly a provisional diagnostic structure—not a claim of semantic accuracy.

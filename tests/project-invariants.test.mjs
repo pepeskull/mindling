@@ -52,3 +52,15 @@ test("Jina authority is debug-only and absent from production decision modules",
   assert.doesNotMatch(app.split("#installSemanticDiagnostics")[0], /jinaStatus|auditJinaImplementation|runKnowledgeTopicJinaMatrix/);
   assert.doesNotMatch(production, /jina|reranker-v1-tiny-en/i);
 });
+
+test("Knowledge Area 2.0 panel is exact-debug gated and remains read-only", () => {
+  const app = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
+  const panel = readFileSync(new URL("../src/ui/knowledge-area-debug-panel.js", import.meta.url), "utf8");
+  const foundation = readFileSync(new URL("../src/semantic/knowledge-area-foundation.js", import.meta.url), "utf8");
+  assert.match(app, /get\("semantic-debug"\) === "1"/); assert.match(app, /knowledgeArea2Audit/);
+  assert.match(panel, /Knowledge Area 2\.0 Debug/); assert.match(panel, /aria-expanded/); assert.match(panel, /Refresh diagnostics/);
+  assert.match(panel, /STATE_READY/); assert.match(panel, /if \(this\.#open\) this\.refresh\(\)/);
+  assert.match(panel, /No topic hypothesis or verification evidence is available/);
+  assert.doesNotMatch(panel + foundation, /indexedDB|\.put\(|commitLearning|evaluateInput/);
+  assert.doesNotMatch(foundation, /clusterSimilarity|0\.62|MiniLM/);
+});

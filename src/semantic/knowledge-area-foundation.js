@@ -144,6 +144,45 @@ export function buildKnowledgeAreaInspection({ topic, memories, memberships = []
   });
 }
 
+export function buildKnowledgeArea2AuditSnapshot(state, productionDevelopment) {
+  const canonicalMemories = (state?.memories || []).map(memory => ({
+    id: String(memory.id), content: String(memory.content || ""),
+    strength: Number.isFinite(memory.strength) ? memory.strength : null,
+    activations: Number.isFinite(memory.activations) ? memory.activations : null,
+    neuronIds: [...(memory.neuronIds || [])].map(String).sort()
+  }));
+  const memoryById = new Map(canonicalMemories.map(memory => [memory.id, memory]));
+  const productionAreas = (productionDevelopment?.areas || []).map(area => ({
+    id: String(area.id), label: String(area.label || ""),
+    memoryCount: area.memoryCount ?? (area.memoryIds || []).length,
+    cohesion: Number.isFinite(area.cohesion) ? area.cohesion : null,
+    memoryIds: [...(area.memoryIds || [])].map(String).sort(),
+    memories: [...(area.memoryIds || [])].map(String).sort().map(id => memoryById.get(id)).filter(Boolean).map(memory => ({ ...memory }))
+  }));
+  const productionAreaByMemory = new Map(productionAreas.flatMap(area => area.memoryIds.map(memoryId => [memoryId, area.id])));
+  const canonical = canonicalMemories.map(memory => ({ ...memory, productionAreaId: productionAreaByMemory.get(memory.id) || null }));
+  const shadowAreas = canonicalMemories.map(memory => {
+    const topic = createProvisionalTopic(memory);
+    return {
+      ...buildKnowledgeAreaInspection({ topic, memories: canonicalMemories }),
+      topicHypothesis: null,
+      verification: { decision: TOPIC_RELATION.UNCERTAIN, evidence: null, reason: "NO_VALIDATED_TOPIC_VERIFIER" }
+    };
+  });
+  return structuredClone({
+    generatedAt: new Date().toISOString(),
+    canonicalMemoryCount: canonical.length,
+    canonicalMemories: canonical,
+    productionAreas,
+    shadowAreas,
+    summary: { canonicalMemoryCount: canonical.length, productionAreaCount: productionAreas.length,
+      shadowProvisionalAreaCount: shadowAreas.length, verifiedShadowAssignments: 0, uncertainShadowAssignments: shadowAreas.length },
+    verificationStatus: { providerAvailable: false, provider: null, message: "No validated topic verifier connected.",
+      allowedDecisions: Object.values(TOPIC_RELATION) },
+    errors: []
+  });
+}
+
 export const KNOWLEDGE_AREA_2_EVALUATION = Object.freeze({
   bicycleBee: Object.freeze([
     "A bicycle has two wheels and is powered by pedaling.",

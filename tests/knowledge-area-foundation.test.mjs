@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildKnowledgeAreaInspection,
+  buildKnowledgeArea2AuditSnapshot,
   createProvisionalTopic,
   createTopicHypothesis,
   createTopicVerification,
@@ -68,4 +69,28 @@ test("bicycle and bee regression fixture is evaluation data, not runtime authori
   assert.deepEqual(KNOWLEDGE_AREA_2_EVALUATION.expectedStructure.groupedSizes, [3, 3]);
   assert.equal(KNOWLEDGE_AREA_2_EVALUATION.expectedStructure.singletonCount, 4);
   assert.equal(KNOWLEDGE_AREA_2_EVALUATION.runtimeAuthority, false);
+});
+
+test("audit snapshot compares production and provisional areas without mutation or fabricated evidence", () => {
+  const state = { memories }; const before = structuredClone(state);
+  const production = { areas: [{ id: "area-current", label: "Current area", memoryCount: 2, cohesion: .8,
+    memoryIds: ["memory-a", "memory-b"] }] };
+  const snapshot = buildKnowledgeArea2AuditSnapshot(state, production);
+  assert.equal(snapshot.canonicalMemoryCount, 2); assert.equal(snapshot.productionAreas.length, 1);
+  assert.equal(snapshot.shadowAreas.length, 2); assert.equal(snapshot.summary.uncertainShadowAssignments, 2);
+  assert.equal(snapshot.summary.verifiedShadowAssignments, 0); assert.equal(snapshot.verificationStatus.providerAvailable, false);
+  assert.equal(snapshot.verificationStatus.message, "No validated topic verifier connected.");
+  assert.ok(snapshot.shadowAreas.every(area => area.topicHypothesis === null && area.verification.evidence === null));
+  assert.ok(snapshot.shadowAreas.every(area => area.verification.decision === TOPIC_RELATION.UNCERTAIN));
+  assert.deepEqual(state, before);
+  snapshot.canonicalMemories[0].content = "changed copy";
+  assert.deepEqual(state, before);
+});
+
+test("audit snapshot safely handles empty and incomplete canonical state", () => {
+  const empty = buildKnowledgeArea2AuditSnapshot({}, { areas: [] });
+  assert.equal(empty.canonicalMemoryCount, 0); assert.deepEqual(empty.shadowAreas, []);
+  const incomplete = buildKnowledgeArea2AuditSnapshot({ memories: [{ id: "minimal" }] }, { areas: [] });
+  assert.equal(incomplete.canonicalMemories[0].content, "");
+  assert.equal(incomplete.canonicalMemories[0].strength, null); assert.equal(incomplete.canonicalMemories[0].activations, null);
 });

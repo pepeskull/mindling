@@ -9,9 +9,11 @@ import { neuralSeedRecords } from "../brain/neural-seed-state.js";
 import { SemanticEngine } from "../semantic/semantic-engine.js";
 import { runCanonicalConsistency, runCanonicalIdentityEvaluation, runPropositionMatrix, runSemanticCalibration, runSemanticGeneralization } from "../semantic/semantic-diagnostics.js";
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
+import { buildKnowledgeArea2AuditSnapshot } from "../semantic/knowledge-area-foundation.js";
+import { KnowledgeAreaDebugPanel } from "../ui/knowledge-area-debug-panel.js";
 
 export class MindlingApp {
-  #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #learningQueue=Promise.resolve();
+  #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #knowledgeAreaDebug; #learningQueue=Promise.resolve();
   async start(){
     this.#dashboard=new Dashboard(this.#events, (text, mode) => this.#queueInput(text, mode));
     this.#events.on(EVENTS.NEURAL_INPUT, signal => this.#renderer?.signal(signal));
@@ -23,6 +25,10 @@ export class MindlingApp {
     const storedSynapses = saved ? await this.#db.getAll("synapses") : [];
     const pathwayRecords = saved ? await this.#db.getAll("pathways") : [];
     const state = saved ? this.#brain.hydrate({ ...saved, memories, pathwayRecords, ...(storedSynapses.length ? { synapses: storedSynapses } : {}) }) : this.#brain.initialize();
+    if (new URLSearchParams(location.search).get("semantic-debug") === "1") {
+      this.#knowledgeAreaDebug = new KnowledgeAreaDebugPanel(this.#events, () => this.#knowledgeArea2Audit());
+      this.#knowledgeAreaDebug.mount();
+    }
     this.#renderer=new BrainRenderer(document.querySelector("#scene"), selection => this.#events.emit(EVENTS.SCENE_SELECTION, selection));
     const rendering=this.#renderer.initialize(state);
     await rendering;
@@ -57,6 +63,7 @@ export class MindlingApp {
         inspectNeuralParticipation: () => { const state = this.#brain.getState(); const development = deriveKnowledgeDevelopment(state.memories); return state.nodes.map(node => deriveNeuronParticipation(state, node.id, development)); },
         knowledgeAreas: () => deriveKnowledgeDevelopment(this.#brain.getState().memories).areas,
         knowledgeAreaAudit: () => deriveKnowledgeDevelopment(this.#brain.getState().memories),
+        knowledgeArea2Audit: () => this.#knowledgeArea2Audit(),
         neuralSpecialization: () => { const state = this.#brain.getState(); const development = deriveKnowledgeDevelopment(state.memories); return state.nodes.map(node => deriveNeuronParticipation(state, node.id, development)); },
         memoryRoute: memoryId => { const state = this.#brain.getState(); const memory = state.memories.find(item => item.id === memoryId); if (!memory) return null; const areas = deriveKnowledgeDevelopment(state.memories).areas; return { memoryId, neuronIds: memory.neuronIds || [], synapseIds: memory.synapseIds || [], areaIds: areas.filter(area => area.memoryIds.includes(memoryId)).map(area => area.id) }; },
         inspectKnowledgeRelation: (left, right) => this.#semantic.inspectKnowledgeRelation(left, right),
@@ -84,6 +91,10 @@ export class MindlingApp {
         runCanonicalIdentityEvaluation: () => runCanonicalIdentityEvaluation(this.#semantic)
       })
     });
+  }
+  #knowledgeArea2Audit() {
+    const state = this.#brain.getState();
+    return buildKnowledgeArea2AuditSnapshot(state, deriveKnowledgeDevelopment(state.memories));
   }
   #queueInput(text, mode) {
     const task = this.#learningQueue.then(() => this.#processInput(text, mode));
@@ -139,5 +150,5 @@ export class MindlingApp {
     this.#onboarding.hide();
     this.#dashboard.show();
   }
-  destroy(){this.#renderer?.destroy();this.#dashboard?.destroy();this.#db.close();}
+  destroy(){this.#knowledgeAreaDebug?.destroy();this.#renderer?.destroy();this.#dashboard?.destroy();this.#db.close();}
 }
