@@ -11,9 +11,10 @@ import { runCanonicalConsistency, runCanonicalIdentityEvaluation, runProposition
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 import { buildKnowledgeArea2AuditSnapshot } from "../semantic/knowledge-area-foundation.js";
 import { KnowledgeAreaDebugPanel } from "../ui/knowledge-area-debug-panel.js";
+import { discoverTopic, FLAN_TOPIC_MODEL, loadFlanTopicProvider, runFlanMultilingualEvaluation, runFlanRegressionCorpora, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../semantic/knowledge-area-flan.js";
 
 export class MindlingApp {
-  #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #knowledgeAreaDebug; #learningQueue=Promise.resolve();
+  #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #knowledgeAreaDebug; #flanPromise; #flanProvider; #flanError; #ka2SemanticResults={}; #learningQueue=Promise.resolve();
   async start(){
     this.#dashboard=new Dashboard(this.#events, (text, mode) => this.#queueInput(text, mode));
     this.#events.on(EVENTS.NEURAL_INPUT, signal => this.#renderer?.signal(signal));
@@ -26,7 +27,12 @@ export class MindlingApp {
     const pathwayRecords = saved ? await this.#db.getAll("pathways") : [];
     const state = saved ? this.#brain.hydrate({ ...saved, memories, pathwayRecords, ...(storedSynapses.length ? { synapses: storedSynapses } : {}) }) : this.#brain.initialize();
     if (new URLSearchParams(location.search).get("semantic-debug") === "1") {
-      this.#knowledgeAreaDebug = new KnowledgeAreaDebugPanel(this.#events, () => this.#knowledgeArea2Audit());
+      this.#knowledgeAreaDebug = new KnowledgeAreaDebugPanel(this.#events, () => this.#knowledgeArea2Audit(), {
+        load: () => this.#loadKnowledgeArea2Provider(),
+        discover: () => this.#runKnowledgeArea2Discovery(),
+        verify: () => this.#runKnowledgeArea2Verification(),
+        shadow: () => this.#runKnowledgeArea2Shadow()
+      });
       this.#knowledgeAreaDebug.mount();
     }
     this.#renderer=new BrainRenderer(document.querySelector("#scene"), selection => this.#events.emit(EVENTS.SCENE_SELECTION, selection));
@@ -64,6 +70,14 @@ export class MindlingApp {
         knowledgeAreas: () => deriveKnowledgeDevelopment(this.#brain.getState().memories).areas,
         knowledgeAreaAudit: () => deriveKnowledgeDevelopment(this.#brain.getState().memories),
         knowledgeArea2Audit: () => this.#knowledgeArea2Audit(),
+        knowledgeArea2Status: () => this.#knowledgeArea2ProviderStatus(),
+        loadKnowledgeArea2Candidate: () => this.#loadKnowledgeArea2Provider().then(() => this.#knowledgeArea2ProviderStatus()),
+        runKnowledgeArea2Discovery: () => this.#runKnowledgeArea2Discovery(),
+        runKnowledgeArea2Verification: () => this.#runKnowledgeArea2Verification(),
+        runKnowledgeArea2Shadow: () => this.#runKnowledgeArea2Shadow(),
+        runKnowledgeArea2FrozenEvaluation: async () => runFlanTopicEvaluation(await this.#loadKnowledgeArea2Provider()),
+        runKnowledgeArea2MultilingualEvaluation: async () => runFlanMultilingualEvaluation(await this.#loadKnowledgeArea2Provider()),
+        runKnowledgeArea2RegressionCorpora: async () => runFlanRegressionCorpora(await this.#loadKnowledgeArea2Provider()),
         neuralSpecialization: () => { const state = this.#brain.getState(); const development = deriveKnowledgeDevelopment(state.memories); return state.nodes.map(node => deriveNeuronParticipation(state, node.id, development)); },
         memoryRoute: memoryId => { const state = this.#brain.getState(); const memory = state.memories.find(item => item.id === memoryId); if (!memory) return null; const areas = deriveKnowledgeDevelopment(state.memories).areas; return { memoryId, neuronIds: memory.neuronIds || [], synapseIds: memory.synapseIds || [], areaIds: areas.filter(area => area.memoryIds.includes(memoryId)).map(area => area.id) }; },
         inspectKnowledgeRelation: (left, right) => this.#semantic.inspectKnowledgeRelation(left, right),
@@ -94,7 +108,41 @@ export class MindlingApp {
   }
   #knowledgeArea2Audit() {
     const state = this.#brain.getState();
-    return buildKnowledgeArea2AuditSnapshot(state, deriveKnowledgeDevelopment(state.memories));
+    return buildKnowledgeArea2AuditSnapshot(state, deriveKnowledgeDevelopment(state.memories), {
+      providerStatus: this.#knowledgeArea2ProviderStatus(), results: this.#ka2SemanticResults
+    });
+  }
+  #knowledgeArea2ProviderStatus() {
+    return { providerAvailable: Boolean(this.#flanProvider), provider: FLAN_TOPIC_MODEL.id,
+      model: FLAN_TOPIC_MODEL, status: this.#flanProvider ? "ready" : this.#flanError ? "unavailable" : this.#flanPromise ? "loading" : "not-loaded",
+      backend: this.#flanProvider?.backend || null, loadMilliseconds: this.#flanProvider?.loadMilliseconds ?? null,
+      message: this.#flanProvider ? "Shadow topic candidate loaded; semantic quality is not validated." : this.#flanError ? String(this.#flanError.message || this.#flanError) : "No validated topic verifier connected.",
+      lastError: this.#flanError ? String(this.#flanError.message || this.#flanError) : null,
+      allowedDecisions: ["SAME_AREA", "DIFFERENT_AREA", "UNCERTAIN"], authority: "SHADOW_ONLY", persistence: "NONE" };
+  }
+  #loadKnowledgeArea2Provider() {
+    if (!this.#flanPromise) this.#flanPromise = loadFlanTopicProvider().then(provider => (this.#flanProvider = provider))
+      .catch(error => { this.#flanError = error; throw error; });
+    return this.#flanPromise;
+  }
+  async #runKnowledgeArea2Discovery() {
+    const provider = await this.#loadKnowledgeArea2Provider(); const memories = this.#brain.getState().memories; const discoveries = [];
+    for (const memory of memories.slice(0, 12)) discoveries.push(await discoverTopic(provider, memory));
+    this.#ka2SemanticResults = { ...this.#ka2SemanticResults, discoveries, discoveryBound: 12 };
+    return structuredClone(discoveries);
+  }
+  async #runKnowledgeArea2Verification() {
+    const provider = await this.#loadKnowledgeArea2Provider(); const memories = this.#brain.getState().memories.slice(0, 12); const verifications = [];
+    for (let left = 0; left < memories.length; left += 1) for (let right = left + 1; right < memories.length; right += 1)
+      verifications.push(await verifyTopicPair(provider, memories[left], memories[right]));
+    this.#ka2SemanticResults = { ...this.#ka2SemanticResults, verifications, verificationBound: 12 };
+    return structuredClone(verifications);
+  }
+  async #runKnowledgeArea2Shadow() {
+    const provider = await this.#loadKnowledgeArea2Provider();
+    const shadow = await simulateFlanKnowledgeAreas(provider, this.#brain.getState().memories);
+    this.#ka2SemanticResults = { ...this.#ka2SemanticResults, shadow };
+    return structuredClone(shadow);
   }
   #queueInput(text, mode) {
     const task = this.#learningQueue.then(() => this.#processInput(text, mode));

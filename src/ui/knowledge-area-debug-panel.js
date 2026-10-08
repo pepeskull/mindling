@@ -51,9 +51,9 @@ const areaCard = ({ title, subtitle, memories, status, className = "" }) => {
 };
 
 export class KnowledgeAreaDebugPanel {
-  #events; #snapshot; #unsubscribe; #root; #panel; #content; #open = false;
+  #events; #snapshot; #actions; #unsubscribe; #root; #panel; #content; #open = false; #busy = false;
 
-  constructor(events, snapshot) { this.#events = events; this.#snapshot = snapshot; }
+  constructor(events, snapshot, actions = {}) { this.#events = events; this.#snapshot = snapshot; this.#actions = actions; }
 
   mount() {
     if (this.#root) return;
@@ -86,6 +86,14 @@ export class KnowledgeAreaDebugPanel {
     catch (error) { this.#content.replaceChildren(element("p", "ka2-debug-error", `Diagnostics unavailable: ${error?.message || error}`)); }
   }
 
+  async #runAction(name) {
+    if (this.#busy || !this.#actions[name]) return;
+    this.#busy = true; this.#render(this.#snapshot());
+    try { await this.#actions[name](); }
+    catch (error) { this.#content.prepend(element("p", "ka2-debug-error", `Candidate error: ${error?.message || error}`)); }
+    finally { this.#busy = false; this.#render(this.#snapshot()); }
+  }
+
   #render(snapshot) {
     const summary = element("section", "ka2-debug-summary");
     summary.append(metric("Canonical memories", snapshot.summary.canonicalMemoryCount), metric("Production areas", snapshot.summary.productionAreaCount),
@@ -93,7 +101,30 @@ export class KnowledgeAreaDebugPanel {
       metric("Uncertain assignments", snapshot.summary.uncertainShadowAssignments));
     const explanation = element("p", "ka2-debug-note", "Production areas use the current production derivation. Shadow areas are deliberately provisional singletons; their count is not a semantic quality score.");
     const provider = element("section", "ka2-debug-provider");
-    provider.append(element("h3", "", "Topic verification"), element("p", "", snapshot.verificationStatus.message));
+    provider.append(element("h3", "", "Local semantic candidate"), element("p", "", snapshot.verificationStatus.message));
+    if (snapshot.verificationStatus.model) provider.append(element("small", "", `${snapshot.verificationStatus.model.id} · ${snapshot.verificationStatus.model.revision} · ${snapshot.verificationStatus.status}${snapshot.verificationStatus.backend ? ` · ${snapshot.verificationStatus.backend}` : ""}`));
+    const actions = element("div", "ka2-debug-actions");
+    for (const [name, label] of [["load", "Load semantic candidate"], ["discover", "Run Topic Discovery"], ["verify", "Run Topic Verification"], ["shadow", "Run Shadow Knowledge Areas"]]) {
+      const button = element("button", "", label); button.type = "button"; button.disabled = this.#busy;
+      button.addEventListener("click", () => this.#runAction(name)); actions.append(button);
+    }
+    provider.append(actions);
+    const semantic = snapshot.semanticDiagnostics;
+    if (semantic?.discoveries?.length) {
+      const section = element("div", "ka2-debug-results"); section.append(element("h4", "", "Model-generated subject hypotheses"));
+      for (const item of semantic.discoveries) section.append(element("p", "", `${item.memoryId}: ${item.subject || "No grounded subject returned"} (${Math.round(item.inferenceMilliseconds)} ms)`));
+      provider.append(section);
+    }
+    if (semantic?.verifications?.length) {
+      const section = element("div", "ka2-debug-results"); section.append(element("h4", "", "Model verification evidence"));
+      for (const item of semantic.verifications) section.append(element("p", "", `${item.leftId} ↔ ${item.rightId}: ${item.decision} · ${item.reason} (${Math.round(item.inferenceMilliseconds)} ms)`));
+      provider.append(section);
+    }
+    if (semantic?.shadow?.areas?.length) {
+      const section = element("div", "ka2-debug-results"); section.append(element("h4", "", "Complete-boundary shadow assignments"));
+      for (const area of semantic.shadow.areas) section.append(element("p", "", `${area.id}: ${area.memoryIds.join(", ")} · hypotheses: ${area.subjectHypotheses.join(" / ") || "none"}`));
+      provider.append(section);
+    }
     const canonicalSection = element("section", "ka2-debug-section"); canonicalSection.append(element("h3", "", "Canonical memories"));
     canonicalSection.append(memoryList(snapshot.canonicalMemories.map(memory => ({ ...memory,
       membershipStatus: memory.productionAreaId ? `Production: ${memory.productionAreaId}` : "Production: unassigned" }))));

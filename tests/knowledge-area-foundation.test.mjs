@@ -11,6 +11,7 @@ import {
   TOPIC_HYPOTHESIS_STATUS,
   TOPIC_RELATION
 } from "../src/semantic/knowledge-area-foundation.js";
+import { discoverTopic, FLAN_TOPIC_MODEL, parseFlanTopicDecision, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
 
 const memories = [
   { id: "memory-b", content: "Second canonical fact", strength: .4, activations: 2, neuronIds: ["N-02", "N-03"] },
@@ -93,4 +94,35 @@ test("audit snapshot safely handles empty and incomplete canonical state", () =>
   const incomplete = buildKnowledgeArea2AuditSnapshot({ memories: [{ id: "minimal" }] }, { areas: [] });
   assert.equal(incomplete.canonicalMemories[0].content, "");
   assert.equal(incomplete.canonicalMemories[0].strength, null); assert.equal(incomplete.canonicalMemories[0].activations, null);
+});
+
+test("FLAN shadow provider preserves real outputs and fails malformed decisions closed", async () => {
+  const outputs = ["Bicycles", "SAME_AREA", "SAME_AREA"];
+  const provider = { generate: async () => ({ text: outputs.shift(), inferenceMilliseconds: 3 }) };
+  const discovery = await discoverTopic(provider, { id: "a", content: "A bicycle has two wheels." });
+  assert.equal(discovery.subject, "Bicycles"); assert.equal(discovery.rawOutput, "Bicycles"); assert.equal(discovery.membershipAuthority, false);
+  const verified = await verifyTopicPair(provider, { id: "a", content: "A bicycle has two wheels." }, { id: "b", content: "Cyclists wear helmets." });
+  assert.equal(verified.decision, TOPIC_RELATION.SAME_AREA); assert.equal(verified.productionAuthority, false);
+  assert.equal(parseFlanTopicDecision("maybe"), TOPIC_RELATION.UNCERTAIN);
+  assert.equal(FLAN_TOPIC_MODEL.revision, "76988c16f73cadb2c2e13e2d7d85608944223105");
+});
+
+test("fixed verifier evidence produces deterministic complete-boundary shadow groups", async () => {
+  const provider = { generate: async prompt => ({
+    text: prompt.includes("Subject:") ? "transport" : prompt.includes("Statement A: alpha") || prompt.includes("Statement A: beta") ? "SAME_AREA" : "DIFFERENT_AREA",
+    inferenceMilliseconds: 1
+  }) };
+  const input = [{ id: "a", content: "alpha" }, { id: "b", content: "beta" }];
+  const first = await simulateFlanKnowledgeAreas(provider, input); const second = await simulateFlanKnowledgeAreas(provider, [...input].reverse());
+  assert.deepEqual(first.areas, second.areas); assert.deepEqual(first.areas[0].memoryIds, ["a", "b"]);
+  assert.equal(first.productionAuthority, false); assert.equal(first.persistence, "NONE");
+  assert.deepEqual(input, [{ id: "a", content: "alpha" }, { id: "b", content: "beta" }]);
+});
+
+test("frozen evaluation reports coverage without treating mock output as semantic quality", async () => {
+  const provider = { generate: async () => ({ text: "UNCERTAIN", inferenceMilliseconds: 0 }) };
+  const evaluation = await runFlanTopicEvaluation(provider);
+  assert.equal(evaluation.rows.length, 70); assert.equal(evaluation.summary.coverage, 0); assert.equal(evaluation.summary.abstentionRate, 1);
+  assert.equal(evaluation.summary.hardNegativeCount, 5); assert.equal(evaluation.calibrationUsed, false);
+  assert.equal(evaluation.productionAuthority, false); assert.equal(evaluation.persistence, "NONE");
 });

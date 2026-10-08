@@ -64,3 +64,15 @@ test("Knowledge Area 2.0 panel is exact-debug gated and remains read-only", () =
   assert.doesNotMatch(panel + foundation, /indexedDB|\.put\(|commitLearning|evaluateInput/);
   assert.doesNotMatch(foundation, /clusterSimilarity|0\.62|MiniLM/);
 });
+
+test("Phase 3 candidate remains explicit, lazy, and outside production semantic decisions", () => {
+  const app = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
+  const provider = readFileSync(new URL("../src/semantic/knowledge-area-flan.js", import.meta.url), "utf8");
+  const production = ["src/brain/brain-engine.js", "src/brain/memory-evaluator.js", "src/brain/knowledge-development.js", "src/semantic/semantic-engine.js"]
+    .map(path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8")).join("\n");
+  assert.match(app, /loadKnowledgeArea2Candidate/); assert.match(app, /runKnowledgeArea2Shadow/);
+  assert.match(provider, /onnx-community\/flan-t5-small-ONNX/); assert.match(provider, /text2text-generation/);
+  assert.match(provider, /do_sample: false/); assert.match(provider, /DIRECTIONAL_DISAGREEMENT/);
+  assert.doesNotMatch(production, /flan-t5|FLAN_TOPIC_MODEL|simulateFlanKnowledgeAreas/);
+  assert.doesNotMatch(provider, /indexedDB|commitLearning|\.put\(/);
+});

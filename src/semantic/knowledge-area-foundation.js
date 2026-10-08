@@ -144,7 +144,7 @@ export function buildKnowledgeAreaInspection({ topic, memories, memberships = []
   });
 }
 
-export function buildKnowledgeArea2AuditSnapshot(state, productionDevelopment) {
+export function buildKnowledgeArea2AuditSnapshot(state, productionDevelopment, semanticDiagnostics = null) {
   const canonicalMemories = (state?.memories || []).map(memory => ({
     id: String(memory.id), content: String(memory.content || ""),
     strength: Number.isFinite(memory.strength) ? memory.strength : null,
@@ -177,8 +177,9 @@ export function buildKnowledgeArea2AuditSnapshot(state, productionDevelopment) {
     shadowAreas,
     summary: { canonicalMemoryCount: canonical.length, productionAreaCount: productionAreas.length,
       shadowProvisionalAreaCount: shadowAreas.length, verifiedShadowAssignments: 0, uncertainShadowAssignments: shadowAreas.length },
-    verificationStatus: { providerAvailable: false, provider: null, message: "No validated topic verifier connected.",
+    verificationStatus: semanticDiagnostics?.providerStatus || { providerAvailable: false, provider: null, message: "No validated topic verifier connected.",
       allowedDecisions: Object.values(TOPIC_RELATION) },
+    semanticDiagnostics: semanticDiagnostics ? structuredClone(semanticDiagnostics.results || {}) : null,
     errors: []
   });
 }
