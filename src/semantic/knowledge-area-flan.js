@@ -16,7 +16,18 @@ export const FLAN_TOPIC_MODEL = Object.freeze({
 });
 
 const now = () => globalThis.performance?.now?.() ?? Date.now();
-const generatedText = output => String(Array.isArray(output) ? output[0]?.generated_text : output?.generated_text || "").trim();
+export const extractFlanGeneratedText = output => {
+  const record = Array.isArray(output) ? output[0] : output;
+  if (!record || typeof record.generated_text !== "string") throw new Error("FLAN text2text pipeline returned an unexpected response shape");
+  return record.generated_text.trim();
+};
+const responseMetadata = output => ({
+  container: Array.isArray(output) ? "array" : typeof output,
+  length: Array.isArray(output) ? output.length : null,
+  keys: Object.keys(Array.isArray(output) ? output[0] || {} : output || {}),
+  generatedTextType: typeof (Array.isArray(output) ? output[0]?.generated_text : output?.generated_text),
+  generatedTextLength: String(Array.isArray(output) ? output[0]?.generated_text ?? "" : output?.generated_text ?? "").length
+});
 
 export async function loadFlanTopicProvider() {
   const startedAt = now();
@@ -35,10 +46,26 @@ export async function loadFlanTopicProvider() {
   const run = createInferenceQueue();
   const generate = (prompt, maximumTokens) => run(async () => {
     const inferenceStartedAt = now();
-    const output = await generator(prompt, { max_new_tokens: maximumTokens, do_sample: false, num_beams: 1 });
-    return { text: generatedText(output), inferenceMilliseconds: now() - inferenceStartedAt };
+    const generationParameters = { max_new_tokens: maximumTokens, min_new_tokens: 1, do_sample: false, num_beams: 1 };
+    const output = await generator(prompt, generationParameters);
+    return { text: extractFlanGeneratedText(output), rawResponse: structuredClone(output), responseMetadata: responseMetadata(output), generationParameters,
+      inferenceMilliseconds: now() - inferenceStartedAt };
   });
-  return { ...FLAN_TOPIC_MODEL, backend, attempts, loadMilliseconds: now() - startedAt, generate };
+  const modelContract = { decoderStartTokenId: generator.model?.config?.decoder_start_token_id ?? null,
+    eosTokenId: generator.model?.config?.eos_token_id ?? null, padTokenId: generator.model?.config?.pad_token_id ?? null,
+    tokenizerEosTokenId: generator.tokenizer?.eos_token_id ?? null, tokenizerPadTokenId: generator.tokenizer?.pad_token_id ?? null };
+  return { ...FLAN_TOPIC_MODEL, backend, attempts, loadMilliseconds: now() - startedAt, generate, modelContract };
+}
+
+export async function auditFlanGeneration(provider) {
+  const prompt = "Translate English to German: The house is wonderful.";
+  const result = await provider.generate(prompt, 32);
+  return { model: FLAN_TOPIC_MODEL.id, revision: FLAN_TOPIC_MODEL.revision, backend: provider.backend, prompt,
+    pipelineResponse: result.rawResponse, responseMetadata: result.responseMetadata,
+    generatedText: result.text, generatedTextLength: result.text.length, generationParameters: result.generationParameters,
+    modelContract: provider.modelContract || null, inferenceMilliseconds: result.inferenceMilliseconds,
+    conclusion: result.text ? "NONEMPTY_GENERATION_OBSERVED" : "EMPTY_GENERATION_OBSERVED",
+    extractionContract: "output[0].generated_text", canonicalAuthority: false, productionAuthority: false, persistence: "NONE" };
 }
 
 export async function discoverTopic(provider, memory) {

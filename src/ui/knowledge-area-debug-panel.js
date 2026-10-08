@@ -104,12 +104,17 @@ export class KnowledgeAreaDebugPanel {
     provider.append(element("h3", "", "Local semantic candidate"), element("p", "", snapshot.verificationStatus.message));
     if (snapshot.verificationStatus.model) provider.append(element("small", "", `${snapshot.verificationStatus.model.id} · ${snapshot.verificationStatus.model.revision} · ${snapshot.verificationStatus.status}${snapshot.verificationStatus.backend ? ` · ${snapshot.verificationStatus.backend}` : ""}`));
     const actions = element("div", "ka2-debug-actions");
-    for (const [name, label] of [["load", "Load semantic candidate"], ["discover", "Run Topic Discovery"], ["verify", "Run Topic Verification"], ["shadow", "Run Shadow Knowledge Areas"]]) {
+    for (const [name, label] of [["load", "Load semantic candidate"], ["sanity", "Run Generation Sanity"], ["discover", "Run Topic Discovery"], ["verify", "Run Topic Verification"], ["shadow", "Run Shadow Knowledge Areas"]]) {
       const button = element("button", "", label); button.type = "button"; button.disabled = this.#busy;
       button.addEventListener("click", () => this.#runAction(name)); actions.append(button);
     }
     provider.append(actions);
     const semantic = snapshot.semanticDiagnostics;
+    if (semantic?.generationSanity) {
+      const item = semantic.generationSanity; const section = element("div", "ka2-debug-results");
+      section.append(element("h4", "", "Generation sanity"), element("p", "", `${item.conclusion}: ${item.generatedText || "(empty)"} · ${Math.round(item.inferenceMilliseconds)} ms`));
+      provider.append(section);
+    }
     if (semantic?.discoveries?.length) {
       const section = element("div", "ka2-debug-results"); section.append(element("h4", "", "Model-generated subject hypotheses"));
       for (const item of semantic.discoveries) section.append(element("p", "", `${item.memoryId}: ${item.subject || "No grounded subject returned"} (${Math.round(item.inferenceMilliseconds)} ms)`));

@@ -11,7 +11,7 @@ import { runCanonicalConsistency, runCanonicalIdentityEvaluation, runProposition
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 import { buildKnowledgeArea2AuditSnapshot } from "../semantic/knowledge-area-foundation.js";
 import { KnowledgeAreaDebugPanel } from "../ui/knowledge-area-debug-panel.js";
-import { discoverTopic, FLAN_TOPIC_MODEL, loadFlanTopicProvider, runFlanMultilingualEvaluation, runFlanRegressionCorpora, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../semantic/knowledge-area-flan.js";
+import { auditFlanGeneration, discoverTopic, FLAN_TOPIC_MODEL, loadFlanTopicProvider, runFlanMultilingualEvaluation, runFlanRegressionCorpora, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../semantic/knowledge-area-flan.js";
 
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #knowledgeAreaDebug; #flanPromise; #flanProvider; #flanError; #ka2SemanticResults={}; #learningQueue=Promise.resolve();
@@ -31,7 +31,8 @@ export class MindlingApp {
         load: () => this.#loadKnowledgeArea2Provider(),
         discover: () => this.#runKnowledgeArea2Discovery(),
         verify: () => this.#runKnowledgeArea2Verification(),
-        shadow: () => this.#runKnowledgeArea2Shadow()
+        shadow: () => this.#runKnowledgeArea2Shadow(),
+        sanity: () => this.#runKnowledgeArea2GenerationSanity()
       });
       this.#knowledgeAreaDebug.mount();
     }
@@ -78,6 +79,7 @@ export class MindlingApp {
         runKnowledgeArea2FrozenEvaluation: async () => runFlanTopicEvaluation(await this.#loadKnowledgeArea2Provider()),
         runKnowledgeArea2MultilingualEvaluation: async () => runFlanMultilingualEvaluation(await this.#loadKnowledgeArea2Provider()),
         runKnowledgeArea2RegressionCorpora: async () => runFlanRegressionCorpora(await this.#loadKnowledgeArea2Provider()),
+        auditKnowledgeArea2Generation: () => this.#runKnowledgeArea2GenerationSanity(),
         neuralSpecialization: () => { const state = this.#brain.getState(); const development = deriveKnowledgeDevelopment(state.memories); return state.nodes.map(node => deriveNeuronParticipation(state, node.id, development)); },
         memoryRoute: memoryId => { const state = this.#brain.getState(); const memory = state.memories.find(item => item.id === memoryId); if (!memory) return null; const areas = deriveKnowledgeDevelopment(state.memories).areas; return { memoryId, neuronIds: memory.neuronIds || [], synapseIds: memory.synapseIds || [], areaIds: areas.filter(area => area.memoryIds.includes(memoryId)).map(area => area.id) }; },
         inspectKnowledgeRelation: (left, right) => this.#semantic.inspectKnowledgeRelation(left, right),
@@ -116,6 +118,7 @@ export class MindlingApp {
     return { providerAvailable: Boolean(this.#flanProvider), provider: FLAN_TOPIC_MODEL.id,
       model: FLAN_TOPIC_MODEL, status: this.#flanProvider ? "ready" : this.#flanError ? "unavailable" : this.#flanPromise ? "loading" : "not-loaded",
       backend: this.#flanProvider?.backend || null, loadMilliseconds: this.#flanProvider?.loadMilliseconds ?? null,
+      modelContract: this.#flanProvider?.modelContract || null,
       message: this.#flanProvider ? "Shadow topic candidate loaded; semantic quality is not validated." : this.#flanError ? String(this.#flanError.message || this.#flanError) : "No validated topic verifier connected.",
       lastError: this.#flanError ? String(this.#flanError.message || this.#flanError) : null,
       allowedDecisions: ["SAME_AREA", "DIFFERENT_AREA", "UNCERTAIN"], authority: "SHADOW_ONLY", persistence: "NONE" };
@@ -143,6 +146,11 @@ export class MindlingApp {
     const shadow = await simulateFlanKnowledgeAreas(provider, this.#brain.getState().memories);
     this.#ka2SemanticResults = { ...this.#ka2SemanticResults, shadow };
     return structuredClone(shadow);
+  }
+  async #runKnowledgeArea2GenerationSanity() {
+    const sanity = await auditFlanGeneration(await this.#loadKnowledgeArea2Provider());
+    this.#ka2SemanticResults = { ...this.#ka2SemanticResults, generationSanity: sanity };
+    return structuredClone(sanity);
   }
   #queueInput(text, mode) {
     const task = this.#learningQueue.then(() => this.#processInput(text, mode));

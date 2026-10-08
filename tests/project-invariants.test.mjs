@@ -73,6 +73,7 @@ test("Phase 3 candidate remains explicit, lazy, and outside production semantic 
   assert.match(app, /loadKnowledgeArea2Candidate/); assert.match(app, /runKnowledgeArea2Shadow/);
   assert.match(provider, /onnx-community\/flan-t5-small-ONNX/); assert.match(provider, /text2text-generation/);
   assert.match(provider, /do_sample: false/); assert.match(provider, /DIRECTIONAL_DISAGREEMENT/);
+  assert.match(provider, /min_new_tokens: 1/); assert.match(app, /auditKnowledgeArea2Generation/);
   assert.doesNotMatch(production, /flan-t5|FLAN_TOPIC_MODEL|simulateFlanKnowledgeAreas/);
   assert.doesNotMatch(provider, /indexedDB|commitLearning|\.put\(/);
 });

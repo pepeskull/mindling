@@ -11,7 +11,7 @@ import {
   TOPIC_HYPOTHESIS_STATUS,
   TOPIC_RELATION
 } from "../src/semantic/knowledge-area-foundation.js";
-import { discoverTopic, FLAN_TOPIC_MODEL, parseFlanTopicDecision, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
+import { auditFlanGeneration, discoverTopic, extractFlanGeneratedText, FLAN_TOPIC_MODEL, parseFlanTopicDecision, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
 
 const memories = [
   { id: "memory-b", content: "Second canonical fact", strength: .4, activations: 2, neuronIds: ["N-02", "N-03"] },
@@ -125,4 +125,21 @@ test("frozen evaluation reports coverage without treating mock output as semanti
   assert.equal(evaluation.rows.length, 70); assert.equal(evaluation.summary.coverage, 0); assert.equal(evaluation.summary.abstentionRate, 1);
   assert.equal(evaluation.summary.hardNegativeCount, 5); assert.equal(evaluation.calibrationUsed, false);
   assert.equal(evaluation.productionAuthority, false); assert.equal(evaluation.persistence, "NONE");
+});
+
+test("FLAN response extraction follows the text2text pipeline contract", () => {
+  assert.equal(extractFlanGeneratedText([{ generated_text: "  Das Haus ist wunderbar. " }]), "Das Haus ist wunderbar.");
+  assert.throws(() => extractFlanGeneratedText([{ text: "wrong key" }]), /unexpected response shape/);
+  assert.throws(() => extractFlanGeneratedText([]), /unexpected response shape/);
+});
+
+test("generation sanity preserves response metadata and requires one non-EOS token", async () => {
+  const provider = { backend: "mock-webgpu", modelContract: { decoderStartTokenId: 0, eosTokenId: 1, padTokenId: 0 },
+    generate: async () => ({ text: "Das Haus ist wunderbar.", rawResponse: [{ generated_text: "Das Haus ist wunderbar." }],
+      responseMetadata: { container: "array", length: 1, keys: ["generated_text"], generatedTextType: "string", generatedTextLength: 24 },
+      generationParameters: { max_new_tokens: 32, min_new_tokens: 1, do_sample: false, num_beams: 1 }, inferenceMilliseconds: 4 }) };
+  const audit = await auditFlanGeneration(provider);
+  assert.equal(audit.conclusion, "NONEMPTY_GENERATION_OBSERVED"); assert.equal(audit.pipelineResponse[0].generated_text, "Das Haus ist wunderbar.");
+  assert.equal(audit.generationParameters.min_new_tokens, 1); assert.equal(audit.extractionContract, "output[0].generated_text");
+  assert.equal(audit.productionAuthority, false); assert.equal(audit.persistence, "NONE");
 });
