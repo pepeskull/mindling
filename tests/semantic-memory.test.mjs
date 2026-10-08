@@ -9,6 +9,7 @@ import { analyzeIdentityTriangle, evaluateShadowIdentity, selectShadowCandidate 
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../src/brain/knowledge-development.js";
 import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, shadowKnowledgeDecision } from "../src/semantic/knowledge-relation.js";
 import { compareEmbeddingVectors, dotProduct, KNOWLEDGE_TOPIC_E5_RULES, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, meanPoolWithAttentionMask, normalizeEmbedding, runE5ImplementationAudit, simulateTopicAreas, summarizeTopicScores, vectorStatistics } from "../src/semantic/knowledge-topic-e5.js";
+import { auditJinaModel, inspectJinaPair, JINA_DIAGNOSTIC_LIMITS, JINA_TOPIC_MODEL, KNOWLEDGE_TOPIC_TEN, runJinaMatrix, runJinaMultilingual, sigmoid, simulateJinaAreas, summarizeJinaRows } from "../src/semantic/knowledge-topic-jina.js";
 
 if (!globalThis.CustomEvent) globalThis.CustomEvent = class extends Event { constructor(type, init = {}) { super(type); this.detail = init.detail; } };
 
@@ -427,4 +428,79 @@ test("bounded E5 implementation audit reports contract checks without persistenc
   assert.equal(audit.normalization.dimension, 4); assert.ok(Math.abs(audit.normalization.postNorm - 1) < 1e-6);
   assert.equal(audit.bufferIndependence.independentBuffers, true); assert.equal(audit.pairSanity.length, 7);
   assert.equal(audit.backendComparison.status, "NOT_TESTED"); assert.equal(audit.canonicalAuthority, false); assert.equal(audit.persistence, "NONE");
+});
+
+const createMockJinaModel = () => ({
+  ...JINA_TOPIC_MODEL,
+  backend: "mock-wasm",
+  attempts: [],
+  loadMilliseconds: 12,
+  tokenizer: JINA_TOPIC_MODEL.id,
+  modelClass: "AutoModelForSequenceClassification",
+  runtime: "Transformers.js 3.8.1",
+  async score(left, right) {
+    const rawScore = (left.length % 11) / 5 + (right.length % 7) / 10;
+    return { rawScore, relevanceScore: sigmoid(rawScore), inferenceMilliseconds: 2,
+      contract: { tokenizerInputs: ["input_ids", "attention_mask", "token_type_ids"], inputShapes: { input_ids: [1, 12] },
+        outputKeys: ["logits"], outputShapes: { logits: [1, 1] }, selectedOutput: "logits", selectedShape: [1, 1],
+        outputInterpretation: "RAW_RELEVANCE_LOGIT", documentedTransform: "SIGMOID_FOR_RELEVANCE_RANKING", truncation: true, padding: true, id2label: { 0: "LABEL_0" } }
+    };
+  }
+});
+
+test("Jina topic candidate remains lazy and reports bidirectional raw evidence", async () => {
+  let initializations = 0; const jinaLoader = async () => { initializations += 1; return createMockJinaModel(); };
+  const engine = new SemanticEngine(loader, async () => async () => new Float32Array([1, 0]), async () => async () => ({ rawLogit: 1, score: .7 }),
+    async () => ({ encode: async () => new Float32Array([1, 0]) }), jinaLoader);
+  assert.equal(engine.jinaStatus.status, "idle"); assert.equal(initializations, 0);
+  await engine.initialize(); assert.equal(initializations, 0);
+  const result = await engine.inspectKnowledgeTopicJina("short", "a longer document");
+  assert.equal(initializations, 1); assert.equal(engine.jinaStatus.status, "ready");
+  assert.equal(typeof result.forwardRawScore, "number"); assert.equal(typeof result.reverseRawScore, "number");
+  assert.equal(result.meanRawScore, (result.forwardRawScore + result.reverseRawScore) / 2);
+  assert.equal(result.rawScoreAsymmetry, Math.abs(result.forwardRawScore - result.reverseRawScore));
+  assert.equal(result.canonicalAuthority, false); assert.equal(result.authority, "SHADOW_ONLY"); assert.equal(result.persistence, "NONE");
+});
+
+test("Jina diagnostics reuse frozen fixtures and do not select a threshold", async () => {
+  const model = createMockJinaModel();
+  const matrix = await runJinaMatrix(model);
+  assert.equal(matrix.expectedPairCount, 70); assert.equal(matrix.rows.length, 70); assert.equal(matrix.failures.length, 0);
+  assert.equal(matrix.summary.groupCounts.SAME_TOPIC, 25); assert.equal(matrix.summary.groupCounts.DIFFERENT_TOPIC, 45);
+  assert.equal(matrix.summary.groupCounts.HARD_NEGATIVE, 5); assert.equal(matrix.summary.groupCounts.SAME_TOPIC_DIFFERENT_STRUCTURE, 4);
+  assert.equal(matrix.summary.thresholdSelected, false); assert.equal(matrix.summary.classificationEvaluated, false);
+  assert.equal(matrix.calibrationStatus, "INSUFFICIENT_CALIBRATION");
+  const multilingual = await runJinaMultilingual(model);
+  assert.equal(multilingual.rows.length, KNOWLEDGE_TOPIC_MULTILINGUAL.length); assert.equal(multilingual.multilingualAuthorityClaimed, false);
+  assert.equal(multilingual.thresholdTuningAllowed, false);
+});
+
+test("Jina ten-memory simulation is isolated and refuses uncalibrated merges", async () => {
+  const fixtureBefore = [...KNOWLEDGE_TOPIC_TEN]; const simulation = await simulateJinaAreas(createMockJinaModel());
+  assert.equal(simulation.status, "INSUFFICIENT_CALIBRATION"); assert.equal(simulation.memories.length, 10);
+  assert.equal(simulation.pairEvidence.length, JINA_DIAGNOSTIC_LIMITS.maximumSimulationPairs);
+  assert.equal(simulation.diagnosticView.length, 10); assert.ok(simulation.diagnosticView.every(area => area.memoryIds.length === 1));
+  assert.equal(simulation.clusteringPolicy, "NOT_RUN_WITHOUT_INDEPENDENT_CALIBRATION");
+  assert.equal(simulation.canonicalAuthority, false); assert.equal(simulation.persistence, "NONE");
+  assert.deepEqual(KNOWLEDGE_TOPIC_TEN, fixtureBefore);
+  assert.deepEqual(KNOWLEDGE_TOPIC_TEN.slice(0, 9), KNOWLEDGE_TOPIC_NINE);
+});
+
+test("Jina audit remains uncertain outside a real browser and score summaries preserve raw values", async () => {
+  const model = createMockJinaModel(); const audit = await auditJinaModel(model);
+  assert.equal(audit.conclusion, "IMPLEMENTATION_UNCERTAIN"); assert.equal(audit.modelContract.selectedOutput, "logits");
+  assert.equal(audit.scoreExtraction.probabilityAssumed, false); assert.equal(audit.repeatedInput.deterministic, true);
+  assert.equal(audit.semanticQualityConclusion, "NOT_EVALUATED_BY_IMPLEMENTATION_AUDIT");
+  const pair = await inspectJinaPair(model, "left", "right");
+  const summary = summarizeJinaRows([{ group: "one", expected: "SAME_TOPIC", ...pair }, { group: "hard-negative", expected: "DIFFERENT_TOPIC", ...pair }]);
+  assert.equal(summary.distributions.SAME_TOPIC.count, 1); assert.equal(summary.distributions.HARD_NEGATIVE.count, 1);
+  assert.equal(summary.thresholdSelected, false); assert.equal(sigmoid(0), .5);
+});
+
+test("Jina initialization failures remain explicit and unavailable", async () => {
+  const engine = new SemanticEngine(loader, async () => async () => new Float32Array([1, 0]), async () => async () => ({ rawLogit: 1, score: .7 }),
+    async () => ({ encode: async () => new Float32Array([1, 0]) }), async () => { throw new Error("Jina ONNX unsupported"); });
+  await engine.initialize();
+  await assert.rejects(() => engine.inspectKnowledgeTopicJina("left", "right"), /Jina ONNX unsupported/);
+  assert.equal(engine.jinaStatus.status, "unavailable"); assert.match(engine.jinaStatus.lastError, /Jina ONNX unsupported/);
 });

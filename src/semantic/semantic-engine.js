@@ -2,6 +2,7 @@ import { loadEquivalenceCandidate, loadKnowledgeTopicCandidate, loadPropositionC
 import { evaluateShadowIdentity, selectShadowCandidate } from "./canonical-identity.js";
 import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, productionKnowledgeFloor, shadowKnowledgeDecision } from "./knowledge-relation.js";
 import { inspectTopicPair, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, runE5ImplementationAudit, simulateTopicAreas, summarizeTopicScores } from "./knowledge-topic-e5.js";
+import { auditJinaModel, inspectJinaPair, JINA_TOPIC_MODEL, loadJinaTopicCandidate, runJinaMatrix, runJinaMultilingual, simulateJinaAreas } from "./knowledge-topic-jina.js";
 import { deriveKnowledgeDevelopment } from "../brain/knowledge-development.js";
 
 export const SEMANTIC_RULES = Object.freeze({
@@ -56,8 +57,8 @@ function decidePair(similarity, forward, reverse) {
 }
 
 export class SemanticEngine {
-  #loader; #equivalenceLoader; #propositionLoader; #knowledgeTopicLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #knowledgeTopicPromise; #knowledgeTopicModel; #knowledgeTopicError; #status = "idle"; #diagnosticTracing = false; #lastProductionTrace = null;
-  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate, propositionLoader = loadPropositionCandidate, knowledgeTopicLoader = loadKnowledgeTopicCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; this.#propositionLoader = propositionLoader; this.#knowledgeTopicLoader = knowledgeTopicLoader; }
+  #loader; #equivalenceLoader; #propositionLoader; #knowledgeTopicLoader; #jinaLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #knowledgeTopicPromise; #knowledgeTopicModel; #knowledgeTopicError; #jinaPromise; #jinaModel; #jinaError; #status = "idle"; #diagnosticTracing = false; #lastProductionTrace = null;
+  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate, propositionLoader = loadPropositionCandidate, knowledgeTopicLoader = loadKnowledgeTopicCandidate, jinaLoader = loadJinaTopicCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; this.#propositionLoader = propositionLoader; this.#knowledgeTopicLoader = knowledgeTopicLoader; this.#jinaLoader = jinaLoader; }
   get status() { return this.#status; }
   get modelInfo() { return SEMANTIC_MODELS; }
   get runtimeInfo() { return this.#models ? { backend: this.#models.backend, encoder: SEMANTIC_MODELS.encoder, pairClassifier: SEMANTIC_MODELS.pairClassifier } : null; }
@@ -222,6 +223,24 @@ export class SemanticEngine {
     const source = activeIsFrozenCorpus ? memories.map(memory => ({ id: memory.id, content: memory.content })) : KNOWLEDGE_TOPIC_NINE.map((content, index) => ({ id: `e5-nine-${index + 1}`, content }));
     return simulateTopicAreas(source, text => model.encode(text), cosineSimilarity, options.threshold ?? null);
   }
+  get jinaStatus() {
+    return { model: JINA_TOPIC_MODEL.id, revision: JINA_TOPIC_MODEL.revision,
+      status: this.#jinaModel ? "ready" : this.#jinaError ? "unavailable" : this.#jinaPromise ? "loading" : "idle",
+      backend: this.#jinaModel?.backend || null, quantization: JINA_TOPIC_MODEL.dtype,
+      authority: "SHADOW_ONLY", persistence: "NONE", lastError: this.#jinaError ? String(this.#jinaError.message || this.#jinaError) : null,
+      ...(this.#jinaModel ? { loadMilliseconds: this.#jinaModel.loadMilliseconds, providerAttempts: this.#jinaModel.attempts,
+        artifact: JINA_TOPIC_MODEL.artifact, approximateGraphBytes: JINA_TOPIC_MODEL.approximateGraphBytes } : {}) };
+  }
+  async #getJinaModel() {
+    if (!this.#jinaPromise) this.#jinaPromise = this.#jinaLoader().then(model => (this.#jinaModel = model))
+      .catch(error => { this.#jinaError = error; throw error; });
+    return this.#jinaPromise;
+  }
+  async inspectKnowledgeTopicJina(left, right) { return inspectJinaPair(await this.#getJinaModel(), left, right); }
+  async runKnowledgeTopicJinaMatrix() { return runJinaMatrix(await this.#getJinaModel()); }
+  async runKnowledgeTopicJinaMultilingual() { return runJinaMultilingual(await this.#getJinaModel()); }
+  async simulateKnowledgeAreasJina() { return simulateJinaAreas(await this.#getJinaModel()); }
+  async auditJinaImplementation() { return auditJinaModel(await this.#getJinaModel()); }
   async simulateKnowledgeAreas(memories) {
     const local = [];
     for (const memory of memories) local.push({ ...memory, embedding: memory.embedding ? new Float32Array(memory.embedding) : await this.encode(memory.content) });

@@ -43,3 +43,12 @@ test("E5 topic experiment is debug-gated and absent from normal startup", () => 
   assert.match(model, /knowledgeTopicCandidate: "Xenova\/multilingual-e5-small"/);
   assert.match(model, /`\$\{prefix\}: \$\{text\}`/); assert.match(model, /new Float32Array\(embedding\)/);
 });
+
+test("Jina authority is debug-only and absent from production decision modules", () => {
+  const app = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
+  const production = ["src/brain/brain-engine.js", "src/brain/memory-evaluator.js", "src/brain/knowledge-development.js"]
+    .map(path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8")).join("\n");
+  assert.match(app, /jinaStatus/); assert.match(app, /auditJinaImplementation/); assert.match(app, /runKnowledgeTopicJinaMatrix/);
+  assert.doesNotMatch(app.split("#installSemanticDiagnostics")[0], /jinaStatus|auditJinaImplementation|runKnowledgeTopicJinaMatrix/);
+  assert.doesNotMatch(production, /jina|reranker-v1-tiny-en/i);
+});
