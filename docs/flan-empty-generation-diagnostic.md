@@ -2,7 +2,7 @@
 
 **Scope:** Knowledge Area 2.0 shadow provider only
 
-**Diagnosis:** `PREMATURE_EOS_ALLOWED_BY_GENERATION_CONFIGURATION`
+**Diagnosis:** `UNDETERMINED_GENERATION_FAILURE`
 
 **Semantic candidate quality:** still unproven
 
@@ -27,9 +27,9 @@ Source: [Transformers.js 3.8.1 `Text2TextGenerationPipeline`](https://github.com
 
 Mindling already read `output[0].generated_text`, which is the documented and implemented response location. The prior extractor was therefore not responsible for converting nonempty generated text to an empty string.
 
-## Root cause
+## Root-cause boundary
 
-The original generation call set `max_new_tokens`, deterministic sampling, and one beam, but did not require any non-EOS token. FLAN-T5 uses decoder start/pad token `0` and EOS token `1`. If the first predicted token is EOS, Transformers.js decodes only special tokens with `skip_special_tokens: true`, yielding the observed empty `generated_text`.
+The original generation call allowed immediate EOS. FLAN-T5 uses decoder start/pad token `0` and EOS token `1`, so a special-token-only sequence would decode to the observed empty `generated_text`.
 
 The pipeline does not expose token IDs in its normal response, so the historical call cannot prove the exact `[decoder-start, EOS]` sequence after the fact. However:
 
@@ -39,7 +39,7 @@ The pipeline does not expose token IDs in its normal response, so the historical
 - decoded special-token-only output is the pipeline behavior consistent with those observations;
 - the old configuration permitted immediate EOS.
 
-This distinguishes a **model-generation stop** from an **incorrect response-extraction bug**. If generation remains empty after the correction, the next diagnostic is backend/artifact behavior, not another parser change.
+This confirms that the empty string originated in generation/decoding rather than incorrect response extraction, but it did not confirm the generated token IDs or prove premature EOS. Real-browser evidence subsequently showed that `min_new_tokens: 1` still returned empty output on WebGPU. The exact generation failure therefore remains undetermined pending raw-token inspection and a controlled WebGPU/WASM comparison.
 
 ## Smallest justified shadow correction
 
@@ -49,7 +49,7 @@ All shadow generation now adds:
 min_new_tokens: 1
 ```
 
-alongside the existing bounded `max_new_tokens`, `do_sample: false`, and `num_beams: 1`. This prevents EOS from terminating generation before at least one ordinary output token is attempted. It does not change prompts, topic decisions, semantic evaluation criteria, or production behavior.
+alongside the existing bounded `max_new_tokens`, `do_sample: false`, and `num_beams: 1`. This was a justified guard against zero-token generation, but real-browser evidence shows it was not sufficient. It remains bounded and does not change prompts, topic decisions, semantic evaluation criteria, or production behavior.
 
 The response extractor is also strict: it accepts only a pipeline object containing a string `generated_text`. Unexpected shapes now reject explicitly instead of being silently converted to empty output.
 

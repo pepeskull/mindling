@@ -104,7 +104,7 @@ export class KnowledgeAreaDebugPanel {
     provider.append(element("h3", "", "Local semantic candidate"), element("p", "", snapshot.verificationStatus.message));
     if (snapshot.verificationStatus.model) provider.append(element("small", "", `${snapshot.verificationStatus.model.id} · ${snapshot.verificationStatus.model.revision} · ${snapshot.verificationStatus.status}${snapshot.verificationStatus.backend ? ` · ${snapshot.verificationStatus.backend}` : ""}`));
     const actions = element("div", "ka2-debug-actions");
-    for (const [name, label] of [["load", "Load semantic candidate"], ["sanity", "Run Generation Sanity"], ["discover", "Run Topic Discovery"], ["verify", "Run Topic Verification"], ["shadow", "Run Shadow Knowledge Areas"]]) {
+    for (const [name, label] of [["load", "Load semantic candidate"], ["sanity", "Run Generation Sanity"], ["compareBackends", "Compare WebGPU / WASM"], ["discover", "Run Topic Discovery"], ["verify", "Run Topic Verification"], ["shadow", "Run Shadow Knowledge Areas"]]) {
       const button = element("button", "", label); button.type = "button"; button.disabled = this.#busy;
       button.addEventListener("click", () => this.#runAction(name)); actions.append(button);
     }
@@ -113,6 +113,12 @@ export class KnowledgeAreaDebugPanel {
     if (semantic?.generationSanity) {
       const item = semantic.generationSanity; const section = element("div", "ka2-debug-results");
       section.append(element("h4", "", "Generation sanity"), element("p", "", `${item.conclusion}: ${item.generatedText || "(empty)"} · ${Math.round(item.inferenceMilliseconds)} ms`));
+      provider.append(section);
+    }
+    if (semantic?.backendComparison) {
+      const comparison = semantic.backendComparison; const section = element("div", "ka2-debug-results");
+      section.append(element("h4", "", `Backend comparison · ${comparison.interpretation}`));
+      for (const item of [comparison.webgpu, comparison.wasm]) section.append(element("p", "", `${item.requestedBackend}: actual ${item.actualBackend || "none"} · load ${item.loadStatus} ${Math.round(item.loadMilliseconds || 0)} ms · generation ${item.generationStatus}${item.generatedText !== undefined ? ` · ${item.generatedText || "(empty)"} · ${Math.round(item.inferenceMilliseconds || 0)} ms` : ""}${item.initializationError || item.generationError ? ` · ${item.initializationError || item.generationError}` : ""}`));
       provider.append(section);
     }
     if (semantic?.discoveries?.length) {

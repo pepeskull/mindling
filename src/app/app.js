@@ -11,7 +11,7 @@ import { runCanonicalConsistency, runCanonicalIdentityEvaluation, runProposition
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 import { buildKnowledgeArea2AuditSnapshot } from "../semantic/knowledge-area-foundation.js";
 import { KnowledgeAreaDebugPanel } from "../ui/knowledge-area-debug-panel.js";
-import { auditFlanGeneration, discoverTopic, FLAN_TOPIC_MODEL, loadFlanTopicProvider, runFlanMultilingualEvaluation, runFlanRegressionCorpora, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../semantic/knowledge-area-flan.js";
+import { auditFlanGeneration, compareFlanBackends, discoverTopic, FLAN_TOPIC_MODEL, loadFlanTopicProvider, runFlanMultilingualEvaluation, runFlanRegressionCorpora, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../semantic/knowledge-area-flan.js";
 
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #knowledgeAreaDebug; #flanPromise; #flanProvider; #flanError; #ka2SemanticResults={}; #learningQueue=Promise.resolve();
@@ -32,7 +32,8 @@ export class MindlingApp {
         discover: () => this.#runKnowledgeArea2Discovery(),
         verify: () => this.#runKnowledgeArea2Verification(),
         shadow: () => this.#runKnowledgeArea2Shadow(),
-        sanity: () => this.#runKnowledgeArea2GenerationSanity()
+        sanity: () => this.#runKnowledgeArea2GenerationSanity(),
+        compareBackends: () => this.#compareKnowledgeArea2Backends()
       });
       this.#knowledgeAreaDebug.mount();
     }
@@ -80,6 +81,7 @@ export class MindlingApp {
         runKnowledgeArea2MultilingualEvaluation: async () => runFlanMultilingualEvaluation(await this.#loadKnowledgeArea2Provider()),
         runKnowledgeArea2RegressionCorpora: async () => runFlanRegressionCorpora(await this.#loadKnowledgeArea2Provider()),
         auditKnowledgeArea2Generation: () => this.#runKnowledgeArea2GenerationSanity(),
+        compareKnowledgeArea2Backends: () => this.#compareKnowledgeArea2Backends(),
         neuralSpecialization: () => { const state = this.#brain.getState(); const development = deriveKnowledgeDevelopment(state.memories); return state.nodes.map(node => deriveNeuronParticipation(state, node.id, development)); },
         memoryRoute: memoryId => { const state = this.#brain.getState(); const memory = state.memories.find(item => item.id === memoryId); if (!memory) return null; const areas = deriveKnowledgeDevelopment(state.memories).areas; return { memoryId, neuronIds: memory.neuronIds || [], synapseIds: memory.synapseIds || [], areaIds: areas.filter(area => area.memoryIds.includes(memoryId)).map(area => area.id) }; },
         inspectKnowledgeRelation: (left, right) => this.#semantic.inspectKnowledgeRelation(left, right),
@@ -151,6 +153,11 @@ export class MindlingApp {
     const sanity = await auditFlanGeneration(await this.#loadKnowledgeArea2Provider());
     this.#ka2SemanticResults = { ...this.#ka2SemanticResults, generationSanity: sanity };
     return structuredClone(sanity);
+  }
+  async #compareKnowledgeArea2Backends() {
+    const backendComparison = await compareFlanBackends();
+    this.#ka2SemanticResults = { ...this.#ka2SemanticResults, backendComparison };
+    return structuredClone(backendComparison);
   }
   #queueInput(text, mode) {
     const task = this.#learningQueue.then(() => this.#processInput(text, mode));

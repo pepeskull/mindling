@@ -29,19 +29,35 @@ const responseMetadata = output => ({
   generatedTextLength: String(Array.isArray(output) ? output[0]?.generated_text ?? "" : output?.generated_text ?? "").length
 });
 
-export async function loadFlanTopicProvider() {
+const safeProgress = event => ({ status: String(event?.status || "unknown"), file: event?.file ? String(event.file) : null,
+  name: event?.name ? String(event.name) : null, loaded: Number.isFinite(event?.loaded) ? event.loaded : null,
+  total: Number.isFinite(event?.total) ? event.total : null });
+const disposeValues = values => { for (const value of Object.values(values || {})) if (typeof value?.dispose === "function") value.dispose(); };
+
+export async function loadFlanTopicProvider({ backend: requestedBackend = null, allowFallback = true } = {}) {
   const startedAt = now();
   const { env, pipeline } = await import(SEMANTIC_MODELS.runtime);
   env.useBrowserCache = true; env.useWasmCache = true;
   const options = { dtype: FLAN_TOPIC_MODEL.dtype, revision: FLAN_TOPIC_MODEL.revision };
-  const attempts = []; let generator; let backend = "wasm";
-  if (globalThis.navigator?.gpu) {
-    try { generator = await pipeline("text2text-generation", FLAN_TOPIC_MODEL.id, { ...options, device: "webgpu" }); backend = "webgpu"; }
-    catch (error) { attempts.push({ backend: "webgpu", error: String(error?.message || error) }); }
+  const attempts = []; const artifactEvents = []; let generator; let backend = requestedBackend || "wasm";
+  const load = device => pipeline("text2text-generation", FLAN_TOPIC_MODEL.id, { ...options, device,
+    progress_callback: event => { if (artifactEvents.length < 80) artifactEvents.push(safeProgress(event)); } });
+  if (requestedBackend) {
+    const attemptStartedAt = now();
+    try { generator = await load(requestedBackend); }
+    catch (error) { attempts.push({ backend: requestedBackend, milliseconds: now() - attemptStartedAt, error: String(error?.message || error) }); throw error; }
+  } else if (globalThis.navigator?.gpu) {
+    const attemptStartedAt = now();
+    try { generator = await load("webgpu"); backend = "webgpu"; }
+    catch (error) {
+      attempts.push({ backend: "webgpu", milliseconds: now() - attemptStartedAt, error: String(error?.message || error) });
+      if (!allowFallback) throw error;
+    }
   }
   if (!generator) {
-    try { generator = await pipeline("text2text-generation", FLAN_TOPIC_MODEL.id, { ...options, device: "wasm" }); }
-    catch (error) { attempts.push({ backend: "wasm", error: String(error?.message || error) }); throw error; }
+    const attemptStartedAt = now();
+    try { generator = await load("wasm"); backend = "wasm"; }
+    catch (error) { attempts.push({ backend: "wasm", milliseconds: now() - attemptStartedAt, error: String(error?.message || error) }); throw error; }
   }
   const run = createInferenceQueue();
   const generate = (prompt, maximumTokens) => run(async () => {
@@ -54,18 +70,66 @@ export async function loadFlanTopicProvider() {
   const modelContract = { decoderStartTokenId: generator.model?.config?.decoder_start_token_id ?? null,
     eosTokenId: generator.model?.config?.eos_token_id ?? null, padTokenId: generator.model?.config?.pad_token_id ?? null,
     tokenizerEosTokenId: generator.tokenizer?.eos_token_id ?? null, tokenizerPadTokenId: generator.tokenizer?.pad_token_id ?? null };
-  return { ...FLAN_TOPIC_MODEL, backend, attempts, loadMilliseconds: now() - startedAt, generate, modelContract };
+  const inspectTokens = (prompt, maximumTokens) => run(async () => {
+    const generationParameters = { max_new_tokens: maximumTokens, min_new_tokens: 1, do_sample: false, num_beams: 1 };
+    let inputs; let tokenIds;
+    try {
+      inputs = generator.tokenizer([prompt], { padding: true, truncation: true });
+      tokenIds = await generator.model.generate({ ...inputs, ...generationParameters });
+      return { dimensions: [...tokenIds.dims], tokenIds: [...tokenIds.data].slice(0, 64).map(Number),
+        decodedWithSpecialTokens: generator.tokenizer.batch_decode(tokenIds, { skip_special_tokens: false }),
+        decodedWithoutSpecialTokens: generator.tokenizer.batch_decode(tokenIds, { skip_special_tokens: true }), generationParameters };
+    } finally { tokenIds?.dispose?.(); disposeValues(inputs); }
+  });
+  return { ...FLAN_TOPIC_MODEL, requestedBackend, backend, attempts, artifactEvents, loadMilliseconds: now() - startedAt,
+    generate, inspectTokens, modelContract, dispose: () => generator.dispose?.() };
 }
 
 export async function auditFlanGeneration(provider) {
   const prompt = "Translate English to German: The house is wonderful.";
   const result = await provider.generate(prompt, 32);
-  return { model: FLAN_TOPIC_MODEL.id, revision: FLAN_TOPIC_MODEL.revision, backend: provider.backend, prompt,
+  const tokenAudit = !result.text && provider.inspectTokens ? await provider.inspectTokens(prompt, 32) : null;
+  return { model: FLAN_TOPIC_MODEL.id, revision: FLAN_TOPIC_MODEL.revision, requestedBackend: provider.requestedBackend || provider.backend,
+    backend: provider.backend, prompt,
     pipelineResponse: result.rawResponse, responseMetadata: result.responseMetadata,
     generatedText: result.text, generatedTextLength: result.text.length, generationParameters: result.generationParameters,
-    modelContract: provider.modelContract || null, inferenceMilliseconds: result.inferenceMilliseconds,
+    modelContract: provider.modelContract || null, tokenAudit, inferenceMilliseconds: result.inferenceMilliseconds,
     conclusion: result.text ? "NONEMPTY_GENERATION_OBSERVED" : "EMPTY_GENERATION_OBSERVED",
     extractionContract: "output[0].generated_text", canonicalAuthority: false, productionAuthority: false, persistence: "NONE" };
+}
+
+const backendDiagnostic = async (backend, loader) => {
+  const startedAt = now(); let provider;
+  try { provider = await loader({ backend, allowFallback: false }); }
+  catch (error) { return { requestedBackend: backend, actualBackend: null, loadStatus: "FAILED", loadMilliseconds: now() - startedAt,
+    initializationError: String(error?.message || error), generationStatus: "NOT_RUN", generationError: null }; }
+  try {
+    const audit = await auditFlanGeneration(provider);
+    return { requestedBackend: backend, actualBackend: provider.backend, loadStatus: "READY", loadMilliseconds: provider.loadMilliseconds,
+      artifactRequestEvents: provider.artifactEvents || [], quantization: provider.dtype, expectedArtifactPolicy: "Transformers.js dtype=q8 selection",
+      generationStatus: "COMPLETE", generationError: null, ...audit };
+  } catch (error) {
+    return { requestedBackend: backend, actualBackend: provider.backend, loadStatus: "READY", loadMilliseconds: provider.loadMilliseconds,
+      artifactRequestEvents: provider.artifactEvents || [], quantization: provider.dtype, expectedArtifactPolicy: "Transformers.js dtype=q8 selection",
+      generationStatus: "FAILED", generationError: String(error?.message || error) };
+  } finally { await provider.dispose?.(); }
+};
+
+export async function compareFlanBackends(loader = loadFlanTopicProvider) {
+  const webgpu = await backendDiagnostic("webgpu", loader);
+  const wasm = await backendDiagnostic("wasm", loader);
+  let interpretation = "INCONCLUSIVE";
+  if (webgpu.generationStatus === "COMPLETE" && wasm.generationStatus === "COMPLETE") {
+    if (!webgpu.generatedText && wasm.generatedText) interpretation = "WEBGPU_SPECIFIC_GENERATION_FAILURE";
+    else if (!webgpu.generatedText && !wasm.generatedText) interpretation = "BOTH_BACKENDS_EMPTY";
+    else if (webgpu.generatedText && wasm.generatedText) interpretation = "BOTH_BACKENDS_NONEMPTY";
+    else interpretation = "WASM_SPECIFIC_GENERATION_FAILURE";
+  } else if (wasm.loadStatus === "FAILED" || wasm.generationStatus === "FAILED") interpretation = "WASM_UNAVAILABLE_OR_FAILED";
+  return { model: FLAN_TOPIC_MODEL.id, revision: FLAN_TOPIC_MODEL.revision,
+    prompt: "Translate English to German: The house is wonderful.",
+    generationParameters: { max_new_tokens: 32, min_new_tokens: 1, do_sample: false, num_beams: 1 },
+    sessionsIndependent: true, fallbackAllowed: false, webgpu, wasm, interpretation,
+    canonicalAuthority: false, productionAuthority: false, persistence: "NONE" };
 }
 
 export async function discoverTopic(provider, memory) {

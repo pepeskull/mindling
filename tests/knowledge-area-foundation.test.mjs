@@ -11,7 +11,7 @@ import {
   TOPIC_HYPOTHESIS_STATUS,
   TOPIC_RELATION
 } from "../src/semantic/knowledge-area-foundation.js";
-import { auditFlanGeneration, discoverTopic, extractFlanGeneratedText, FLAN_TOPIC_MODEL, parseFlanTopicDecision, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
+import { auditFlanGeneration, compareFlanBackends, discoverTopic, extractFlanGeneratedText, FLAN_TOPIC_MODEL, parseFlanTopicDecision, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
 
 const memories = [
   { id: "memory-b", content: "Second canonical fact", strength: .4, activations: 2, neuronIds: ["N-02", "N-03"] },
@@ -142,4 +142,45 @@ test("generation sanity preserves response metadata and requires one non-EOS tok
   assert.equal(audit.conclusion, "NONEMPTY_GENERATION_OBSERVED"); assert.equal(audit.pipelineResponse[0].generated_text, "Das Haus ist wunderbar.");
   assert.equal(audit.generationParameters.min_new_tokens, 1); assert.equal(audit.extractionContract, "output[0].generated_text");
   assert.equal(audit.productionAuthority, false); assert.equal(audit.persistence, "NONE");
+});
+
+test("empty generation audit includes bounded raw token decoding when available", async () => {
+  const provider = { backend: "mock-webgpu", modelContract: { decoderStartTokenId: 0, eosTokenId: 1, padTokenId: 0 },
+    generate: async () => ({ text: "", rawResponse: [{ generated_text: "" }], responseMetadata: { generatedTextLength: 0 },
+      generationParameters: { max_new_tokens: 32, min_new_tokens: 1, do_sample: false, num_beams: 1 }, inferenceMilliseconds: 2 }),
+    inspectTokens: async () => ({ dimensions: [1, 2], tokenIds: [0, 1], decodedWithSpecialTokens: ["<pad></s>"], decodedWithoutSpecialTokens: [""] }) };
+  const audit = await auditFlanGeneration(provider);
+  assert.equal(audit.conclusion, "EMPTY_GENERATION_OBSERVED"); assert.deepEqual(audit.tokenAudit.tokenIds, [0, 1]);
+  assert.deepEqual(audit.tokenAudit.decodedWithoutSpecialTokens, [""]);
+});
+
+test("backend comparison creates explicit independent sessions without fallback", async () => {
+  const calls = []; const disposed = [];
+  const loader = async options => {
+    calls.push({ ...options }); const backend = options.backend;
+    return { ...FLAN_TOPIC_MODEL, requestedBackend: backend, backend, loadMilliseconds: backend === "webgpu" ? 10 : 20,
+      artifactEvents: [{ status: "ready", file: `${backend}.onnx` }], modelContract: { eosTokenId: 1 },
+      generate: async () => ({ text: backend === "wasm" ? "Das Haus ist wunderbar." : "", rawResponse: [{ generated_text: backend === "wasm" ? "Das Haus ist wunderbar." : "" }],
+        responseMetadata: { container: "array", length: 1, keys: ["generated_text"], generatedTextType: "string", generatedTextLength: backend === "wasm" ? 24 : 0 },
+        generationParameters: { max_new_tokens: 32, min_new_tokens: 1, do_sample: false, num_beams: 1 }, inferenceMilliseconds: 3 }),
+      dispose: () => disposed.push(backend) };
+  };
+  const comparison = await compareFlanBackends(loader);
+  assert.deepEqual(calls, [{ backend: "webgpu", allowFallback: false }, { backend: "wasm", allowFallback: false }]);
+  assert.deepEqual(disposed, ["webgpu", "wasm"]); assert.equal(comparison.sessionsIndependent, true); assert.equal(comparison.fallbackAllowed, false);
+  assert.equal(comparison.webgpu.actualBackend, "webgpu"); assert.equal(comparison.wasm.actualBackend, "wasm");
+  assert.equal(comparison.interpretation, "WEBGPU_SPECIFIC_GENERATION_FAILURE"); assert.equal(comparison.productionAuthority, false);
+});
+
+test("backend comparison reports WASM initialization failure separately", async () => {
+  const loader = async ({ backend }) => {
+    if (backend === "wasm") throw new Error("unsupported WASM operator");
+    return { ...FLAN_TOPIC_MODEL, requestedBackend: backend, backend, loadMilliseconds: 1, artifactEvents: [],
+      generate: async () => ({ text: "Nicht leer", rawResponse: [{ generated_text: "Nicht leer" }], responseMetadata: {},
+        generationParameters: { max_new_tokens: 32, min_new_tokens: 1, do_sample: false, num_beams: 1 }, inferenceMilliseconds: 1 }), dispose() {} };
+  };
+  const comparison = await compareFlanBackends(loader);
+  assert.equal(comparison.wasm.loadStatus, "FAILED"); assert.equal(comparison.wasm.generationStatus, "NOT_RUN");
+  assert.match(comparison.wasm.initializationError, /unsupported WASM operator/);
+  assert.equal(comparison.interpretation, "WASM_UNAVAILABLE_OR_FAILED");
 });
