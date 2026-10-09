@@ -24,7 +24,7 @@ textures, and the original dependency manifest.
 
 ## Milestone 1 decisions
 
-Play Mindling does not adopt Amelia's monolithic application controller. `BrainEngine` owns the
+Mindling does not adopt Amelia's monolithic application controller. `BrainEngine` owns the
 canonical neural graph and emits snapshots. `BrainRenderer` only validates and presents those
 snapshots. A scene view implements a small lifecycle (`mount`, `update`, `resize`, `render`, and
 `destroy`) so the current Neural Seed can later be replaced by an Amelia-derived view without
