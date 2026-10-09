@@ -11,7 +11,7 @@ import {
   TOPIC_HYPOTHESIS_STATUS,
   TOPIC_RELATION
 } from "../src/semantic/knowledge-area-foundation.js";
-import { auditFlanGeneration, compareFlanBackends, discoverTopic, extractFlanGeneratedText, FLAN_TOPIC_MODEL, parseFlanTopicDecision, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
+import { auditFlanGeneration, compareFlanBackends, discoverTopic, extractFlanGeneratedText, FLAN_SHADOW_RUNTIME, FLAN_TOPIC_MODEL, loadFlanShadowProvider, parseFlanTopicDecision, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
 
 const memories = [
   { id: "memory-b", content: "Second canonical fact", strength: .4, activations: 2, neuronIds: ["N-02", "N-03"] },
@@ -98,12 +98,23 @@ test("audit snapshot safely handles empty and incomplete canonical state", () =>
 
 test("FLAN shadow provider preserves real outputs and fails malformed decisions closed", async () => {
   const outputs = ["Bicycles", "SAME_AREA", "SAME_AREA"];
-  const provider = { generate: async () => ({ text: outputs.shift(), inferenceMilliseconds: 3 }) };
+  const provider = { backend: "wasm", generate: async () => ({ text: outputs.shift(), inferenceMilliseconds: 3 }) };
   const discovery = await discoverTopic(provider, { id: "a", content: "A bicycle has two wheels." });
   assert.equal(discovery.subject, "Bicycles"); assert.equal(discovery.rawOutput, "Bicycles"); assert.equal(discovery.membershipAuthority, false);
+  assert.equal(discovery.backend, "wasm");
   const verified = await verifyTopicPair(provider, { id: "a", content: "A bicycle has two wheels." }, { id: "b", content: "Cyclists wear helmets." });
   assert.equal(verified.decision, TOPIC_RELATION.SAME_AREA); assert.equal(verified.productionAuthority, false);
+  assert.equal(verified.backend, "wasm"); assert.equal(verified.forwardRawOutput, "SAME_AREA");
   assert.equal(parseFlanTopicDecision("maybe"), TOPIC_RELATION.UNCERTAIN);
+  assert.equal(FLAN_TOPIC_MODEL.revision, "76988c16f73cadb2c2e13e2d7d85608944223105");
+});
+
+test("normal FLAN shadow loading pins WASM and forbids silent fallback", async () => {
+  const calls = [];
+  const provider = await loadFlanShadowProvider(async options => { calls.push({ ...options }); return { backend: options.backend }; });
+  assert.deepEqual(FLAN_SHADOW_RUNTIME, { backend: "wasm", allowFallback: false });
+  assert.deepEqual(calls, [{ backend: "wasm", allowFallback: false }]);
+  assert.equal(provider.backend, "wasm");
   assert.equal(FLAN_TOPIC_MODEL.revision, "76988c16f73cadb2c2e13e2d7d85608944223105");
 });
 

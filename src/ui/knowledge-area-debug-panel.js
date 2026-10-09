@@ -102,7 +102,7 @@ export class KnowledgeAreaDebugPanel {
     const explanation = element("p", "ka2-debug-note", "Production areas use the current production derivation. Shadow areas are deliberately provisional singletons; their count is not a semantic quality score.");
     const provider = element("section", "ka2-debug-provider");
     provider.append(element("h3", "", "Local semantic candidate"), element("p", "", snapshot.verificationStatus.message));
-    if (snapshot.verificationStatus.model) provider.append(element("small", "", `${snapshot.verificationStatus.model.id} · ${snapshot.verificationStatus.model.revision} · ${snapshot.verificationStatus.status}${snapshot.verificationStatus.backend ? ` · ${snapshot.verificationStatus.backend}` : ""}`));
+    if (snapshot.verificationStatus.model) provider.append(element("small", "", `${snapshot.verificationStatus.model.id} · ${snapshot.verificationStatus.model.revision} · ${snapshot.verificationStatus.status} · requested ${snapshot.verificationStatus.requestedBackend || "not loaded"}${snapshot.verificationStatus.backend ? ` · actual ${snapshot.verificationStatus.backend}` : ""} · fallback ${snapshot.verificationStatus.fallbackAllowed ? "allowed" : "disabled"}`));
     const actions = element("div", "ka2-debug-actions");
     for (const [name, label] of [["load", "Load semantic candidate"], ["sanity", "Run Generation Sanity"], ["compareBackends", "Compare WebGPU / WASM"], ["discover", "Run Topic Discovery"], ["verify", "Run Topic Verification"], ["shadow", "Run Shadow Knowledge Areas"]]) {
       const button = element("button", "", label); button.type = "button"; button.disabled = this.#busy;
@@ -123,16 +123,17 @@ export class KnowledgeAreaDebugPanel {
     }
     if (semantic?.discoveries?.length) {
       const section = element("div", "ka2-debug-results"); section.append(element("h4", "", "Model-generated subject hypotheses"));
-      for (const item of semantic.discoveries) section.append(element("p", "", `${item.memoryId}: ${item.subject || "No grounded subject returned"} (${Math.round(item.inferenceMilliseconds)} ms)`));
+      for (const item of semantic.discoveries) section.append(element("p", "", `${item.memoryId}: ${item.subject || "No grounded subject returned"} · raw: ${item.rawOutput || "(empty)"} · ${item.backend || "unknown backend"} (${Math.round(item.inferenceMilliseconds)} ms)`));
       provider.append(section);
     }
     if (semantic?.verifications?.length) {
       const section = element("div", "ka2-debug-results"); section.append(element("h4", "", "Model verification evidence"));
-      for (const item of semantic.verifications) section.append(element("p", "", `${item.leftId} ↔ ${item.rightId}: ${item.decision} · ${item.reason} (${Math.round(item.inferenceMilliseconds)} ms)`));
+      for (const item of semantic.verifications) section.append(element("p", "", `${item.leftId} ↔ ${item.rightId}: ${item.decision} · forward ${item.forwardDecision}: ${item.forwardRawOutput || "(empty)"} · reverse ${item.reverseDecision}: ${item.reverseRawOutput || "(empty)"} · ${item.backend || "unknown backend"} · ${item.reason} (${Math.round(item.inferenceMilliseconds)} ms)`));
       provider.append(section);
     }
     if (semantic?.shadow?.areas?.length) {
       const section = element("div", "ka2-debug-results"); section.append(element("h4", "", "Complete-boundary shadow assignments"));
+      section.append(element("p", "", `Actual backend: ${semantic.shadow.backend || "unknown"}`));
       for (const area of semantic.shadow.areas) section.append(element("p", "", `${area.id}: ${area.memoryIds.join(", ")} · hypotheses: ${area.subjectHypotheses.join(" / ") || "none"}`));
       provider.append(section);
     }

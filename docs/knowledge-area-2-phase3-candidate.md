@@ -96,7 +96,7 @@ Promotion gates remain 5/5 hard negatives, ≥95% different-topic rejection, ≥
 
 ## Performance and compatibility record
 
-This implementation records provider backend, load time, per-generation inference time, bidirectional pair time, and frozen-matrix total time. The following require real-browser measurement and are currently `NOT_TESTED`:
+Following the controlled browser comparison, the normal shadow workflow explicitly requests WASM with fallback disabled; WebGPU remains available only in the isolated comparison diagnostic. See `flan-wasm-shadow-inference.md`. This implementation records the actual provider backend, load time, per-generation inference time, bidirectional pair time, and frozen-matrix total time. Semantic quality still requires real-browser measurement:
 
 - exact model requests/transferred and cached bytes;
 - WebGPU operator compatibility;

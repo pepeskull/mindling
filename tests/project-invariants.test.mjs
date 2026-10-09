@@ -75,6 +75,8 @@ test("Phase 3 candidate remains explicit, lazy, and outside production semantic 
   assert.match(provider, /do_sample: false/); assert.match(provider, /DIRECTIONAL_DISAGREEMENT/);
   assert.match(provider, /min_new_tokens: 1/); assert.match(app, /auditKnowledgeArea2Generation/);
   assert.match(provider, /allowFallback: false/); assert.match(app, /compareKnowledgeArea2Backends/);
+  assert.match(provider, /FLAN_SHADOW_RUNTIME.*backend: "wasm".*allowFallback: false/);
+  assert.match(app, /loadFlanShadowProvider\(\)/);
   assert.doesNotMatch(production, /flan-t5|FLAN_TOPIC_MODEL|simulateFlanKnowledgeAreas/);
   assert.doesNotMatch(provider, /indexedDB|commitLearning|\.put\(/);
 });

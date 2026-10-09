@@ -15,6 +15,11 @@ export const FLAN_TOPIC_MODEL = Object.freeze({
   persistence: "NONE"
 });
 
+// The normal Knowledge Area 2.0 experiment deliberately uses the backend that
+// produced valid generation in the browser. Backend comparison remains a
+// separate diagnostic and creates its own isolated sessions.
+export const FLAN_SHADOW_RUNTIME = Object.freeze({ backend: "wasm", allowFallback: false });
+
 const now = () => globalThis.performance?.now?.() ?? Date.now();
 export const extractFlanGeneratedText = output => {
   const record = Array.isArray(output) ? output[0] : output;
@@ -85,6 +90,8 @@ export async function loadFlanTopicProvider({ backend: requestedBackend = null, 
     generate, inspectTokens, modelContract, dispose: () => generator.dispose?.() };
 }
 
+export const loadFlanShadowProvider = (loader = loadFlanTopicProvider) => loader(FLAN_SHADOW_RUNTIME);
+
 export async function auditFlanGeneration(provider) {
   const prompt = "Translate English to German: The house is wonderful.";
   const result = await provider.generate(prompt, 32);
@@ -136,7 +143,8 @@ export async function discoverTopic(provider, memory) {
   const prompt = `Identify the broad subject of the statement. Reply with only a short noun phrase. Do not explain.\nStatement: ${memory.content}\nSubject:`;
   const result = await provider.generate(prompt, 12);
   const subject = result.text.replace(/^subject\s*:\s*/iu, "").split(/\r?\n/u)[0].trim().slice(0, 80) || null;
-  return { memoryId: String(memory.id), subject, rawOutput: result.text, promptContract: "OPEN_VOCABULARY_SUBJECT_HYPOTHESIS",
+  return { memoryId: String(memory.id), subject, rawOutput: result.text, backend: provider.backend || null,
+    promptContract: "OPEN_VOCABULARY_SUBJECT_HYPOTHESIS",
     inferenceMilliseconds: result.inferenceMilliseconds, modelGenerated: true, membershipAuthority: false };
 }
 
@@ -154,6 +162,7 @@ export async function verifyTopicPair(provider, left, right) {
   const decision = forwardDecision === reverseDecision ? forwardDecision : TOPIC_RELATION.UNCERTAIN;
   return { leftId: String(left.id), rightId: String(right.id), decision, forwardDecision, reverseDecision,
     forwardRawOutput: forward.text, reverseRawOutput: reverse.text,
+    backend: provider.backend || null,
     reason: forwardDecision === reverseDecision ? "BIDIRECTIONAL_GENERATIVE_AGREEMENT" : "DIRECTIONAL_DISAGREEMENT",
     inferenceMilliseconds: forward.inferenceMilliseconds + reverse.inferenceMilliseconds, totalMilliseconds: now() - startedAt,
     modelGenerated: true, labelUsedAsEvidence: false, canonicalAuthority: false, productionAuthority: false, persistence: "NONE" };
@@ -180,7 +189,7 @@ export async function simulateFlanKnowledgeAreas(provider, memories, maximumMemo
     clusters.push([...left, ...right].sort());
   }
   clusters.sort((a, b) => a[0].localeCompare(b[0]));
-  return { model: FLAN_TOPIC_MODEL.id, discoveries, verifications,
+  return { model: FLAN_TOPIC_MODEL.id, revision: FLAN_TOPIC_MODEL.revision, backend: provider.backend || null, discoveries, verifications,
     areas: clusters.map((memoryIds, index) => ({ id: `flan-shadow-${index + 1}`, memoryIds, status: "SHADOW_MODEL_EVIDENCE",
       subjectHypotheses: discoveries.filter(item => memoryIds.includes(item.memoryId)).map(item => item.subject).filter(Boolean) })),
     completeBoundaryRequired: true, orderDeterministic: true, canonicalAuthority: false, productionAuthority: false, persistence: "NONE" };

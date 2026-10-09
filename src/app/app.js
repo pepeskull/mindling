@@ -11,7 +11,7 @@ import { runCanonicalConsistency, runCanonicalIdentityEvaluation, runProposition
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 import { buildKnowledgeArea2AuditSnapshot } from "../semantic/knowledge-area-foundation.js";
 import { KnowledgeAreaDebugPanel } from "../ui/knowledge-area-debug-panel.js";
-import { auditFlanGeneration, compareFlanBackends, discoverTopic, FLAN_TOPIC_MODEL, loadFlanTopicProvider, runFlanMultilingualEvaluation, runFlanRegressionCorpora, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../semantic/knowledge-area-flan.js";
+import { auditFlanGeneration, compareFlanBackends, discoverTopic, FLAN_SHADOW_RUNTIME, FLAN_TOPIC_MODEL, loadFlanShadowProvider, runFlanMultilingualEvaluation, runFlanRegressionCorpora, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../semantic/knowledge-area-flan.js";
 
 export class MindlingApp {
   #events=new EventBus(); #brain=new BrainEngine(this.#events); #db=new MindlingDatabase(); #semantic=new SemanticEngine(); #dashboard; #renderer; #onboarding; #knowledgeAreaDebug; #flanPromise; #flanProvider; #flanError; #ka2SemanticResults={}; #learningQueue=Promise.resolve();
@@ -119,14 +119,15 @@ export class MindlingApp {
   #knowledgeArea2ProviderStatus() {
     return { providerAvailable: Boolean(this.#flanProvider), provider: FLAN_TOPIC_MODEL.id,
       model: FLAN_TOPIC_MODEL, status: this.#flanProvider ? "ready" : this.#flanError ? "unavailable" : this.#flanPromise ? "loading" : "not-loaded",
-      backend: this.#flanProvider?.backend || null, loadMilliseconds: this.#flanProvider?.loadMilliseconds ?? null,
+      backend: this.#flanProvider?.backend || null, requestedBackend: FLAN_SHADOW_RUNTIME.backend,
+      fallbackAllowed: FLAN_SHADOW_RUNTIME.allowFallback, loadMilliseconds: this.#flanProvider?.loadMilliseconds ?? null,
       modelContract: this.#flanProvider?.modelContract || null,
       message: this.#flanProvider ? "Shadow topic candidate loaded; semantic quality is not validated." : this.#flanError ? String(this.#flanError.message || this.#flanError) : "No validated topic verifier connected.",
       lastError: this.#flanError ? String(this.#flanError.message || this.#flanError) : null,
       allowedDecisions: ["SAME_AREA", "DIFFERENT_AREA", "UNCERTAIN"], authority: "SHADOW_ONLY", persistence: "NONE" };
   }
   #loadKnowledgeArea2Provider() {
-    if (!this.#flanPromise) this.#flanPromise = loadFlanTopicProvider().then(provider => (this.#flanProvider = provider))
+    if (!this.#flanPromise) this.#flanPromise = loadFlanShadowProvider().then(provider => (this.#flanProvider = provider))
       .catch(error => { this.#flanError = error; throw error; });
     return this.#flanPromise;
   }
