@@ -104,7 +104,7 @@ export class KnowledgeAreaDebugPanel {
     provider.append(element("h3", "", "Local semantic candidate"), element("p", "", snapshot.verificationStatus.message));
     if (snapshot.verificationStatus.model) provider.append(element("small", "", `${snapshot.verificationStatus.model.id} · ${snapshot.verificationStatus.model.revision} · ${snapshot.verificationStatus.status} · requested ${snapshot.verificationStatus.requestedBackend || "not loaded"}${snapshot.verificationStatus.backend ? ` · actual ${snapshot.verificationStatus.backend}` : ""} · fallback ${snapshot.verificationStatus.fallbackAllowed ? "allowed" : "disabled"}`));
     const actions = element("div", "ka2-debug-actions");
-    for (const [name, label] of [["load", "Load semantic candidate"], ["sanity", "Run Generation Sanity"], ["compareBackends", "Compare WebGPU / WASM"], ["discover", "Run Topic Discovery"], ["verify", "Run Topic Verification"], ["shadow", "Run Shadow Knowledge Areas"]]) {
+    for (const [name, label] of [["load", "Load semantic candidate"], ["sanity", "Run Generation Sanity"], ["compareBackends", "Compare WebGPU / WASM"], ["discover", "Run Topic Discovery"], ["verify", "Run Topic Verification"], ["shadow", "Run Shadow Knowledge Areas"], ["finalDiagnostic", "Run Final Candidate Diagnostic"]]) {
       const button = element("button", "", label); button.type = "button"; button.disabled = this.#busy;
       button.addEventListener("click", () => this.#runAction(name)); actions.append(button);
     }
@@ -135,6 +135,16 @@ export class KnowledgeAreaDebugPanel {
       const section = element("div", "ka2-debug-results"); section.append(element("h4", "", "Complete-boundary shadow assignments"));
       section.append(element("p", "", `Actual backend: ${semantic.shadow.backend || "unknown"}`));
       for (const area of semantic.shadow.areas) section.append(element("p", "", `${area.id}: ${area.memoryIds.join(", ")} · hypotheses: ${area.subjectHypotheses.join(" / ") || "none"}`));
+      provider.append(section);
+    }
+    if (semantic?.finalCandidateDiagnostic) {
+      const diagnostic = semantic.finalCandidateDiagnostic; const section = element("div", "ka2-debug-results");
+      section.append(element("h4", "", `Final candidate diagnostic · ${diagnostic.status}`),
+        element("p", "", `${diagnostic.model} · ${diagnostic.backend || "unknown backend"} · ${diagnostic.reason} · ${Math.round(diagnostic.elapsedMilliseconds)} ms`));
+      for (const summaryItem of diagnostic.discovery.summaries) section.append(element("p", "", `${summaryItem.variant}: nonempty ${Math.round(summaryItem.nonemptyGenerationRate * 100)}% · format-valid ${Math.round(summaryItem.formatValidSubjectLabelRate * 100)}% · semantic correctness REVIEW REQUIRED`));
+      for (const row of diagnostic.discovery.rows) section.append(element("p", "", `${row.variant} · ${row.memoryId} · expected ${row.expected} · output ${row.rawOutput || "(empty)"} · ${row.generatedTokenCount ?? "unknown"} tokens · format ${row.formatCompliant ? "valid" : row.reasons.join(", ")} · correctness ${row.correctness} · ${Math.round(row.inferenceMilliseconds)} ms`));
+      for (const summaryItem of diagnostic.verification.summaries) section.append(element("p", "", `${summaryItem.variant}: format ${Math.round(summaryItem.exactDecisionFormatCompliance * 100)}% · same recall ${Math.round(summaryItem.sameTopicRecall * 100)}% · different rejection ${Math.round(summaryItem.differentTopicRejection * 100)}% · hard negatives ${summaryItem.criticalHardNegativesRejected}/${summaryItem.criticalHardNegativeCount} · coverage ${Math.round(summaryItem.coverage * 100)}% · abstention ${Math.round(summaryItem.abstentionRate * 100)}%`));
+      for (const row of diagnostic.verification.rows) section.append(element("p", "", `${row.variant} · ${row.group} · expected ${row.expectedDecision} · parsed ${row.decision} · ${row.correctness ? "correct" : "incorrect"} · format ${row.formatCompliant ? "valid" : "invalid"} · forward ${row.forwardRawOutput || "(empty)"} · reverse ${row.reverseRawOutput || "(empty)"} · ${Math.round(row.inferenceMilliseconds)} ms`));
       provider.append(section);
     }
     const canonicalSection = element("section", "ka2-debug-section"); canonicalSection.append(element("h3", "", "Canonical memories"));

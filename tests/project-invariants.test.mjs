@@ -59,6 +59,7 @@ test("Knowledge Area 2.0 panel is exact-debug gated and remains read-only", () =
   const foundation = readFileSync(new URL("../src/semantic/knowledge-area-foundation.js", import.meta.url), "utf8");
   assert.match(app, /get\("semantic-debug"\) === "1"/); assert.match(app, /knowledgeArea2Audit/);
   assert.match(panel, /Knowledge Area 2\.0 Debug/); assert.match(panel, /aria-expanded/); assert.match(panel, /Refresh diagnostics/);
+  assert.match(panel, /Run Final Candidate Diagnostic/); assert.match(panel, /semantic correctness REVIEW REQUIRED/);
   assert.match(panel, /STATE_READY/); assert.match(panel, /if \(this\.#open\) this\.refresh\(\)/);
   assert.match(panel, /No topic hypothesis or verification evidence is available/);
   assert.doesNotMatch(panel + foundation, /indexedDB|\.put\(|commitLearning|evaluateInput/);
@@ -77,6 +78,8 @@ test("Phase 3 candidate remains explicit, lazy, and outside production semantic 
   assert.match(provider, /allowFallback: false/); assert.match(app, /compareKnowledgeArea2Backends/);
   assert.match(provider, /FLAN_SHADOW_RUNTIME.*backend: "wasm".*allowFallback: false/);
   assert.match(app, /loadFlanShadowProvider\(\)/);
+  assert.match(app, /runKnowledgeArea2FinalCandidateDiagnostic/);
+  assert.match(provider, /alternativePromptLimitRespected: true/);
   assert.doesNotMatch(production, /flan-t5|FLAN_TOPIC_MODEL|simulateFlanKnowledgeAreas/);
   assert.doesNotMatch(provider, /indexedDB|commitLearning|\.put\(/);
 });

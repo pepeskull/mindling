@@ -11,7 +11,7 @@ import {
   TOPIC_HYPOTHESIS_STATUS,
   TOPIC_RELATION
 } from "../src/semantic/knowledge-area-foundation.js";
-import { auditFlanGeneration, compareFlanBackends, discoverTopic, extractFlanGeneratedText, FLAN_SHADOW_RUNTIME, FLAN_TOPIC_MODEL, loadFlanShadowProvider, parseFlanTopicDecision, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
+import { auditFlanGeneration, compareFlanBackends, discoverTopic, extractFlanGeneratedText, FLAN_FINAL_DIAGNOSTIC, FLAN_SHADOW_RUNTIME, FLAN_TOPIC_MODEL, inspectSubjectLabelFormat, loadFlanShadowProvider, parseFlanTopicDecision, runFlanFinalCandidateDiagnostic, runFlanTopicEvaluation, simulateFlanKnowledgeAreas, verifyTopicPair } from "../src/semantic/knowledge-area-flan.js";
 
 const memories = [
   { id: "memory-b", content: "Second canonical fact", strength: .4, activations: 2, neuronIds: ["N-02", "N-03"] },
@@ -116,6 +116,29 @@ test("normal FLAN shadow loading pins WASM and forbids silent fallback", async (
   assert.deepEqual(calls, [{ backend: "wasm", allowFallback: false }]);
   assert.equal(provider.backend, "wasm");
   assert.equal(FLAN_TOPIC_MODEL.revision, "76988c16f73cadb2c2e13e2d7d85608944223105");
+});
+
+test("subject diagnostic separates bounded format checks from semantic review", () => {
+  assert.deepEqual(inspectSubjectLabelFormat("Cycling", "A bicycle has two wheels."), {
+    formatCompliant: true, reasons: [], wordCount: 1, semanticCorrectness: "REVIEW_REQUIRED"
+  });
+  assert.equal(inspectSubjectLabelFormat("A bicycle has two wheels.", "A bicycle has two wheels.").formatCompliant, false);
+  assert.match(inspectSubjectLabelFormat("a b & b ; b", "Bicycle gears help climbing.").reasons.join(" "), /FRAGMENTED_TOKENS/);
+});
+
+test("final candidate diagnostic is bounded, raw, nonpersistent, and can reject format failure", async () => {
+  const provider = { backend: "wasm", generate: async prompt => ({
+    text: prompt.includes("Statement B:") ? "The statements may be related" : "Cycling",
+    generatedTokenCount: prompt.includes("Statement B:") ? 5 : 1, inferenceMilliseconds: 1
+  }) };
+  const result = await runFlanFinalCandidateDiagnostic(provider);
+  assert.equal(FLAN_FINAL_DIAGNOSTIC.discoveryVariantCount, 3); assert.equal(FLAN_FINAL_DIAGNOSTIC.verificationVariantCount, 3);
+  assert.equal(result.discovery.rows.length, FLAN_FINAL_DIAGNOSTIC.discoveryMemoryCount * 3);
+  assert.equal(result.verification.rows.length, FLAN_FINAL_DIAGNOSTIC.verificationPairs.length * 3);
+  assert.equal(result.status, "CANDIDATE_REJECTED"); assert.equal(result.fullFrozenEvaluationRun, false);
+  assert.equal(result.discovery.rows[0].rawOutput, "Cycling"); assert.equal(result.discovery.rows[0].generatedTokenCount, 1);
+  assert.ok(result.verification.rows.every(row => row.decision === TOPIC_RELATION.UNCERTAIN && !row.formatCompliant));
+  assert.equal(result.productionAuthority, false); assert.equal(result.persistence, "NONE");
 });
 
 test("fixed verifier evidence produces deterministic complete-boundary shadow groups", async () => {

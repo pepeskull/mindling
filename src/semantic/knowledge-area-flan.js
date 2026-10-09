@@ -69,7 +69,14 @@ export async function loadFlanTopicProvider({ backend: requestedBackend = null, 
     const inferenceStartedAt = now();
     const generationParameters = { max_new_tokens: maximumTokens, min_new_tokens: 1, do_sample: false, num_beams: 1 };
     const output = await generator(prompt, generationParameters);
-    return { text: extractFlanGeneratedText(output), rawResponse: structuredClone(output), responseMetadata: responseMetadata(output), generationParameters,
+    const text = extractFlanGeneratedText(output);
+    let generatedTokenCount = null; let generatedTokens;
+    try {
+      generatedTokens = generator.tokenizer([text], { add_special_tokens: false });
+      generatedTokenCount = generatedTokens.input_ids?.data?.length ?? null;
+    } catch { generatedTokenCount = null; }
+    finally { disposeValues(generatedTokens); }
+    return { text, generatedTokenCount, rawResponse: structuredClone(output), responseMetadata: responseMetadata(output), generationParameters,
       inferenceMilliseconds: now() - inferenceStartedAt };
   });
   const modelContract = { decoderStartTokenId: generator.model?.config?.decoder_start_token_id ?? null,
@@ -234,6 +241,124 @@ export async function runFlanRegressionCorpora(provider) {
   for (const [name, content] of Object.entries(fixtures)) results[name] = await simulateFlanKnowledgeAreas(provider,
     content.map((text, index) => ({ id: `${name}-${index + 1}`, content: text })));
   return { model: FLAN_TOPIC_MODEL.id, results, expectedLabelsUsedAtRuntime: false, productionAuthority: false, persistence: "NONE" };
+}
+
+const DISCOVERY_PROMPTS = Object.freeze([
+  Object.freeze({ id: "CURRENT_SHORT_NOUN_PHRASE", build: text => `Identify the broad subject of the statement. Reply with only a short noun phrase. Do not explain.\nStatement: ${text}\nSubject:` }),
+  Object.freeze({ id: "WHAT_IS_THIS_ABOUT", build: text => `What is this statement about? Answer with one short subject noun phrase only.\nStatement: ${text}\nSubject:` }),
+  Object.freeze({ id: "GENERAL_FIELD_OR_SUBJECT", build: text => `Name the general field or subject discussed by this statement. Return only a short subject noun phrase.\nStatement: ${text}\nSubject:` })
+]);
+
+const VERIFICATION_PROMPTS = Object.freeze([
+  Object.freeze({ id: "CURRENT_THREE_TOKEN", maximumTokens: 6, build: verificationPrompt,
+    parse: parseDecision, compliant: output => Object.values(TOPIC_RELATION).includes(output.trim().toUpperCase().replace(/[.\s]+$/u, "")) }),
+  Object.freeze({ id: "YES_NO", maximumTokens: 3,
+    build: (left, right) => `Do these two statements concern the same broad subject? Answer only YES or NO.\nStatement A: ${left}\nStatement B: ${right}\nAnswer:`,
+    parse: output => output.trim().toUpperCase().replace(/[.\s]+$/u, "") === "YES" ? TOPIC_RELATION.SAME_AREA
+      : output.trim().toUpperCase().replace(/[.\s]+$/u, "") === "NO" ? TOPIC_RELATION.DIFFERENT_AREA : TOPIC_RELATION.UNCERTAIN,
+    compliant: output => ["YES", "NO"].includes(output.trim().toUpperCase().replace(/[.\s]+$/u, "")) }),
+  Object.freeze({ id: "SAME_OR_DIFFERENT", maximumTokens: 3,
+    build: (left, right) => `Classify whether these statements discuss the same broad subject. Reply only SAME or DIFFERENT.\nStatement A: ${left}\nStatement B: ${right}\nAnswer:`,
+    parse: output => output.trim().toUpperCase().replace(/[.\s]+$/u, "") === "SAME" ? TOPIC_RELATION.SAME_AREA
+      : output.trim().toUpperCase().replace(/[.\s]+$/u, "") === "DIFFERENT" ? TOPIC_RELATION.DIFFERENT_AREA : TOPIC_RELATION.UNCERTAIN,
+    compliant: output => ["SAME", "DIFFERENT"].includes(output.trim().toUpperCase().replace(/[.\s]+$/u, "")) })
+]);
+
+const normalizeDiagnosticText = value => String(value || "").trim().toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+export function inspectSubjectLabelFormat(output, memory) {
+  const text = String(output || "").trim(); const words = text.match(/[\p{L}\p{N}]+/gu) || [];
+  const singleCharacterWords = words.filter(word => [...word].length === 1).length;
+  const reasons = [];
+  if (!text) reasons.push("EMPTY");
+  if (words.length > 8) reasons.push("TOO_LONG");
+  if (normalizeDiagnosticText(text) === normalizeDiagnosticText(memory)) reasons.push("COPIES_MEMORY");
+  if (words.length && singleCharacterWords / words.length > .5) reasons.push("FRAGMENTED_TOKENS");
+  if (text && !/[\p{L}\p{N}]/u.test(text)) reasons.push("NO_ALPHANUMERIC_CONTENT");
+  return { formatCompliant: reasons.length === 0, reasons, wordCount: words.length,
+    semanticCorrectness: "REVIEW_REQUIRED" };
+}
+
+const FINAL_DISCOVERY_MEMORIES = Object.freeze(KNOWLEDGE_AREA_2_EVALUATION.bicycleBee.map((content, index) => Object.freeze({
+  id: `bicycle-bee-${index + 1}`, content, expected: index < 3 ? "cycling-related subject" : index < 6 ? "bee-related subject" : "the grounded subject of this singleton"
+})));
+const pairsWithin = (items, offset, length, group) => {
+  const rows = [];
+  for (let left = offset; left < offset + length; left += 1) for (let right = left + 1; right < offset + length; right += 1)
+    rows.push({ group, expected: "SAME_TOPIC", left: items[left], right: items[right] });
+  return rows;
+};
+const hardNegativePairs = KNOWLEDGE_RELATION_MATRIX.filter(pair => pair.group === "hard-negative");
+export const FLAN_FINAL_DIAGNOSTIC = Object.freeze({
+  discoveryVariantCount: DISCOVERY_PROMPTS.length, verificationVariantCount: VERIFICATION_PROMPTS.length,
+  discoveryMemoryCount: FINAL_DISCOVERY_MEMORIES.length,
+  verificationPairs: Object.freeze([
+    ...pairsWithin(KNOWLEDGE_AREA_2_EVALUATION.bicycleBee, 0, 3, "bicycle-same"),
+    ...pairsWithin(KNOWLEDGE_AREA_2_EVALUATION.bicycleBee, 3, 3, "bee-same"),
+    { group: "bicycle-bee", expected: "DIFFERENT_TOPIC", left: KNOWLEDGE_AREA_2_EVALUATION.bicycleBee[0], right: KNOWLEDGE_AREA_2_EVALUATION.bicycleBee[3] },
+    { group: "trading-programming", expected: "DIFFERENT_TOPIC", left: KNOWLEDGE_TOPIC_NINE[0], right: KNOWLEDGE_TOPIC_NINE[3] },
+    { group: "unrelated-singletons", expected: "DIFFERENT_TOPIC", left: KNOWLEDGE_AREA_2_EVALUATION.bicycleBee[6], right: KNOWLEDGE_AREA_2_EVALUATION.bicycleBee[7] },
+    { group: "unrelated-singletons", expected: "DIFFERENT_TOPIC", left: KNOWLEDGE_AREA_2_EVALUATION.bicycleBee[8], right: KNOWLEDGE_AREA_2_EVALUATION.bicycleBee[9] },
+    ...hardNegativePairs
+  ]),
+  runtimeAuthority: false
+});
+
+const diagnosticPair = async (provider, variant, pair, index) => {
+  const forward = await provider.generate(variant.build(pair.left, pair.right), variant.maximumTokens);
+  const reverse = await provider.generate(variant.build(pair.right, pair.left), variant.maximumTokens);
+  const forwardDecision = variant.parse(forward.text); const reverseDecision = variant.parse(reverse.text);
+  const decision = forwardDecision === reverseDecision ? forwardDecision : TOPIC_RELATION.UNCERTAIN;
+  const expectedDecision = pair.expected === "SAME_TOPIC" ? TOPIC_RELATION.SAME_AREA : TOPIC_RELATION.DIFFERENT_AREA;
+  return { index, variant: variant.id, group: pair.group, expected: pair.expected, left: pair.left, right: pair.right,
+    forwardRawOutput: forward.text, reverseRawOutput: reverse.text,
+    forwardGeneratedTokenCount: forward.generatedTokenCount ?? null, reverseGeneratedTokenCount: reverse.generatedTokenCount ?? null,
+    forwardDecision, reverseDecision, decision, expectedDecision,
+    formatCompliant: variant.compliant(forward.text) && variant.compliant(reverse.text), correctness: decision === expectedDecision,
+    inferenceMilliseconds: forward.inferenceMilliseconds + reverse.inferenceMilliseconds };
+};
+
+const summarizeVerification = rows => {
+  const same = rows.filter(row => row.expected === "SAME_TOPIC"); const different = rows.filter(row => row.expected === "DIFFERENT_TOPIC");
+  const decided = rows.filter(row => row.decision !== TOPIC_RELATION.UNCERTAIN); const hard = rows.filter(row => row.group === "hard-negative");
+  return { pairCount: rows.length, nonemptyGenerationRate: rows.length ? rows.filter(row => row.forwardRawOutput && row.reverseRawOutput).length / rows.length : null,
+    exactDecisionFormatCompliance: rows.length ? rows.filter(row => row.formatCompliant).length / rows.length : null,
+    sameTopicRecall: same.length ? same.filter(row => row.decision === TOPIC_RELATION.SAME_AREA).length / same.length : null,
+    differentTopicRejection: different.length ? different.filter(row => row.decision === TOPIC_RELATION.DIFFERENT_AREA).length / different.length : null,
+    criticalHardNegativesRejected: hard.filter(row => row.decision === TOPIC_RELATION.DIFFERENT_AREA).length,
+    criticalHardNegativeCount: hard.length, coverage: rows.length ? decided.length / rows.length : null,
+    abstentionRate: rows.length ? (rows.length - decided.length) / rows.length : null,
+    inferenceMilliseconds: rows.reduce((total, row) => total + row.inferenceMilliseconds, 0) };
+};
+
+export async function runFlanFinalCandidateDiagnostic(provider) {
+  const startedAt = now(); const discovery = [];
+  for (const variant of DISCOVERY_PROMPTS) for (const memory of FINAL_DISCOVERY_MEMORIES) {
+    const result = await provider.generate(variant.build(memory.content), 12); const format = inspectSubjectLabelFormat(result.text, memory.content);
+    discovery.push({ variant: variant.id, memoryId: memory.id, memory: memory.content, expected: memory.expected,
+      rawOutput: result.text, parsedResult: result.text.trim() || null, generatedTokenCount: result.generatedTokenCount ?? null,
+      ...format, correctness: "REVIEW_REQUIRED", inferenceMilliseconds: result.inferenceMilliseconds });
+  }
+  const verification = [];
+  for (const variant of VERIFICATION_PROMPTS) for (let index = 0; index < FLAN_FINAL_DIAGNOSTIC.verificationPairs.length; index += 1)
+    verification.push(await diagnosticPair(provider, variant, FLAN_FINAL_DIAGNOSTIC.verificationPairs[index], index));
+  const discoverySummaries = DISCOVERY_PROMPTS.map(variant => { const rows = discovery.filter(row => row.variant === variant.id); return {
+    variant: variant.id, count: rows.length, nonemptyGenerationRate: rows.filter(row => row.rawOutput).length / rows.length,
+    formatValidSubjectLabelRate: rows.filter(row => row.formatCompliant).length / rows.length,
+    semanticallyValidSubjectLabelRate: null, semanticReviewRequired: true,
+    inferenceMilliseconds: rows.reduce((total, row) => total + row.inferenceMilliseconds, 0) }; });
+  const verificationSummaries = VERIFICATION_PROMPTS.map(variant => ({ variant: variant.id,
+    ...summarizeVerification(verification.filter(row => row.variant === variant.id)) }));
+  const everyVerificationVariantFails = verificationSummaries.every(summary => summary.sameTopicRecall < .8
+    || summary.differentTopicRejection < .95 || summary.criticalHardNegativesRejected !== summary.criticalHardNegativeCount);
+  return { status: everyVerificationVariantFails ? "CANDIDATE_REJECTED" : "INCONCLUSIVE",
+    reason: everyVerificationVariantFails ? "ALL_BOUNDED_VERIFICATION_FORMATS_FAILED_PRELIMINARY_QUALITY_GATES" : "REAL_BROWSER_SUBJECT_REVIEW_AND_FULL_FROZEN_EVALUATION_REQUIRED",
+    model: FLAN_TOPIC_MODEL.id, revision: FLAN_TOPIC_MODEL.revision, backend: provider.backend || null,
+    diagnosticScope: { discoveryVariants: DISCOVERY_PROMPTS.map(item => item.id), verificationVariants: VERIFICATION_PROMPTS.map(item => item.id),
+      discoveryMemoryCount: FINAL_DISCOVERY_MEMORIES.length, verificationPairCount: FLAN_FINAL_DIAGNOSTIC.verificationPairs.length,
+      alternativePromptLimitRespected: true },
+    discovery: { rows: discovery, summaries: discoverySummaries }, verification: { rows: verification, summaries: verificationSummaries },
+    fullFrozenEvaluationRun: false, multilingualEvaluationRun: false,
+    elapsedMilliseconds: now() - startedAt, canonicalAuthority: false, productionAuthority: false, persistence: "NONE" };
 }
 
 export { parseDecision as parseFlanTopicDecision };
