@@ -1,13 +1,14 @@
-.evolution-preview{position:fixed;inset:0;z-index:100;background:radial-gradient(ellipse at 50% 44%,#122024 0,#070c10 42%,#030608 80%);color:#d6e6e1;overflow:auto;font-family:inherit}
-.preview-scene{position:absolute;inset:0;touch-action:none;cursor:grab;user-select:none}.preview-scene.dragging{cursor:grabbing}.preview-layer{position:absolute;inset:0;pointer-events:none}.preview-layer canvas{width:100%;height:100%;display:block}
-.preview-heading{position:absolute;top:32px;left:24px;right:24px;text-align:center;pointer-events:none}.preview-heading p{font-size:10px;letter-spacing:.2em;color:#87b9ac}.preview-heading h1{font-size:clamp(26px,4vw,44px);font-weight:400;letter-spacing:-.04em;margin:12px 0}.preview-heading span{font-size:12px;color:#81968f}
-.preview-provenance{position:absolute;top:28px;left:24px;font-size:10px;color:#a7bab3;max-width:180px;line-height:1.7;pointer-events:none}.preview-provenance span{display:block;color:#6f8780;font-size:9px}
-.preview-toolbar{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);width:min(700px,calc(100% - 28px));padding:14px 18px;border:1px solid #29413d;border-radius:16px;background:rgba(8,18,22,.91);backdrop-filter:blur(16px)}
-.preview-stage-row,.preview-buttons{display:flex;align-items:center;justify-content:center;gap:8px;flex-wrap:wrap}.preview-stage-row{margin-bottom:12px;font-size:11px;color:#9bb9af}.preview-stage-row label{display:flex;align-items:center;gap:10px}.preview-stage-row output{color:#d7eee5;font-variant-numeric:tabular-nums}.preview-stage-row>span{font-size:10px;margin-left:auto}
-.preview-toolbar button,.preview-toolbar select{font:inherit;color:#d7eee5;background:#122925;border:1px solid #35584e;border-radius:7px;padding:8px 10px;cursor:pointer;font-size:11px}.preview-toolbar button:hover{background:#254b40}.preview-toolbar button:disabled{opacity:.35;cursor:default}.preview-toolbar :focus-visible{outline:2px solid #a2e2cb;outline-offset:3px}.preview-toolbar [data-action=exit]{margin-left:auto;background:transparent}.preview-help{text-align:center;font-size:10px;color:#738d85;margin:12px 0 0}
-.preview-network{margin-top:12px;border-top:1px solid #2c4640;padding-top:10px;font-size:10px}.preview-network>p{color:#b8dcd1;letter-spacing:.1em;margin:0 0 8px}.preview-network>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.preview-network output{margin-left:auto;color:#8fe1c4;font-size:10px}.preview-network ol{list-style:none;display:flex;gap:14px;justify-content:space-between;padding:0;margin:10px 0 0;color:#7f9c92}.preview-network li span{display:block;font-size:9px;margin-top:3px;color:#a8c7be}
-@media(max-width:850px){.preview-provenance{top:12px;left:14px;font-size:8px;max-width:none}.preview-provenance span{display:inline;margin-left:8px;font-size:8px}.preview-heading{top:48px}.preview-toolbar{bottom:10px;padding:12px}.preview-stage-row>span{margin-left:0}.preview-buttons{gap:5px}.preview-toolbar button{padding:8px;font-size:10px}.preview-toolbar [data-action=exit]{margin-left:0}.preview-network ol{gap:8px;font-size:9px}}
-@media(prefers-reduced-motion:reduce){.evolution-preview *{scroll-behavior:auto}}
-/* Reserve real space for the controls instead of drawing them over the brain. */
-.preview-scene{top:155px;bottom:180px}.preview-seed{transform:scale(.5)}
-@media(max-width:850px){.preview-scene{top:155px}}
+/* Reuse the production shell and panels; only the visualization gets a new mount. */
+.dashboard-preview #scene{overflow:hidden;min-width:0;min-height:0}
+.dashboard-preview .preview-layer{position:absolute;inset:22px 0;pointer-events:none}
+.dashboard-preview .preview-layer canvas{display:block;width:100%;height:100%}
+.dashboard-preview .preview-seed{transform:scale(.5)}
+.preview-stage-label,.preview-network-label{position:absolute;left:4px;right:4px;margin:0;text-align:center;pointer-events:none;color:var(--text-secondary);font-size:9px;letter-spacing:.06em;line-height:1.4}
+.preview-stage-label{top:1px}.preview-network-label{bottom:1px;font-size:8px;color:var(--accent)}
+.dashboard-preview #interaction-form :disabled{cursor:not-allowed}
+.dashboard-preview .hero-copy{max-width:calc(100% - 2 * var(--panel-width) - 9vw);width:100%}
+.dashboard-preview .hero-copy h1{font-size:clamp(18px,2vw,28px)}
+.dashboard-preview .hero-copy span{font-size:10px}
+.dashboard-preview [data-energy-progress][hidden],.dashboard-preview .life-panel progress[hidden]{display:none}
+@media(max-width:800px){.dashboard-preview .hero-copy{max-width:calc(100% - 24px)}.preview-stage-label{font-size:8px}.preview-network-label{font-size:7px}}
+@media(max-height:520px) and (orientation:landscape){.dashboard-preview .hero-copy{display:none}}

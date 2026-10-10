@@ -1,5 +1,9 @@
 # Neural evolution development preview
 
+Historical PR #47 report. For the current automatic dashboard integration, see
+[Milestone 3.1](dashboard-evolution-preview.md). The standalone controls described
+below were replaced by that milestone.
+
 Open the application with `?stage-preview=1`. This is an in-memory visualization,
 not a gameplay evolution mechanism. The normal dashboard, storage initialization,
 Life System and semantic inference do not start until Exit Preview. The query
