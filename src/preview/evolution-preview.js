@@ -1,4 +1,4 @@
-import { STAGES, PreviewTimeline, smooth } from "./evolution-model.js";
+import { PreviewTimeline, smooth } from "./evolution-model.js";
 import { EvolutionScene } from "./evolution-scene.js";
 import { SceneInteraction } from "../renderer/scene-interaction.js";
 import { ThreeSeedScene } from "../renderer/three-seed-scene.js";
@@ -8,6 +8,7 @@ import { createNeuralSeedState } from "../brain/neural-seed-state.js";
 import { Dashboard } from '../ui/dashboard.js';
 import { EventBus } from '../app/events.js';
 import { readDashboardSnapshot } from './dashboard-snapshot.js';
+import { presentationFor, PreviewDashboardPresentation } from './dashboard-presentation.js';
 import { AutomaticNetworkCountdown } from './automatic-playback.js';
 
 export class EvolutionPreview {
@@ -26,10 +27,10 @@ export class EvolutionPreview {
     const snapshot = await readDashboardSnapshot();
     if (this.disposed) return;
     this.dashboard.showSnapshot(snapshot);
+    this.presentation = new PreviewDashboardPresentation();
     this.host.setAttribute('aria-label', 'Development preview of neural evolution; saved gameplay is unchanged');
-    this.host.innerHTML = `<div class="preview-layer preview-seed"></div><div class="preview-layer preview-growth"></div><p class="preview-stage-label" aria-live="polite"></p><p class="preview-network-label" role="status" hidden>NETWORK SIMULATION — NO LIVE CONNECTIONS</p>`;
+    this.host.innerHTML = `<div class="preview-layer preview-seed"></div><div class="preview-layer preview-growth"></div>`;
     this.sceneHost = this.host; this.seedHost = this.host.querySelector('.preview-seed'); this.growthHost = this.host.querySelector('.preview-growth');
-    this.stageLabel = this.host.querySelector('.preview-stage-label'); this.networkLabel = this.host.querySelector('.preview-network-label');
     this.growthHost.style.opacity = '0';
     this.interaction.connect(this.sceneHost);
     let three = null;
@@ -81,11 +82,13 @@ export class EvolutionPreview {
   }
   refresh() {
     this.host.dataset.stage = String(this.timeline.stage);
-    this.stageLabel.textContent = `Development preview · ${STAGES[this.timeline.stage - 1].name}`;
+    this.refreshNetwork();
   }
   refreshNetwork() {
     this.host.dataset.network = this.timeline.network.state;
-    this.networkLabel.hidden = !this.countdown.started;
+    this.presentationState = presentationFor(this.timeline, this.view.morph);
+    this.presentation.update(this.presentationState);
+    this.view.updateLabels(this.presentationState.peers);
   }
   schedule() { if (!this.disposed && !document.hidden && this.frame === null) this.frame = requestAnimationFrame(this.render); }
   render = now => {
@@ -108,7 +111,7 @@ export class EvolutionPreview {
     if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null;
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);
-    this.dashboard?.destroy();
+    this.presentation?.destroy(); this.dashboard?.destroy();
     this.timeline.pause(); this.timeline.network.reset(); this.interaction.disconnect(); this.seed?.destroy(); this.view?.destroy();
     this.host?.replaceChildren(); this.host?.removeAttribute('style');
     if (this.host) { this.host.setAttribute('aria-label', this.originalLabel); delete this.host.dataset.stage; delete this.host.dataset.backend; delete this.host.dataset.network; }

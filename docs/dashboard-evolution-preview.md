@@ -1,3 +1,5 @@
+> Milestone 3.1 historical report. Dashboard presentation was subsequently synchronized in [Milestone 3.2](synchronized-evolution-dashboard.md); snapshot storage isolation remains in effect.
+
 # Milestone 3.1 — dashboard evolution preview
 
 The preview at `?stage-preview=1` now uses the normal dashboard HTML, glass styling,

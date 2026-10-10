@@ -70,7 +70,6 @@ export class Dashboard {
     document.querySelector('[data-life-status-title]').textContent = 'Mindling — Life Status';
     document.querySelector('.mindling-id').textContent = '';
     document.querySelector('.hero-copy h1').textContent = snapshot.status === 'empty' ? 'No saved Mindling' : 'Saved data unavailable';
-    document.querySelector('.hero-copy span').textContent = 'Read-only preview · Gameplay actions disabled';
     document.querySelector('.pathways-copy').textContent = 'No saved pathways available.';
     document.querySelector('.memory-overall').textContent = 'No saved memory information available.';
     document.querySelector('.knowledge-area-list').replaceChildren();
@@ -80,7 +79,6 @@ export class Dashboard {
       document.querySelectorAll('.life-panel progress, [data-energy-progress]').forEach(node => { node.hidden = false; });
       this.#renderLife(snapshot.life, Date.parse(snapshot.life.lastSimulationAt || snapshot.life.birthTimestamp));
     }
-    document.querySelector('.hero-copy span').textContent = 'Read-only preview · Gameplay actions disabled';
     document.querySelector('.storage-status').textContent = snapshot.status === 'saved' ? 'Read-only · Saved snapshot' : snapshot.status === 'empty' ? 'Read-only · No saved Mindling' : 'Read-only · Storage unavailable';
     document.querySelectorAll('[data-care], [data-activity-mode], [data-input-mode], [data-new-mindling], #mindling-input, #interaction-form button[type=submit]').forEach(node => { node.disabled = true; node.title = 'Gameplay actions are disabled in development preview'; });
     document.querySelector('[data-download-profile]').disabled = !snapshot.state;

@@ -190,8 +190,47 @@ export class EvolutionScene {
     c.fillStyle = '#e1fff4'; for (let i = 0; i < b.pulseCount; i++) { this.project(b.pulses, i * 3, p); c.beginPath(); c.arc(p[0], p[1], 2.2, 0, Math.PI * 2); c.fill(); }
     if (network.state === 'DISCOVERING' && !this.reduced) { c.strokeStyle = `rgba(145,199,223,${Math.max(0,.4-network.elapsed*.2)})`; c.beginPath(); c.arc(this.width / 2, this.height / 2, (1 + network.elapsed) * Math.min(this.width, this.height) * .18, 0, Math.PI * 2); c.stroke(); }
   }
+  // Project the same remote geometry used for rendering, including camera/root transforms.
+  projectRemote(index) {
+    const remote = this.buffers.remote[index], point = new Float32Array(2);
+    const project = position => {
+      if (this.three) {
+        const v = new this.three.Vector3(...position).applyMatrix4(this.root.matrixWorld).project(this.camera);
+        return { x: (v.x + 1) * this.width / 2, y: (1 - v.y) * this.height / 2, visible: v.z >= -1 && v.z <= 1 };
+      }
+      this.project(position, 0, point); return { x: point[0], y: point[1], visible: true };
+    };
+    const center = project(remote.center);
+    let top = center.y;
+    for (let i = 0; i < BUDGET.remoteNeurons; i++) {
+      const k = (BUDGET.neurons + index * BUDGET.remoteNeurons + i) * 3;
+      top = Math.min(top, project(this.buffers.positions.subarray(k, k + 3)).y);
+    }
+    return { x: center.x, y: top - 9, visible: center.visible };
+  }
+  updateLabels(peers) {
+    if (!this.labels) this.labels = peers.map(peer => {
+      const label = document.createElement('span'); label.className = 'preview-peer-label'; label.textContent = peer.name;
+      label.hidden = true; this.host.append(label); return label;
+    });
+    const placed = [];
+    peers.forEach((peer, index) => {
+      const label = this.labels[index];
+      if (peer.visibility <= .01) { label.hidden = true; return; }
+      const anchor = this.projectRemote(index);
+      label.hidden = !anchor.visible || anchor.x < 0 || anchor.x > this.width || anchor.y < 0 || anchor.y > this.height;
+      if (label.hidden) return;
+      const half = label.offsetWidth / 2;
+      const x = Math.max(half, Math.min(this.width - half, anchor.x));
+      let y = Math.max(20, anchor.y);
+      for (const other of placed) if (Math.abs(x - other.x) < half + other.half + 4 && Math.abs(y - other.y) < 22) y = other.y - 22;
+      placed.push({ x, y, half });
+      label.style.left = `${x}px`; label.style.top = `${y}px`; label.style.opacity = String(peer.visibility);
+    });
+  }
   destroy() {
     if (this.scene) { this.scene.traverse(object => { object.geometry?.dispose(); if (object.material) object.material.dispose(); }); this.renderer?.dispose(); this.renderer?.forceContextLoss(); }
+    this.labels?.forEach(label => label.remove()); this.labels = null;
     this.canvas?.remove();
   }
 }

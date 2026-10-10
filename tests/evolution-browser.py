@@ -76,17 +76,35 @@ with sync_playwright() as p:
     assert page.locator('#mindling-input').is_disabled()
     assert all(page.locator(selector).is_disabled() for selector in ['[data-care="CARE"]','[data-activity-mode="TEACH"]','#interaction-form button[type=submit]'])
     assert 'DASHBOARD TEST' in page.locator('[data-life-status-title]').inner_text()
-    assert page.locator('.social-status em').inner_text().lower()=='not connected'
+    assert page.locator('.social-status em').text_content().lower()=='not connected'
     for stage in range(1,8):
         page.wait_for_function('(s)=>document.querySelector("#scene").dataset.stage===String(s)',arg=stage,timeout=15000)
+        page.evaluate("""async(stage)=>{
+          const {generateStage,STAGES}=await import('/src/preview/evolution-model.js');
+          const {PRESETS}=await import('/src/preview/dashboard-presentation.js');
+          const {conditionFor}=await import('/src/life/life-system.js');
+          const q=s=>document.querySelector(s), check=(actual,expected)=>{if(actual!==expected)throw new Error(`Stage ${stage}: ${actual} != ${expected}`)};
+          check(Number(q('#scene').dataset.stage),stage);
+          const preset=PRESETS[stage-1];
+          document.querySelectorAll('.stages li').forEach((row,i)=>check(row.querySelector('small').textContent,i+1<stage?'Completed':i+1===stage?'Current':'Locked'));
+          check(q('.hero-copy p').textContent,`${STAGES[stage-1].name} · Stage ${String(stage).padStart(2,'0')}`);
+          check(q('.hero-copy h1').textContent,'Dashboard Test is awake.');
+          for(const [key,value] of Object.entries({neurons:STAGES[stage-1].count,synapses:generateStage(stage).edges.length,memories:preset.memories}))check(q(`[data-stat="${key}"]`).textContent,String(value));
+          for(const [key,value] of Object.entries(preset.attributes)){check(q(`[data-life-attribute="${key}"] strong`).textContent,`${value}%`);check(q(`[data-life-attribute="${key}"] progress`).value,value)}
+          check(q('[data-life-condition]').textContent,conditionFor(preset.attributes));
+          check(q('.social-status em').textContent,'Not Connected');
+        }""",stage)
         settle(page);page.screenshot(path=f'/tmp/dashboard-three-stage-{stage}.png')
     # Morph and subsequent countdown must finish before discovery begins.
     assert page.locator('#scene').get_attribute('data-network')=='DISCONNECTED'
     page.wait_for_function("document.querySelector('#scene').dataset.network==='EXCHANGING'",timeout=30000)
     page.screenshot(path='/tmp/dashboard-three-network.png')
-    assert page.locator('.preview-network-label').is_visible()
+    assert page.locator('.preview-stage-label, .preview-network-label, .hero-copy span').count()==0
+    assert page.locator('.preview-simulated').is_visible()
+    assert page.locator('.social-status em').text_content()=='Connected · 3 Mindlings · Active'
+    assert page.locator('.preview-peer-label:visible').all_text_contents()==['Nova','Echo','Atlas']
     assert page.locator('#scene').get_attribute('data-stage')=='7'
-    assert page.locator('[data-life-stage]').inner_text()=='Neural Seed'
+    assert page.locator('[data-life-stage]').inner_text()=='Agent Mind'
     assert page.evaluate('window.__testMetrics().writes')==0
     assert page.evaluate(SNAPSHOT)==before
     # Navigation remains real shared Dashboard UI; memory inspection is read-only.
@@ -97,6 +115,7 @@ with sync_playwright() as p:
     assert not errors,errors
     # Reload without the parameter: gameplay really resumes and resets stale daily energy.
     page.goto(BASE);page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='10 / 10'")
+    page.wait_for_function("!document.querySelector('#mindling-input').disabled && document.querySelectorAll('#scene canvas').length===1")
     assert page.locator('#mindling-input').is_enabled() and page.locator('#scene canvas').count()==1
     print('PASS Three.js: dashboard mount, automatic seven stages/network, saved data isolation, normal gameplay',flush=True)
     # A fresh profile must not acquire an empty database or fictional player data.
@@ -108,6 +127,7 @@ with sync_playwright() as p:
     fallback.wait_for_function("document.querySelector('#scene').dataset.stage==='7'",timeout=40000)
     fallback.wait_for_function("document.querySelector('#scene').dataset.network==='EXCHANGING'",timeout=25000)
     fallback.screenshot(path='/tmp/dashboard-canvas-mobile.png')
+    assert fallback.locator('.preview-peer-label:visible').all_text_contents()==['Nova','Echo','Atlas']
     assert fallback.evaluate('window.__testMetrics().writes')==0
     assert fallback.evaluate('indexedDB.databases()')==[]
     fallback.locator('[data-mobile-view="development"]').click();assert fallback.locator('.left-stack').is_visible()
@@ -142,4 +162,18 @@ with sync_playwright() as p:
     }""")
     assert result['pending']==0 and result['visibilityListeners']==0,result
     print('PASS lifecycle: repeated read-only dashboard mount, hidden countdown pause, single resume and cleanup',flush=True)
+    for backend in ['three','canvas']:
+        labels=context.new_page();route_three(labels,blocked=backend=='canvas');labels.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'));labels.goto(BASE)
+        labels.evaluate("""async(backend)=>{
+          const {EvolutionPreview}=await import('/src/preview/evolution-preview.js');
+          const p=new EvolutionPreview({forceCanvas:backend==='canvas'});await p.start();cancelAnimationFrame(p.frame);p.frame=null;
+          p.timeline.select(7);p.syncStage();p.view.select(7);p.view.morph.tick(2);p.timeline.network.start();p.timeline.network.tick(14);
+          const draw=()=>{p.view.render(0,0,p.timeline.network);p.refreshNetwork();};draw();
+          const positions=()=>p.view.labels.map((el,i)=>{const anchor=p.view.projectRemote(i);if(el.hidden||Math.abs(parseFloat(el.style.left)-anchor.x)>1||Math.abs(parseFloat(el.style.top)-anchor.y)>1)throw new Error('Unanchored label');return el.style.left+el.style.top;});
+          const before=positions();p.interaction.rotation.y+=.3;draw();const rotated=positions();if(before.every((v,i)=>v===rotated[i]))throw new Error('Rotation did not move labels');
+          p.interaction.zoom=.8;draw();const zoomed=positions();if(rotated.every((v,i)=>v===zoomed[i]))throw new Error('Zoom did not move labels');
+          p.timeline.network.stop();p.timeline.network.tick(2);draw();if(p.view.labels.some(el=>!el.hidden))throw new Error('Disconnected labels');
+          p.destroy();if(document.querySelector('.preview-peer-label,.preview-simulated'))throw new Error('Label cleanup');
+        }""",backend)
+        print(f'PASS {backend}: projected peer labels, rotation, zoom, disconnect and cleanup',flush=True)
     browser.close()
