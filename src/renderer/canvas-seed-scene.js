@@ -226,6 +226,22 @@ export class CanvasSeedScene {
     this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration };
   }
 
+  #activityFor(id) {
+    if (!this.#signal) return 0;
+    const elapsed = performance.now() / 1000 - this.#signal.startedAt;
+    const progress = elapsed / this.#signal.duration;
+    if (id === this.#signal.route.source) return Math.max(0, 1 - progress * 4) * .8;
+    if (id === this.#signal.route.destination) return Math.max(0, 1 - Math.abs(progress - .82) * 7);
+    return 0;
+  }
+
+  signal(route, ambient = false) {
+    const duration = ambient ? 1.8 : route.outcome === "MEMORY_FORMATION" ? 3.2 : route.outcome === "REINFORCEMENT" ? 2.8 : 2.5;
+    this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration };
+  }
+
+  signal(route, ambient = false) { this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration: ambient ? 1.8 : 2.5 }; }
+
   destroy() {
     this.#interaction.disconnect();
   }
