@@ -103,8 +103,8 @@ class RenderBuffers {
 }
 
 export class EvolutionScene {
-  constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage } = {}) {
-    this.three = three; this.interaction = interaction; this.reduced = reduced;
+  constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage, fitDashboard = false } = {}) {
+    this.fitDashboard = fitDashboard; this.three = three; this.interaction = interaction; this.reduced = reduced;
     this.morph = new Morphology(17, provider); this.buffers = new RenderBuffers(); this.centralSegments = 0;
   }
   mount(host) {
@@ -137,7 +137,12 @@ export class EvolutionScene {
   select(stage) { this.morph.select(stage, this.reduced); this.buffers.rebuild(this.morph); this.centralSegments = this.buffers.segmentCount; }
   resize(width, height) {
     if (!width || !height) return; this.width = width; this.height = height;
-    if (this.three) { this.renderer.setSize(width, height, false); this.camera.aspect = width / height; this.camera.updateProjectionMatrix(); }
+    if (this.three) { this.renderer.setSize(width, height, false); this.camera.aspect = width / height;
+      if (this.fitDashboard) {
+        const framing = width < height ? Math.min(1, width / height * 1.3) : 1;
+        this.camera.position.z = Math.max(9, 4.2 * framing / (Math.tan(Math.PI / 10) * this.camera.aspect));
+      }
+      this.camera.updateProjectionMatrix(); }
     else { const dpr = Math.min(devicePixelRatio, 1.5); this.canvas.width = width * dpr; this.canvas.height = height * dpr; this.context.setTransform(dpr, 0, 0, dpr, 0, 0); }
   }
   render(elapsed, delta, network) {

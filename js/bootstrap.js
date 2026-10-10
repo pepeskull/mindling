@@ -11,10 +11,7 @@ async function start() {
   if (new URLSearchParams(location.search).get('stage-preview') === '1') {
     const { EvolutionPreview } = await import('../src/preview/evolution-preview.js');
     if (stopped) return;
-    active = new EvolutionPreview({ onExit: () => {
-      const url = new URL(location.href); url.searchParams.delete('stage-preview'); history.replaceState(null, '', url);
-      startProduction().catch(showStartupError);
-    } });
+    active = new EvolutionPreview();
     await active.start();
   } else await startProduction();
 }

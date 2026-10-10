@@ -5,6 +5,8 @@ import { LIFE_RULES, lifeStageFor, neuralCycles, warningFor } from "../life/life
 
 export class Dashboard {
   #unsubscribe;
+  #readOnly = false;
+  #listeners = new AbortController();
   #messageTimer;
   #form;
   #handleSubmit;
@@ -20,7 +22,8 @@ export class Dashboard {
   #eventUnsubscribes = [];
   #knowledgeDevelopment = { overall: 0, areas: [] };
 
-  constructor(events, { onInput, onCare, onNewMindling }) {
+  constructor(events, { onInput, onCare, onNewMindling, readOnly = false } = {}) {
+    this.#readOnly = readOnly;
     this.#events = events;
     this.#onInput = onInput;
     this.#onCare = onCare;
@@ -36,19 +39,53 @@ export class Dashboard {
     ];
     this.#form = document.querySelector("#interaction-form");
     this.#handleSubmit = (event) => this.#submitInteraction(event);
-    this.#form.addEventListener("submit", this.#handleSubmit);
-    document.querySelectorAll("[data-input-mode]").forEach(button => button.addEventListener("click", () => this.#setMode(button.dataset.inputMode)));
-    document.querySelectorAll("[data-activity-mode]").forEach(button => button.addEventListener("click", () => this.#setMode(button.dataset.activityMode)));
-    document.querySelectorAll("[data-care]").forEach(button => button.addEventListener("click", () => this.#care(button.dataset.care)));
-    document.querySelector("[data-new-mindling]").addEventListener("click", () => { if (confirm("Preserve this memorial and begin raising a new Mindling?")) this.#onNewMindling(); });
-    document.querySelector("[data-view='memories']").addEventListener("click", () => this.#setPrimaryView("memories"));
-    document.querySelector("[data-view='dashboard']").addEventListener("click", event => { event.preventDefault(); this.#setPrimaryView("dashboard"); });
-    document.querySelector("[data-close-memory]").addEventListener("click", () => this.#setPrimaryView("dashboard"));
-    document.querySelector("[data-close-network]").addEventListener("click", () => { document.querySelector("#network-view").hidden = true; });
-    document.querySelectorAll("[data-mobile-view]").forEach(button => button.addEventListener("click", () => this.#openMobileView(button.dataset.mobileView)));
-    document.querySelector("[data-download-profile]").addEventListener("click", () => downloadMindlingProfile(this.#state, this.#life));
-    document.querySelector("#mindling-input").addEventListener("focus", () => document.documentElement.classList.add("input-active"));
-    document.querySelector("#mindling-input").addEventListener("blur", () => document.documentElement.classList.remove("input-active"));
+    if (!readOnly) {
+      this.#listen(this.#form, "submit", this.#handleSubmit);
+      document.querySelectorAll("[data-input-mode]").forEach(button => this.#listen(button, "click", () => this.#setMode(button.dataset.inputMode)));
+      document.querySelectorAll("[data-activity-mode]").forEach(button => this.#listen(button, "click", () => this.#setMode(button.dataset.activityMode)));
+      document.querySelectorAll("[data-care]").forEach(button => this.#listen(button, "click", () => this.#care(button.dataset.care)));
+      this.#listen(document.querySelector("[data-new-mindling]"), "click", () => { if (confirm("Preserve this memorial and begin raising a new Mindling?")) this.#onNewMindling(); });
+    }
+    this.#listen(document.querySelector("[data-view='memories']"), "click", () => this.#setPrimaryView("memories"));
+    this.#listen(document.querySelector("[data-view='dashboard']"), "click", event => { event.preventDefault(); this.#setPrimaryView("dashboard"); });
+    this.#listen(document.querySelector("[data-close-memory]"), "click", () => this.#setPrimaryView("dashboard"));
+    this.#listen(document.querySelector("[data-close-network]"), "click", () => { document.querySelector("#network-view").hidden = true; });
+    document.querySelectorAll("[data-mobile-view]").forEach(button => this.#listen(button, "click", () => this.#openMobileView(button.dataset.mobileView)));
+    this.#listen(document.querySelector("[data-download-profile]"), "click", () => { if (this.#state) downloadMindlingProfile(this.#state, this.#life); });
+    this.#listen(document.querySelector("#mindling-input"), "focus", () => document.documentElement.classList.add("input-active"));
+    this.#listen(document.querySelector("#mindling-input"), "blur", () => document.documentElement.classList.remove("input-active"));
+  }
+
+  #listen(target, type, callback) { target.addEventListener(type, callback, { signal: this.#listeners.signal }); }
+
+  showSnapshot(snapshot) {
+    if (!this.#readOnly) throw new Error("Snapshot display requires a read-only dashboard");
+    // Clear defaults: an absent record must never look like a real, healthy player.
+    document.querySelectorAll('[data-stat], [data-life-stage], [data-neural-cycle], [data-neural-cycles], [data-energy-value], [data-profile-filename]').forEach(node => { node.textContent = '—'; });
+    document.querySelectorAll('[data-life-attribute] strong').forEach(node => { node.textContent = '—'; });
+    document.querySelectorAll('.life-panel progress, [data-energy-progress]').forEach(node => { node.value = 0; node.hidden = true; });
+    const condition = document.querySelector('[data-life-condition]'); condition.textContent = 'UNAVAILABLE'; condition.dataset.condition = 'UNAVAILABLE';
+    document.querySelector('[data-energy-reset]').textContent = 'No saved energy information';
+    document.querySelector('[data-life-warning] span').textContent = 'No saved Life Status available.';
+    document.querySelector('[data-life-status-title]').textContent = 'Mindling — Life Status';
+    document.querySelector('.mindling-id').textContent = '';
+    document.querySelector('.hero-copy h1').textContent = snapshot.status === 'empty' ? 'No saved Mindling' : 'Saved data unavailable';
+    document.querySelector('.hero-copy span').textContent = 'Read-only preview · Gameplay actions disabled';
+    document.querySelector('.pathways-copy').textContent = 'No saved pathways available.';
+    document.querySelector('.memory-overall').textContent = 'No saved memory information available.';
+    document.querySelector('.knowledge-area-list').replaceChildren();
+    document.querySelector('.stages .current small').textContent = snapshot.state ? 'Saved' : 'Preview';
+    if (snapshot.state) this.render(snapshot.state);
+    if (snapshot.life) {
+      document.querySelectorAll('.life-panel progress, [data-energy-progress]').forEach(node => { node.hidden = false; });
+      this.#renderLife(snapshot.life, Date.parse(snapshot.life.lastSimulationAt || snapshot.life.birthTimestamp));
+    }
+    document.querySelector('.hero-copy span').textContent = 'Read-only preview · Gameplay actions disabled';
+    document.querySelector('.storage-status').textContent = snapshot.status === 'saved' ? 'Read-only · Saved snapshot' : snapshot.status === 'empty' ? 'Read-only · No saved Mindling' : 'Read-only · Storage unavailable';
+    document.querySelectorAll('[data-care], [data-activity-mode], [data-input-mode], [data-new-mindling], #mindling-input, #interaction-form button[type=submit]').forEach(node => { node.disabled = true; node.title = 'Gameplay actions are disabled in development preview'; });
+    document.querySelector('[data-download-profile]').disabled = !snapshot.state;
+    document.querySelector('#mindling-input').placeholder = 'Read-only development preview';
+    this.show();
   }
 
   render(state) {
@@ -140,9 +177,9 @@ export class Dashboard {
 
   #escape(value) { const node = document.createElement("span"); node.textContent = value; return node.innerHTML; }
 
-  #renderLife(life) {
+  #renderLife(life, now = Date.now()) {
     this.#life = life;
-    const cycles = neuralCycles(life.birthTimestamp, Date.now(), life.deathTimestamp);
+    const cycles = neuralCycles(life.birthTimestamp, now, life.deathTimestamp);
     document.querySelector("[data-neural-cycle]").textContent = `NC ${String(cycles).padStart(4, "0")}`;
     document.querySelector("[data-neural-cycles]").textContent = `${cycles} Neural ${cycles === 1 ? "Cycle" : "Cycles"}`;
     document.querySelector("[data-life-stage]").textContent = lifeStageFor(cycles);
@@ -198,6 +235,7 @@ export class Dashboard {
   }
 
   destroy() {
+    this.#listeners.abort();
     this.#unsubscribe?.();
     this.#selectionUnsubscribe?.();
     this.#eventUnsubscribes.forEach(unsubscribe => unsubscribe());
