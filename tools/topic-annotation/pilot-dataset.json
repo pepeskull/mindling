@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "datasetId": "mindling-topic-pilot-interface-sample",
+  "version": "0.1.0",
+  "title": "Mindling topic annotation interface sample",
+  "description": "Small unlabeled interface-validation sample. It does not contain the frozen 70-pair evaluation corpus.",
+  "license": "CC0-1.0",
+  "pairs": [
+    { "id": "pilot-001", "category": "same-topic-different-fact", "left": "Basalt forms when lava cools quickly at the surface.", "right": "Magma can collect beneath a volcano before an eruption." },
+    { "id": "pilot-002", "category": "same-topic-different-fact", "left": "Sourdough starter contains communities of yeast and bacteria.", "right": "Long fermentation can change the flavor of bread dough." },
+    { "id": "pilot-003", "category": "same-topic-different-fact", "left": "A rook moves along ranks and files on a chessboard.", "right": "Castling moves the king and a rook during one turn." },
+    { "id": "pilot-004", "category": "same-topic-different-fact", "left": "Coral polyps build calcium carbonate skeletons.", "right": "Warm ocean temperatures can cause coral bleaching." },
+
+    { "id": "pilot-005", "category": "related-distinct", "left": "Seismographs record motion produced by earthquakes.", "right": "Volcanic ash can disrupt aircraft engines." },
+    { "id": "pilot-006", "category": "related-distinct", "left": "Nutrition labels report the amount of sodium in packaged food.", "right": "Bread dough expands as fermentation produces carbon dioxide." },
+    { "id": "pilot-007", "category": "related-distinct", "left": "Marine protected areas can restrict commercial fishing.", "right": "Ship propellers can create underwater noise." },
+    { "id": "pilot-008", "category": "related-distinct", "left": "A telescope mount compensates for Earth's rotation.", "right": "Camera tripods reduce movement during long exposures." },
+
+    { "id": "pilot-009", "category": "lexically-similar-different", "left": "Nurses monitor a patient's vital signs during recovery.", "right": "Monitoring software reports the health of network servers." },
+    { "id": "pilot-010", "category": "lexically-similar-different", "left": "A river bank can erode after heavy rainfall.", "right": "A central bank may change its benchmark interest rate." },
+    { "id": "pilot-011", "category": "lexically-similar-different", "left": "A mouse can store seeds in an underground burrow.", "right": "A wireless mouse sends input signals to a computer." },
+    { "id": "pilot-012", "category": "lexically-similar-different", "left": "Cells divide to support growth in living tissue.", "right": "Spreadsheet cells can contain formulas and references." },
+
+    { "id": "pilot-013", "category": "broad-narrow", "left": "Orchids often need air circulation around their roots.", "right": "Indoor gardening requires attention to light and humidity." },
+    { "id": "pilot-014", "category": "broad-narrow", "left": "An appeal asks a higher court to review a legal decision.", "right": "Criminal procedure defines how a prosecution moves through court." },
+    { "id": "pilot-015", "category": "broad-narrow", "left": "A derailleur moves a bicycle chain between gears.", "right": "Mechanical maintenance can reduce wear on moving parts." },
+    { "id": "pilot-016", "category": "broad-narrow", "left": "Haiku traditionally use a compact poetic form.", "right": "Japanese literature includes poetry, drama, and prose." },
+
+    { "id": "pilot-017", "category": "ambiguous", "left": "It can improve stability when the load changes.", "right": "Feedback controllers respond to changes in a measured system." },
+    { "id": "pilot-018", "category": "ambiguous", "left": "The draft caused a long disagreement.", "right": "Editors revise early versions of a manuscript." },
+    { "id": "pilot-019", "category": "ambiguous", "left": "They migrate when conditions become unfavorable.", "right": "Some birds travel seasonally between breeding and wintering regions." },
+    { "id": "pilot-020", "category": "ambiguous", "left": "The charge changed after the hearing.", "right": "Electric charge is measured in coulombs." },
+
+    { "id": "pilot-021", "category": "multiple-subjects", "left": "Satellite maps help farmers decide where crops need irrigation.", "right": "Soil moisture affects how often a field needs water." },
+    { "id": "pilot-022", "category": "multiple-subjects", "left": "A museum used virtual reality to reconstruct an ancient harbor.", "right": "Archaeologists study material remains from earlier societies." },
+    { "id": "pilot-023", "category": "multiple-subjects", "left": "New battery factories can influence regional employment and electricity demand.", "right": "Power grids balance electricity supply with consumption." },
+    { "id": "pilot-024", "category": "multiple-subjects", "left": "A composer used bird recordings in an electronic music performance.", "right": "Bioacoustics researchers analyze sounds made by animals." },
+
+    { "id": "pilot-025", "category": "multilingual-unseen", "left": "Runstenar kan berätta om resor som gjordes under vikingatiden.", "right": "Arkeologer tolkar inskrifter på föremål från äldre samhällen." },
+    { "id": "pilot-026", "category": "multilingual-unseen", "left": "Los manglares protegen algunas costas de la erosión.", "right": "Las raíces de los manglares sirven de refugio para peces jóvenes." },
+    { "id": "pilot-027", "category": "multilingual-unseen", "left": "En motorcykelkedja behöver rätt spänning för att fungera väl.", "right": "La presión de los neumáticos afecta el manejo de una motocicleta." },
+    { "id": "pilot-028", "category": "multilingual-unseen", "left": "I den fiktiva staden styrs tidvattnet av två månar.", "right": "The invented kingdom elects a new archivist every winter." }
+  ]
+}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080a0c">
+  <meta name="description" content="Standalone local annotation tool for Mindling open-vocabulary topic membership.">
+  <title>Mindling Topic Annotation Pilot</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div><p class="eyebrow">Mindling · Phase 4B · standalone</p><h1>Topic annotation pilot</h1></div>
+      <span class="local-badge">Local · no AI · no backend</span>
+    </header>
+
+    <section id="setup" class="panel" aria-labelledby="setup-title">
+      <h2 id="setup-title">Open a workspace</h2>
+      <p class="lede">Judge whether two independent memories belong to one useful broad subject. Do not enter your name, email, or other personal information—use a pseudonym.</p>
+      <dl class="dataset-meta" id="dataset-meta"></dl>
+      <div class="setup-grid">
+        <label>Mode<select id="mode"><option value="annotate">Independent annotation</option><option value="adjudicate">Agreement and adjudication</option></select></label>
+        <label>Pseudonym<input id="pseudonym" maxlength="32" autocomplete="off" placeholder="e.g. annotator-01"></label>
+        <label>Recorded shuffle seed<input id="seed" maxlength="120" value="pilot-2026-a" autocomplete="off"></label>
+      </div>
+      <div id="adjudication-imports" class="imports" hidden>
+        <label>Annotator A JSON<input id="run-a-file" type="file" accept="application/json,.json"></label>
+        <label>Annotator B JSON<input id="run-b-file" type="file" accept="application/json,.json"></label>
+      </div>
+      <div class="button-row">
+        <button id="start" class="primary" type="button">Start workspace</button>
+        <label class="file-button">Import custom dataset<input id="dataset-file" type="file" accept="application/json,.json"></label>
+        <label class="file-button" id="resume-label">Resume annotation JSON<input id="resume-file" type="file" accept="application/json,.json"></label>
+      </div>
+      <p id="setup-error" class="error" role="alert"></p>
+    </section>
+
+    <section id="annotation" class="panel" hidden aria-labelledby="annotation-title">
+      <header class="workspace-header"><div><p class="eyebrow" id="annotation-progress"></p><h2 id="annotation-title">Independent judgment</h2></div><button data-reset type="button">Close workspace</button></header>
+      <p class="instruction">Would a careful reader place both facts in one coherent, reasonably specific body of knowledge? Shared wording, analogous grammar, or a very broad umbrella is not enough.</p>
+      <div class="pair" aria-label="Memory pair"><article><span>Memory A</span><p id="left-memory"></p></article><article><span>Memory B</span><p id="right-memory"></p></article></div>
+      <form id="annotation-form">
+        <fieldset><legend>Judgment</legend><div class="judgments" id="annotation-judgments"></div></fieldset>
+        <label>Required rationale<textarea id="annotation-rationale" minlength="8" maxlength="500" required placeholder="Briefly explain the shared subject, separation, or uncertainty."></textarea></label>
+        <div class="button-row"><button class="primary" type="submit">Save judgment and continue</button><button id="export-run-json" type="button">Export JSON</button><button id="export-run-csv" type="button">Export CSV</button></div>
+        <p id="annotation-error" class="error" role="alert"></p>
+      </form>
+    </section>
+
+    <section id="adjudication" class="panel" hidden aria-labelledby="adjudication-title">
+      <header class="workspace-header"><div><p class="eyebrow" id="adjudication-progress"></p><h2 id="adjudication-title">Independent agreement review</h2></div><button data-reset type="button">Close workspace</button></header>
+      <div id="analysis" class="analysis"></div>
+      <div id="adjudication-task">
+        <div class="pair"><article><span>Memory A</span><p id="adjudication-left"></p></article><article><span>Memory B</span><p id="adjudication-right"></p></article></div>
+        <div class="source-judgments"><article><h3 id="source-a-title"></h3><strong id="source-a-judgment"></strong><p id="source-a-rationale"></p></article><article><h3 id="source-b-title"></h3><strong id="source-b-judgment"></strong><p id="source-b-rationale"></p></article></div>
+        <form id="adjudication-form"><fieldset><legend>Adjudicated judgment</legend><div class="judgments" id="adjudication-judgments"></div></fieldset>
+          <label>Required adjudication rationale<textarea id="adjudication-rationale" minlength="8" maxlength="500" required></textarea></label>
+          <button class="primary" type="submit">Save adjudication</button><p id="adjudication-error" class="error" role="alert"></p></form>
+      </div>
+      <div class="button-row"><button id="export-adjudication-json" type="button">Export combined JSON</button><button id="export-adjudication-csv" type="button">Export combined CSV</button></div>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
