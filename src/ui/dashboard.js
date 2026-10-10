@@ -1,6 +1,6 @@
 import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
-import { deriveKnowledgeDevelopment, deriveNeuronParticipation, KNOWLEDGE_RULES } from "../brain/knowledge-development.js";
+import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 import { LIFE_RULES, lifeStageFor, neuralCycles, warningFor } from "../life/life-system.js";
 
 export class Dashboard {
@@ -31,6 +31,7 @@ export class Dashboard {
       events.on(EVENTS.MEMORY_CREATED, () => this.#showStatus("Memory formed")),
       events.on(EVENTS.MEMORY_REINFORCED, () => this.#showStatus("Memory reinforced")),
       events.on(EVENTS.LEARNING_FAILED, () => this.#showStatus("Learning could not be saved")),
+      events.on(EVENTS.EVENT_HANDLER_FAILED, () => this.#showStatus("A dashboard update could not be completed")),
       events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
     this.#form = document.querySelector("#interaction-form");
@@ -62,7 +63,6 @@ export class Dashboard {
       document.querySelector(`[data-stat="${key}"]`).textContent = value;
     }
     if (!state.name) return;
-    document.querySelector(".today-state p").innerHTML = `${this.#escape(state.name)} is awake.<small>The Neural Seed is listening.</small>`;
     document.querySelector(".hero-copy h1").textContent = `${state.name} is awake.`;
     document.querySelector(".hero-copy span").textContent = "It starts with a few neurons. What it becomes is up to you.";
     document.querySelector(".pathways-copy").textContent = state.pathways.join(" · ");
@@ -85,8 +85,13 @@ export class Dashboard {
     const overall = document.querySelector(".memory-overall"); const list = document.querySelector(".knowledge-area-list");
     const percent = Math.round(this.#knowledgeDevelopment.overall * 100);
     overall.innerHTML = `<div><span>Overall Development</span><strong>${percent}%</strong></div><progress max="100" value="${percent}">${percent}%</progress><small>Bounded internal development · ${this.#state.memories.length} canonical ${this.#state.memories.length === 1 ? "memory" : "memories"}</small>`;
-    if (!this.#knowledgeDevelopment.areas.length) { list.innerHTML = `<p class="memory-empty">Knowledge areas will emerge as canonical memories form.</p>`; return; }
-    list.innerHTML = this.#knowledgeDevelopment.areas.slice(0, KNOWLEDGE_RULES.displayedAreas).map(area => { const value = Math.round(area.progress * 100); return `<article><div><span>${this.#escape(area.label)}</span><strong>${value}%</strong></div><progress max="100" value="${value}">${value}%</progress><small>${area.memoryCount} canonical ${area.memoryCount === 1 ? "memory" : "memories"} · ${Math.round(area.cohesion * 100)}% semantic cohesion · ${area.neuronIds.length} participating ${area.neuronIds.length === 1 ? "neuron" : "neurons"}</small></article>`; }).join("");
+    if (!this.#knowledgeDevelopment.areas.length) { list.innerHTML = `<p class="memory-empty">No canonical memories yet. Teach your Mindling to begin forming knowledge.</p>`; return; }
+    const memoriesById = new Map(this.#state.memories.map(memory => [memory.id, memory]));
+    list.innerHTML = this.#knowledgeDevelopment.areas.map(area => {
+      const value = Math.round(area.progress * 100);
+      const memories = area.memoryIds.map(id => memoriesById.get(id)).filter(Boolean);
+      return `<details class="knowledge-area" open><summary><span><b>${this.#escape(area.label)}</b><small>${area.memoryCount} canonical ${area.memoryCount === 1 ? "memory" : "memories"} · ${Math.round(area.cohesion * 100)}% cohesion</small></span><strong>${value}%</strong></summary><progress max="100" value="${value}">${value}%</progress><div class="area-memory-list">${memories.map(memory => `<details class="memory-record"><summary>${this.#escape(memory.content)}</summary><dl><div><dt>Memory ID</dt><dd>${this.#escape(memory.id)}</dd></div><div><dt>Strength</dt><dd>${Math.round((memory.strength || 0) * 100)}%</dd></div><div><dt>Activations</dt><dd>${memory.activations ?? 0}</dd></div><div><dt>Participating neurons</dt><dd>${(memory.neuronIds || []).length || "—"}</dd></div><div><dt>Relationships</dt><dd>${(memory.relatedMemoryIds || []).length || "—"}</dd></div></dl></details>`).join("")}</div></details>`;
+    }).join("");
   }
 
   #setPrimaryView(view) {
@@ -98,7 +103,7 @@ export class Dashboard {
   }
 
   #openMobileView(view) {
-    const left = document.querySelector(".left-panel"); const right = document.querySelector(".right-panel");
+    const left = document.querySelector(".left-stack"); const right = document.querySelector(".right-panel");
     left.classList.toggle("mobile-open", view === "development"); right.classList.toggle("mobile-open", view === "dashboard");
     this.#setPrimaryView(view === "memories" ? "memories" : "dashboard");
     document.querySelector("#network-view").hidden = view !== "network";
