@@ -154,7 +154,8 @@ export class Dashboard {
     document.querySelector("[data-energy-value]").textContent = `${life.energy.remaining} / ${life.energy.maximum}`;
     document.querySelector("[data-energy-progress]").value = life.energy.remaining;
     document.querySelector("[data-energy-reset]").textContent = `Resets ${new Date(life.energy.nextResetAt).toLocaleString([], { dateStyle: "short", timeStyle: "short", timeZone: "UTC" })} UTC`;
-    const warning = warningFor(life); document.querySelector("[data-life-warning]").innerHTML = `<strong>${this.#escape(warning.status)}</strong><span>${this.#escape(warning.message)}</span>`;
+    const warning = warningFor(life);
+    document.querySelector("[data-life-warning] span").textContent = warning.message;
     document.querySelectorAll("[data-activity-mode]").forEach(button => { const rule = LIFE_RULES.activity[button.dataset.activityMode]; button.disabled = life.lifeState === "DECEASED" || life.energy.remaining < rule.energyCost; });
     document.querySelectorAll("[data-care]").forEach(button => { button.disabled = life.lifeState === "DECEASED"; });
     document.querySelector("#mindling-input").disabled = life.lifeState === "DECEASED";
