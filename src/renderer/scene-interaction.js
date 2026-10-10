@@ -95,6 +95,7 @@ export class SceneInteraction {
   }
 
   disconnect() {
+    for (const id of this.#pointers.keys()) if (this.#host?.hasPointerCapture?.(id)) this.#host.releasePointerCapture(id);
     this.#host?.removeEventListener("pointerdown", this.#onPointerDown);
     this.#host?.removeEventListener("pointermove", this.#onPointerMove);
     this.#host?.removeEventListener("pointerup", this.#onPointerUp);

@@ -27,9 +27,11 @@ export class ThreeSeedScene {
   #synapseVisuals = new Map();
   #routeHighlight = { neuronIds: [], synapseIds: [] };
   #interaction = new SceneInteraction();
+  #ownsInteraction = true;
   #reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  constructor(three, onSelection) {
+  constructor(three, onSelection, interaction = null) {
+    if (interaction) { this.#interaction = interaction; this.#ownsInteraction = false; }
     this.#three = three;
     this.#onSelection = onSelection;
     this.#raycaster = new three.Raycaster();
@@ -56,7 +58,7 @@ export class ThreeSeedScene {
     this.#addLighting();
     this.#buildSeed(model);
     this.#addDepthParticles();
-    this.#interaction.connect(host, { onTap: event => this.#pick(event, true), onHover: event => this.#pick(event, false) });
+    if (this.#ownsInteraction) this.#interaction.connect(host, { onTap: event => this.#pick(event, true), onHover: event => this.#pick(event, false) });
   }
 
   #addLighting() {
@@ -238,11 +240,11 @@ export class ThreeSeedScene {
     const T = this.#three;
     const values = [];
     for (let index = 0; index < 90; index += 1) {
-      const radius = 1.7 + Math.random() * 2.5;
-      const angle = Math.random() * Math.PI * 2;
+      const radius = 1.7 + seededValue(index * 3) * 2.5;
+      const angle = seededValue(index * 3 + 1) * Math.PI * 2;
       values.push(
         Math.cos(angle) * radius,
-        (Math.random() - 0.5) * 3.8,
+        (seededValue(index * 3 + 2) - 0.5) * 3.8,
         Math.sin(angle) * radius - 1.5
       );
     }
@@ -289,7 +291,7 @@ export class ThreeSeedScene {
   }
 
   render(elapsed, delta) {
-    this.#interaction.update(delta);
+    if (this.#ownsInteraction) this.#interaction.update(delta);
     const ambientTurn = this.#reducedMotion ? 0 : Math.sin(elapsed * 0.16) * 0.08;
     this.#seedGroup.rotation.set(
       this.#interaction.rotation.x,
@@ -352,8 +354,10 @@ export class ThreeSeedScene {
     }
   }
 
+  setReducedMotion(value) { this.#reducedMotion = value; }
+
   destroy() {
-    this.#interaction.disconnect();
+    if (this.#ownsInteraction) this.#interaction.disconnect();
     this.#scene?.traverse((object) => {
       object.geometry?.dispose();
       if (Array.isArray(object.material)) {
@@ -367,5 +371,7 @@ export class ThreeSeedScene {
       }
     });
     this.#renderer?.dispose();
+    this.#renderer?.forceContextLoss();
+    this.#renderer?.domElement.remove();
   }
 }

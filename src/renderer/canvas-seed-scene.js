@@ -17,6 +17,7 @@ export class CanvasSeedScene {
   #width = 0;
   #height = 0;
   #interaction = new SceneInteraction();
+  #ownsInteraction = true;
   #reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   #points = new Map();
   #selected = null;
@@ -26,7 +27,7 @@ export class CanvasSeedScene {
   #ambientIndex = 0;
   #routeHighlight = { neuronIds: [], synapseIds: [] };
 
-  constructor(onSelection) { this.#onSelection = onSelection; }
+  constructor(onSelection, interaction = null) { this.#onSelection = onSelection; if (interaction) { this.#interaction = interaction; this.#ownsInteraction = false; } }
 
   mount(host, model) {
     this.#host = host;
@@ -36,7 +37,7 @@ export class CanvasSeedScene {
     this.#canvas.setAttribute("aria-hidden", "true");
     this.#context = this.#canvas.getContext("2d");
     host.append(this.#canvas);
-    this.#interaction.connect(host, { onTap: event => this.#pick(event) });
+    if (this.#ownsInteraction) this.#interaction.connect(host, { onTap: event => this.#pick(event) });
   }
 
   update(model) {
@@ -54,7 +55,7 @@ export class CanvasSeedScene {
   }
 
   render(elapsed, delta) {
-    this.#interaction.update(delta);
+    if (this.#ownsInteraction) this.#interaction.update(delta);
     const context = this.#context;
     context.clearRect(0, 0, this.#width, this.#height);
     const points = this.#projectNodes(elapsed);
@@ -242,7 +243,10 @@ export class CanvasSeedScene {
 
   signal(route, ambient = false) { this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration: ambient ? 1.8 : 2.5 }; }
 
+  setReducedMotion(value) { this.#reducedMotion = value; }
+
   destroy() {
-    this.#interaction.disconnect();
+    if (this.#ownsInteraction) this.#interaction.disconnect();
+    this.#canvas?.remove();
   }
 }
