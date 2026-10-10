@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#030303">
-  <meta name="description" content="Play Mindling — raise your own AI, beginning with a few neurons.">
-  <title>Play Mindling — Raise Your Own AI</title>
+  <meta name="description" content="Mindling — raise your own AI, beginning with a few neurons.">
+  <title>Mindling — Raise Your Own AI</title>
   <link rel="icon" href="./favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="./css/tokens.css">
   <link rel="stylesheet" href="./css/base.css">
@@ -13,29 +13,36 @@
   <link rel="stylesheet" href="./css/layout.css">
   <link rel="stylesheet" href="./css/dashboard.css">
   <link rel="stylesheet" href="./css/responsive.css">
+  <link rel="stylesheet" href="./css/onboarding.css">
+  <link rel="stylesheet" href="./css/life.css">
 </head>
 <body>
   <div id="app" class="app-shell">
     <div id="scene" class="scene" aria-label="Interactive visualization of a five-neuron Neural Seed"></div>
     <div class="scene-vignette" aria-hidden="true"></div>
 
+    <div class="dashboard-chrome is-hidden">
     <header class="topbar glass-line">
       <a class="brand" href="#dashboard" aria-label="Mindling dashboard">
         <svg class="brand-mark" viewBox="0 0 34 30" aria-hidden="true">
           <path d="M17 5 7 23h20L17 5Z"/><circle cx="17" cy="5" r="3.2"/><circle cx="7" cy="23" r="3.2"/><circle cx="27" cy="23" r="3.2"/>
         </svg>
-        <span>MINDLING</span><small>PLAY</small>
+        <span>MINDLING</span>
       </a>
       <nav aria-label="Primary navigation">
-        <a class="active" href="#dashboard" aria-current="page">Dashboard</a>
+        <a class="active" href="#dashboard" data-view="dashboard" aria-current="page">Dashboard</a>
         <button type="button" disabled>Development</button>
-        <button type="button" disabled>Memory</button>
+        <button type="button" data-view="memories">Memory</button>
         <button type="button" disabled>Network</button>
       </nav>
-      <div class="stage-chip"><span></span> Neural Seed</div>
+      <div class="header-status">
+        <div class="stage-chip"><span></span><b data-life-stage>Neural Seed</b></div>
+        <div class="age-chip" aria-label="Mindling Age"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v4m0 12v4M4.9 4.9l2.8 2.8m8.6 8.6 2.8 2.8M2 12h4m12 0h4M4.9 19.1l2.8-2.8m8.6-8.6 2.8-2.8"/></svg><strong data-neural-cycle>NC 0001</strong><span class="sr-only" data-neural-cycles>1 Neural Cycle</span></div>
+      </div>
     </header>
 
     <main id="dashboard" class="dashboard">
+      <div class="left-stack">
       <aside class="side-panel left-panel glass-panel" aria-label="Mindling controls">
         <details open>
           <summary><span>View</span></summary>
@@ -60,10 +67,20 @@
         </details>
         <details open>
           <summary><span>Pathways</span></summary>
-          <p class="empty-copy">No pathways selected yet.</p>
+          <p class="empty-copy pathways-copy">No pathways selected yet.</p>
         </details>
+        <div class="compact-neural-stats" aria-label="Neural activity"><span><b data-stat="neurons">5</b> Neurons</span><span><b data-stat="synapses">4</b> Synapses</span><span><b data-stat="memories">0</b> Memories</span></div>
         <p class="control-hint"><span>↔</span> Drag to rotate &nbsp;·&nbsp; scroll to zoom</p>
       </aside>
+        <aside class="life-panel glass-panel" aria-labelledby="life-status-title">
+          <header><p id="life-status-title" data-life-status-title>Mindling — Life Status</p><span data-life-condition data-condition="STABLE">STABLE</span></header>
+          <div class="life-attribute" data-life-attribute="health"><svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 14c1.5-1.5 3-3.5 3-5.5A5.5 5.5 0 0 0 12 5a5.5 5.5 0 0 0-10 3.5C2 14 12 21 12 21s2.1-1.5 4.4-3.6M3.5 12H8l1.5-3 3 7 1.5-4h6.5"/></svg><label>Health</label><strong>100%</strong><progress max="100" value="100">100%</progress></div>
+          <div class="life-attribute" data-life-attribute="nutrition"><svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v8a4 4 0 0 0 4 4V2m-2 0v20m9-20v8h5m0-8v20"/></svg><label>Nutrition</label><strong>100%</strong><progress max="100" value="100">100%</progress></div>
+          <div class="life-attribute" data-life-attribute="rest"><svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg><label>Rest</label><strong>100%</strong><progress max="100" value="100">100%</progress></div>
+          <div class="life-attribute" data-life-attribute="wellbeing"><svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4.5A3.5 3.5 0 0 0 6 8v1a3 3 0 0 0-2 5.8V16a3 3 0 0 0 3 3h2.5m5-14.5A3.5 3.5 0 0 1 18 8v1a3 3 0 0 1 2 5.8V16a3 3 0 0 1-3 3h-2.5M12 3v18m-2-8h4"/></svg><label>Wellbeing</label><strong>100%</strong><progress max="100" value="100">100%</progress></div>
+          <div data-life-warning role="status"><span>Your Mindling's life signs are stable.</span></div>
+        </aside>
+      </div>
 
       <section class="hero-copy" aria-labelledby="hero-title">
         <p>Neural Seed · Stage 01</p>
@@ -71,32 +88,22 @@
         <span>What it becomes is up to you.</span>
       </section>
 
-      <aside class="side-panel right-panel glass-panel" aria-label="Mindling status">
-        <details open>
-          <summary><span>Brain Status</span></summary>
-          <dl class="metric-list muted-values">
-            <div><dt>Energy</dt><dd>—</dd></div><div><dt>Stimulation</dt><dd>—</dd></div>
-            <div><dt>Stability</dt><dd>—</dd></div><div><dt>Neural Capacity</dt><dd>—</dd></div>
-          </dl>
-        </details>
-        <details open>
-          <summary><span>Neural Activity</span></summary>
-          <dl class="metric-list">
-            <div><dt>Neurons</dt><dd data-stat="neurons">5</dd></div>
-            <div><dt>Synapses</dt><dd data-stat="synapses">4</dd></div>
-            <div><dt>Memories</dt><dd data-stat="memories">0</dd></div>
-            <div><dt>Neural Age</dt><dd>—</dd></div>
-          </dl>
-        </details>
-        <details open>
-          <summary><span>Today</span></summary>
-          <div class="today-state"><i></i><p>Mindling not created yet.<small>The Neural Seed is waiting.</small></p></div>
-        </details>
+      <aside class="side-panel right-panel glass-panel" aria-label="Mindling activities">
+        <section class="compact-section energy-panel" aria-labelledby="energy-title"><header><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-9 12h8l-1 8 9-12h-8Z"/></svg><b id="energy-title">Daily Energy</b></span><strong data-energy-value>10 / 10</strong></header><progress data-energy-progress max="10" value="10">10 / 10</progress><footer><small data-energy-reset>Resets at 00:00 UTC</small><button class="coming-soon" type="button" disabled>Top-up · Coming Soon</button></footer><div data-energy-message hidden><b>OUT OF ENERGY</b><p>Free energy returns after the daily reset.</p></div></section>
+        <section class="compact-section" aria-labelledby="activities-title"><h2 id="activities-title">Player Activities</h2><div class="activity-grid">
+          <button type="button" data-activity-mode="TALK" title="Share a thought or personal experience" aria-label="Talk to Mindling, costs 1 Energy and adds 5 Wellbeing"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3v-7a4 4 0 0 1-1-2.7V7a4 4 0 0 1 4-4h11a4 4 0 0 1 4 4Z"/></svg><span><b>Talk to Mindling</b><small>1 Energy · +5</small></span></button>
+          <button type="button" data-activity-mode="TEACH" title="Introduce new knowledge" aria-label="Teach Mindling, costs 2 Energy and adds 10 Wellbeing"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5Zm0 0V5.5"/></svg><span><b>Teach Mindling</b><small>2 Energy · +10</small></span></button>
+          <button type="button" data-activity-mode="DEEP_TRAINING" title="Focused learning activity" aria-label="Deep Training, costs 3 Energy and adds 15 Wellbeing"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4.5A3.5 3.5 0 0 0 6 8v1a3 3 0 0 0-2 5.8V16a3 3 0 0 0 3 3h2.5m5-14.5A3.5 3.5 0 0 1 18 8v1a3 3 0 0 1 2 5.8V16a3 3 0 0 1-3 3h-2.5M12 3v18"/></svg><span><b>Deep Training</b><small>3 Energy · +15</small></span></button>
+        </div></section>
+        <section class="compact-section" aria-labelledby="care-title"><h2 id="care-title">Basic Care</h2><div class="care-grid"><button type="button" data-care="NOURISH" aria-label="Nourish, free"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v8a4 4 0 0 0 4 4V2m-2 0v20m9-20v8h5m0-8v20"/></svg><span>Nourish<small>Free</small></span></button><button type="button" data-care="REST" aria-label="Rest, free"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg><span>Rest<small>Free</small></span></button><button type="button" data-care="CARE" aria-label="Care, free"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg><span>Care<small>Free</small></span></button></div></section>
+        <section class="compact-section social-status" aria-labelledby="social-title"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m13 10v-2a4 4 0 0 0-3-3.9m0-11.2a4 4 0 0 1 0 7.8"/></svg><b id="social-title">Social Status</b></span><em>Not Connected</em></section>
+        <section class="mindling-file" aria-labelledby="mindling-file-title"><p id="mindling-file-title">Mindling File</p><strong data-profile-filename>Mindling.md</strong><button type="button" data-download-profile>Download</button></section>
+        <section class="memorial" data-memorial hidden><strong>DECEASED</strong><p>Your Mindling's life cycle has ended. Its identity and memories remain preserved.</p><span data-memorial-age></span><span data-memorial-dates></span><button type="button" data-new-mindling>Raise a new Mindling</button></section>
       </aside>
-
       <form class="interaction glass-panel" id="interaction-form">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="6" cy="16" r="2"/><circle cx="18" cy="16" r="2"/><path d="m12 7-5 7m10 0-5-7m-4 9h8"/></svg>
-        <label class="sr-only" for="mindling-input">Talk to your Mindling</label>
+        <fieldset class="input-modes" aria-label="Input mode"><legend class="sr-only">Input mode</legend><button type="button" class="selected" data-input-mode="TALK" aria-pressed="true">Talk</button><button type="button" data-input-mode="TEACH" aria-pressed="false">Teach</button><button type="button" data-input-mode="DEEP_TRAINING" aria-pressed="false">Deep Training</button></fieldset>
+        <label class="sr-only" for="mindling-input">Talk to or teach your Mindling</label>
         <input id="mindling-input" maxlength="140" autocomplete="off" placeholder="Talk to your Mindling...">
         <span class="interaction-status" role="status" aria-live="polite"></span>
         <button type="submit" aria-label="Send message">
@@ -104,10 +111,18 @@
         </button>
       </form>
     </main>
+    <section id="memory-view" class="memory-view" aria-labelledby="memory-title" hidden><header><div><p>Semantic organization</p><h2 id="memory-title">Memory Development</h2><span>Canonical memories organized into emerging knowledge areas.</span></div><button type="button" data-close-memory>Dashboard</button></header><div class="memory-overall"></div><section class="memory-catalog" aria-labelledby="knowledge-areas-title"><h3 id="knowledge-areas-title">Knowledge Areas</h3><div class="knowledge-area-list"></div></section></section>
+    <section id="network-view" class="mobile-sheet glass-panel" aria-labelledby="network-title" hidden><button type="button" data-close-network aria-label="Close Network">×</button><p>Network</p><h2 id="network-title">Mindling Network</h2><span>Network capabilities have not awakened yet.</span></section>
 
-    <footer><span>RAISE YOUR OWN AI.</span><span class="storage-status" role="status">Local-first · Preparing</span><span>Milestone 01</span></footer>
+    <p class="mindling-id" aria-label="Mindling ID"></p>
+    <aside id="neural-inspector" class="neural-inspector glass-panel" aria-live="polite" hidden></aside>
+    <nav class="mobile-nav glass-line" aria-label="Mobile navigation"><button type="button" data-mobile-view="dashboard" class="active">Dashboard</button><button type="button" data-mobile-view="development">Development</button><button type="button" data-mobile-view="memories">Memory</button><button type="button" data-mobile-view="network">Network</button></nav>
+
+    <footer><span>RAISE YOUR OWN AI.</span><span class="storage-status" role="status">Local-first · Preparing</span><span>Milestone 03</span></footer>
+    </div>
+    <div id="onboarding" class="onboarding" hidden></div>
   </div>
-  <noscript><div class="fatal-message">Play Mindling needs JavaScript to render its Neural Seed.</div></noscript>
+  <noscript><div class="fatal-message">Mindling needs JavaScript to render its Neural Seed.</div></noscript>
   <script type="module" src="./js/bootstrap.js"></script>
 </body>
 </html>
