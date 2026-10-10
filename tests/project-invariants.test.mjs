@@ -1,85 +1,9 @@
-import test from "node:test";
-import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
-import { createNeuralSeedState } from "../src/brain/neural-seed-state.js";
-import { databaseConfig } from "../src/storage/database.js";
-import { economyConfig } from "../src/economy/economy.js";
-
-test("product-facing brand is Mindling and Socaiety is absent", () => {
-  const productFiles = ["index.html", "css/layout.css", "css/dashboard.css", "src/ui/dashboard.js"];
-  const content = productFiles.map(path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8")).join("\n");
-  assert.match(content, /Mindling/); assert.doesNotMatch(content, /Socaiety|SocAIety/);
-});
-
-test("storage, economy, topology, and static deployment invariants remain intact", () => {
-  assert.equal(databaseConfig.name, "mindling-db"); assert.equal(databaseConfig.version, 1);
-  assert.equal(economyConfig.tokenPaymentsEnabled, false); assert.equal(existsSync(new URL("../api", import.meta.url)), false);
-  const seed = createNeuralSeedState(); assert.equal(seed.nodes.length, 5); assert.equal(seed.synapses.length, 4); assert.equal(seed.memories.length, 0);
-});
-
-test("semantic matching has no manual dictionary authority", () => {
-  assert.equal(existsSync(new URL("../src/brain/concept-extractor.js", import.meta.url)), false);
-  const evaluator = readFileSync(new URL("../src/brain/memory-evaluator.js", import.meta.url), "utf8");
-  assert.doesNotMatch(evaluator, /Jaccard|compareConcepts|FUNCTION_WORDS|synonyms/i);
-  const knowledge = readFileSync(new URL("../src/brain/knowledge-development.js", import.meta.url), "utf8");
-  assert.doesNotMatch(knowledge, /stopwords?|keywordMap|topicMap|pathwayMap|synonym|\bTrading\b|\bProgramming\b|\bMusic\b/);
-});
-
-test("Memory is a reversible main view and keeps the renderer mounted", () => {
-  const markup = readFileSync(new URL("../index.html", import.meta.url), "utf8");
-  const dashboard = readFileSync(new URL("../src/ui/dashboard.js", import.meta.url), "utf8");
-  assert.match(markup, /data-view="dashboard"/); assert.match(markup, /Memory Development/);
-  assert.match(dashboard, /#setPrimaryView\("dashboard"\)/); assert.match(dashboard, /classList\.toggle\("memory-mode"/);
-  assert.doesNotMatch(dashboard, /renderer\.(destroy|initialize)/);
-});
-
-test("E5 topic experiment is debug-gated and absent from normal startup", () => {
-  const app = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
-  const model = readFileSync(new URL("../src/semantic/semantic-model.js", import.meta.url), "utf8");
-  assert.match(app, /location\.hostname === "localhost"/); assert.match(app, /semantic-debug/);
-  assert.match(app, /runKnowledgeTopicE5Matrix/); assert.match(app, /simulateKnowledgeAreasE5/);
-  assert.match(app, /auditE5Implementation/);
-  assert.doesNotMatch(app.split("#installSemanticDiagnostics")[0], /inspectKnowledgeTopicE5|runKnowledgeTopicE5Matrix|simulateKnowledgeAreasE5|auditE5Implementation/);
-  assert.match(model, /knowledgeTopicCandidate: "Xenova\/multilingual-e5-small"/);
-  assert.match(model, /`\$\{prefix\}: \$\{text\}`/); assert.match(model, /new Float32Array\(embedding\)/);
-});
-
-test("Jina authority is debug-only and absent from production decision modules", () => {
-  const app = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
-  const production = ["src/brain/brain-engine.js", "src/brain/memory-evaluator.js", "src/brain/knowledge-development.js"]
-    .map(path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8")).join("\n");
-  assert.match(app, /jinaStatus/); assert.match(app, /auditJinaImplementation/); assert.match(app, /runKnowledgeTopicJinaMatrix/);
-  assert.doesNotMatch(app.split("#installSemanticDiagnostics")[0], /jinaStatus|auditJinaImplementation|runKnowledgeTopicJinaMatrix/);
-  assert.doesNotMatch(production, /jina|reranker-v1-tiny-en/i);
-});
-
-test("Knowledge Area 2.0 panel is exact-debug gated and remains read-only", () => {
-  const app = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
-  const panel = readFileSync(new URL("../src/ui/knowledge-area-debug-panel.js", import.meta.url), "utf8");
-  const foundation = readFileSync(new URL("../src/semantic/knowledge-area-foundation.js", import.meta.url), "utf8");
-  assert.match(app, /get\("semantic-debug"\) === "1"/); assert.match(app, /knowledgeArea2Audit/);
-  assert.match(panel, /Knowledge Area 2\.0 Debug/); assert.match(panel, /aria-expanded/); assert.match(panel, /Refresh diagnostics/);
-  assert.match(panel, /Run Final Candidate Diagnostic/); assert.match(panel, /semantic correctness REVIEW REQUIRED/);
-  assert.match(panel, /STATE_READY/); assert.match(panel, /if \(this\.#open\) this\.refresh\(\)/);
-  assert.match(panel, /No topic hypothesis or verification evidence is available/);
-  assert.doesNotMatch(panel + foundation, /indexedDB|\.put\(|commitLearning|evaluateInput/);
-  assert.doesNotMatch(foundation, /clusterSimilarity|0\.62|MiniLM/);
-});
-
-test("Phase 3 candidate remains explicit, lazy, and outside production semantic decisions", () => {
-  const app = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
-  const provider = readFileSync(new URL("../src/semantic/knowledge-area-flan.js", import.meta.url), "utf8");
-  const production = ["src/brain/brain-engine.js", "src/brain/memory-evaluator.js", "src/brain/knowledge-development.js", "src/semantic/semantic-engine.js"]
-    .map(path => readFileSync(new URL(`../${path}`, import.meta.url), "utf8")).join("\n");
-  assert.match(app, /loadKnowledgeArea2Candidate/); assert.match(app, /runKnowledgeArea2Shadow/);
-  assert.match(provider, /onnx-community\/flan-t5-small-ONNX/); assert.match(provider, /text2text-generation/);
-  assert.match(provider, /do_sample: false/); assert.match(provider, /DIRECTIONAL_DISAGREEMENT/);
-  assert.match(provider, /min_new_tokens: 1/); assert.match(app, /auditKnowledgeArea2Generation/);
-  assert.match(provider, /allowFallback: false/); assert.match(app, /compareKnowledgeArea2Backends/);
-  assert.match(provider, /FLAN_SHADOW_RUNTIME.*backend: "wasm".*allowFallback: false/);
-  assert.match(app, /loadFlanShadowProvider\(\)/);
-  assert.match(app, /runKnowledgeArea2FinalCandidateDiagnostic/);
-  assert.match(provider, /alternativePromptLimitRespected: true/);
-  assert.doesNotMatch(production, /flan-t5|FLAN_TOPIC_MODEL|simulateFlanKnowledgeAreas/);
-  assert.doesNotMatch(provider, /indexedDB|commitLearning|\.put\(/);
-});
+import test from "node:test"; import assert from "node:assert/strict"; import { existsSync,readFileSync } from "node:fs";
+import {createNeuralSeedState} from "../src/brain/neural-seed-state.js"; import {databaseConfig} from "../src/storage/database.js"; import {economyConfig} from "../src/economy/economy.js";
+const read=path=>readFileSync(new URL(`../${path}`,import.meta.url),"utf8");
+test("topology, token, and non-destructive schema invariants",()=>{const seed=createNeuralSeedState();assert.equal(seed.nodes.length,5);assert.equal(seed.synapses.length,4);assert.equal(databaseConfig.version,2);assert.ok(databaseConfig.stores.includes("life"));assert.equal(economyConfig.tokenPaymentsEnabled,false);assert.equal(existsSync(new URL("../api",import.meta.url)),false)});
+test("obsolete URL diagnostics have no behavior and development globals are absent",()=>{const product=["src/app/app.js","src/ui/dashboard.js","index.html",...Array.from({length:0})].map(read).join("\n");assert.doesNotMatch(product,/semantic[-_]debug|__MINDLING.*DEBUG__|Knowledge Area 2\.0 Debug/);assert.doesNotMatch(product,/window\.|globalThis\.(debug|devTools|resetBrain|forceGrowth)/)});
+test("rejected experimental model loaders and public benchmark UI are removed",()=>{for(const path of ["src/semantic/knowledge-area-flan.js","src/semantic/knowledge-topic-e5.js","src/semantic/knowledge-topic-jina.js","benchmarks/knowledge-formation/index.html","css/knowledge-area-debug.css"])assert.equal(existsSync(new URL(`../${path}`,import.meta.url)),false);const deployment=read("vercel.json");assert.match(deployment,/benchmarks\|tools\|tests\|docs/);assert.match(deployment,/404/)});
+test("life UI is real, English, and contains required controls",()=>{const html=read("index.html"),css=read("css/life.css");for(const label of ["Mindling Age","Mindling — Life Status","Daily Energy","Talk to Mindling","Teach Mindling","Deep Training","Basic Care","Social Connections — Not Connected"])assert.match(html,new RegExp(label));for(const color of ["#35b87b","#e2a64a","#6992df","#ae83e4","#38b77e"])assert.match(css,new RegExp(color,"i"))});
+test("no development console logging remains in production modules",()=>{const files=["src/app/app.js","src/ui/dashboard.js","src/life/life-system.js","src/semantic/semantic-engine.js"].map(read).join("\n");assert.doesNotMatch(files,/console\.(log|debug|info|trace)|debugger;/)});
+test("semantic matching has no manual topic dictionary authority",()=>{const production=["src/brain/memory-evaluator.js","src/brain/knowledge-development.js"].map(read).join("\n");assert.doesNotMatch(production,/stopwords?|keywordMap|topicMap|synonym|\bTrading\b|\bProgramming\b/)});

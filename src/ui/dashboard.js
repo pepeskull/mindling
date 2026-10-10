@@ -1,6 +1,7 @@
 import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation, KNOWLEDGE_RULES } from "../brain/knowledge-development.js";
+import { LIFE_RULES, lifeStageFor, neuralCycles, warningFor } from "../life/life-system.js";
 
 export class Dashboard {
   #unsubscribe;
@@ -11,35 +12,40 @@ export class Dashboard {
   #state;
   #events;
   #onInput;
+  #onCare;
+  #onNewMindling;
+  #life;
+  #pending = false;
   #mode = "TALK";
   #eventUnsubscribes = [];
   #knowledgeDevelopment = { overall: 0, areas: [] };
 
-  constructor(events, onInput) {
+  constructor(events, { onInput, onCare, onNewMindling }) {
     this.#events = events;
     this.#onInput = onInput;
+    this.#onCare = onCare;
+    this.#onNewMindling = onNewMindling;
     this.#unsubscribe = events.on(EVENTS.STATE_READY, (state) => this.render(state));
     this.#selectionUnsubscribe = events.on(EVENTS.SCENE_SELECTION, selection => this.#showSelection(selection));
     this.#eventUnsubscribes = [
       events.on(EVENTS.MEMORY_CREATED, () => this.#showStatus("Memory formed")),
       events.on(EVENTS.MEMORY_REINFORCED, () => this.#showStatus("Memory reinforced")),
       events.on(EVENTS.LEARNING_FAILED, () => this.#showStatus("Learning could not be saved")),
-      events.on(EVENTS.SEMANTIC_STATUS, ({ status }) => {
-        if (status === "loading") this.#showStatus("Semantic engine loading");
-        if (status === "ready") this.#showStatus("Semantic engine ready");
-        if (status === "unavailable") this.#showStatus("Semantic engine unavailable");
-      })
+      events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
     this.#form = document.querySelector("#interaction-form");
     this.#handleSubmit = (event) => this.#submitInteraction(event);
     this.#form.addEventListener("submit", this.#handleSubmit);
     document.querySelectorAll("[data-input-mode]").forEach(button => button.addEventListener("click", () => this.#setMode(button.dataset.inputMode)));
+    document.querySelectorAll("[data-activity-mode]").forEach(button => button.addEventListener("click", () => this.#setMode(button.dataset.activityMode)));
+    document.querySelectorAll("[data-care]").forEach(button => button.addEventListener("click", () => this.#care(button.dataset.care)));
+    document.querySelector("[data-new-mindling]").addEventListener("click", () => { if (confirm("Preserve this memorial and begin raising a new Mindling?")) this.#onNewMindling(); });
     document.querySelector("[data-view='memories']").addEventListener("click", () => this.#setPrimaryView("memories"));
     document.querySelector("[data-view='dashboard']").addEventListener("click", event => { event.preventDefault(); this.#setPrimaryView("dashboard"); });
     document.querySelector("[data-close-memory]").addEventListener("click", () => this.#setPrimaryView("dashboard"));
     document.querySelector("[data-close-network]").addEventListener("click", () => { document.querySelector("#network-view").hidden = true; });
     document.querySelectorAll("[data-mobile-view]").forEach(button => button.addEventListener("click", () => this.#openMobileView(button.dataset.mobileView)));
-    document.querySelector("[data-download-profile]").addEventListener("click", () => downloadMindlingProfile(this.#state));
+    document.querySelector("[data-download-profile]").addEventListener("click", () => downloadMindlingProfile(this.#state, this.#life));
     document.querySelector("#mindling-input").addEventListener("focus", () => document.documentElement.classList.add("input-active"));
     document.querySelector("#mindling-input").addEventListener("blur", () => document.documentElement.classList.remove("input-active"));
   }
@@ -69,7 +75,9 @@ export class Dashboard {
   #setMode(mode) {
     this.#mode = mode;
     document.querySelectorAll("[data-input-mode]").forEach(button => { const selected = button.dataset.inputMode === mode; button.classList.toggle("selected", selected); button.setAttribute("aria-pressed", String(selected)); });
-    document.querySelector("#mindling-input").placeholder = mode === "TEACH" ? "Teach your Mindling something..." : "Talk to your Mindling...";
+    document.querySelectorAll("[data-activity-mode]").forEach(button => button.classList.toggle("selected", button.dataset.activityMode === mode));
+    const placeholders = { TALK: "Share a thought or personal experience...", TEACH: "Introduce new knowledge...", DEEP_TRAINING: "Begin a focused learning activity..." };
+    document.querySelector("#mindling-input").placeholder = placeholders[mode];
     document.querySelector("#mindling-input").focus();
   }
 
@@ -125,6 +133,40 @@ export class Dashboard {
   }
 
   #escape(value) { const node = document.createElement("span"); node.textContent = value; return node.innerHTML; }
+
+  #renderLife(life) {
+    this.#life = life;
+    const cycles = neuralCycles(life.birthTimestamp, Date.now(), life.deathTimestamp);
+    document.querySelector("[data-neural-cycle]").textContent = `NC ${String(cycles).padStart(4, "0")}`;
+    document.querySelector("[data-neural-cycles]").textContent = `${cycles} Neural ${cycles === 1 ? "Cycle" : "Cycles"}`;
+    document.querySelector("[data-life-stage]").textContent = lifeStageFor(cycles);
+    document.querySelector("[data-life-condition]").textContent = life.condition;
+    document.querySelector("[data-life-condition]").dataset.condition = life.condition;
+    for (const [name, value] of Object.entries(life.attributes)) {
+      const row = document.querySelector(`[data-life-attribute="${name}"]`); const rounded = Math.round(value);
+      row.querySelector("strong").textContent = `${rounded}%`; row.querySelector("progress").value = rounded; row.classList.toggle("critical", rounded <= 14);
+    }
+    document.querySelector("[data-energy-value]").textContent = `${life.energy.remaining} / ${life.energy.maximum}`;
+    document.querySelector("[data-energy-progress]").value = life.energy.remaining;
+    document.querySelector("[data-energy-reset]").textContent = `Resets ${new Date(life.energy.nextResetAt).toLocaleString([], { dateStyle: "short", timeStyle: "short", timeZone: "UTC" })} UTC`;
+    const warning = warningFor(life); document.querySelector("[data-life-warning]").innerHTML = `<strong>${this.#escape(warning.status)}</strong><span>${this.#escape(warning.message)}</span>`;
+    document.querySelectorAll("[data-activity-mode]").forEach(button => { const rule = LIFE_RULES.activity[button.dataset.activityMode]; button.disabled = life.lifeState === "DECEASED" || life.energy.remaining < rule.energyCost; });
+    document.querySelectorAll("[data-care]").forEach(button => { button.disabled = life.lifeState === "DECEASED"; });
+    document.querySelector("#mindling-input").disabled = life.lifeState === "DECEASED";
+    document.querySelector("[data-memorial]").hidden = life.lifeState !== "DECEASED";
+    if (life.lifeState === "DECEASED") {
+      document.querySelector("[data-memorial-age]").textContent = `Neural age: NC ${String(cycles).padStart(4, "0")}`;
+      document.querySelector("[data-memorial-dates]").textContent = `${new Date(life.birthTimestamp).toLocaleDateString()} — ${new Date(life.deathTimestamp).toLocaleDateString()}`;
+    }
+    if (life.energy.remaining === 0) document.querySelector("[data-energy-message]").hidden = false;
+    else document.querySelector("[data-energy-message]").hidden = true;
+  }
+
+  async #care(type) {
+    const result = await this.#onCare(type);
+    const messages = { NOT_HUNGRY: "Your Mindling is not hungry.", ALREADY_RESTED: "Your Mindling is already resting.", CARE_COOLDOWN: "Your Mindling needs time before receiving more care.", CARE_NOT_NEEDED: "Your Mindling does not need care right now." };
+    this.#showStatus(result.accepted ? "Care completed" : messages[result.reason] || "Care is unavailable");
+  }
   show() { document.querySelector(".dashboard-chrome").classList.remove("is-hidden"); }
   hide() { document.querySelector(".dashboard-chrome").classList.add("is-hidden"); }
 
@@ -133,15 +175,19 @@ export class Dashboard {
     status.textContent = available ? "Local-first · Ready" : "Local storage unavailable";
   }
 
-  #submitInteraction(event) {
+  async #submitInteraction(event) {
     event.preventDefault();
     const input = document.querySelector("#mindling-input");
     const text = input.value.trim();
-    if (!text) return;
-    input.value = "";
-    this.#onInput(text, this.#mode).catch(() => {});
+    if (!text || this.#pending) return;
+    this.#pending = true; const submit = this.#form.querySelector("button[type='submit']"); submit.disabled = true;
     this.#showStatus("Processing signal");
-    input.focus();
+    try {
+      const result = await this.#onInput(text, this.#mode, crypto.randomUUID());
+      if (result.accepted) { input.value = ""; this.#showStatus(`${LIFE_RULES.activity[this.#mode].label} completed`); }
+      else this.#showStatus(result.reason === "OUT_OF_ENERGY" ? "Out of energy" : result.reason === "MINDLING_DECEASED" ? "This Mindling is deceased" : "Activity was not accepted");
+    } catch { this.#showStatus("Activity could not be saved"); }
+    finally { this.#pending = false; submit.disabled = false; input.focus(); }
   }
 
   destroy() {

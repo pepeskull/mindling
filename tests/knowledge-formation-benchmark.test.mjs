@@ -1,9 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { createGeneratedDataset, generateKnowledgeCase, normalizeDatasetConfig, permuteCaseIndex, validateImportedCase } from "../src/benchmark/knowledge-formation-dataset.js";
-import { benchmarkReportCsv, KnowledgeFormationBenchmarkRunner } from "../src/benchmark/knowledge-formation-runner.js";
-import { knowledgeBenchmarkDatabaseConfig } from "../src/benchmark/knowledge-formation-database.js";
+import { createGeneratedDataset, generateKnowledgeCase, normalizeDatasetConfig, permuteCaseIndex, validateImportedCase } from "./support/benchmark/knowledge-formation-dataset.js";
+import { benchmarkReportCsv, KnowledgeFormationBenchmarkRunner } from "./support/benchmark/knowledge-formation-runner.js";
+import { knowledgeBenchmarkDatabaseConfig } from "./support/benchmark/knowledge-formation-database.js";
 
 class MemoryBenchmarkStore {
   runs = new Map(); reports = new Map(); memoryCount = 0; operationCount = 0;
@@ -76,10 +76,9 @@ test("singleton partition fingerprint is order-resistant while execution order r
   assert.notEqual(first.counts.rollingHash, shuffled.counts.rollingHash);
 });
 
-test("browser benchmark is standalone and uses an isolated IndexedDB namespace", () => {
-  const database = readFileSync(new URL("../src/benchmark/knowledge-formation-database.js", import.meta.url), "utf8");
-  const page = readFileSync(new URL("../benchmarks/knowledge-formation/index.html", import.meta.url), "utf8");
-  assert.equal(knowledgeBenchmarkDatabaseConfig.name, "mindling-knowledge-benchmark"); assert.equal(knowledgeBenchmarkDatabaseConfig.version, 1);
-  assert.doesNotMatch(database, /mindling-db/); assert.match(page, /Successful execution is not semantic correctness/);
-  assert.match(page, /Export JSON/); assert.match(page, /Export CSV/); assert.match(page, /Run imported dataset/);
+test("benchmark evidence remains reproducible but deployment blocks development paths", () => {
+  const database = readFileSync(new URL("./support/benchmark/knowledge-formation-database.js", import.meta.url), "utf8");
+  const deployment = readFileSync(new URL("../vercel.json", import.meta.url), "utf8");
+  assert.equal(knowledgeBenchmarkDatabaseConfig.name, "mindling-knowledge-benchmark"); assert.doesNotMatch(database, /mindling-db/);
+  assert.match(deployment, /benchmarks\|tools\|tests\|docs/); assert.match(deployment, /404/);
 });

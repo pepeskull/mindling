@@ -14,7 +14,7 @@
   <link rel="stylesheet" href="./css/dashboard.css">
   <link rel="stylesheet" href="./css/responsive.css">
   <link rel="stylesheet" href="./css/onboarding.css">
-  <link rel="stylesheet" href="./css/knowledge-area-debug.css">
+  <link rel="stylesheet" href="./css/life.css">
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -75,37 +75,29 @@
       </section>
 
       <aside class="side-panel right-panel glass-panel" aria-label="Mindling status">
-        <details open>
-          <summary><span>Brain Status</span></summary>
-          <dl class="metric-list muted-values">
-            <div><dt>Energy</dt><dd>—</dd></div><div><dt>Stimulation</dt><dd>—</dd></div>
-            <div><dt>Stability</dt><dd>—</dd></div><div><dt>Neural Capacity</dt><dd>—</dd></div>
-          </dl>
+        <section class="life-age" aria-labelledby="age-title"><div><p id="age-title">Mindling Age</p><strong data-neural-cycle>NC 0001</strong><span data-neural-cycles>1 Neural Cycle</span></div><div><small>Life Stage</small><b data-life-stage>Neural Seed</b><em data-life-condition data-condition="STABLE">STABLE</em></div></section>
+        <details open class="life-status"><summary><span>Mindling — Life Status</span></summary>
+          <div class="life-warning" data-life-warning role="status"><strong>STABLE</strong><span>Your Mindling's life signs are stable.</span></div>
+          <div class="life-attribute" data-life-attribute="health"><span class="life-icon health heart-pulse">♥</span><label>Health</label><strong>100%</strong><progress max="100" value="100">100%</progress></div>
+          <div class="life-attribute" data-life-attribute="nutrition"><span class="life-icon nutrition utensils">♨</span><label>Nutrition</label><strong>100%</strong><progress max="100" value="100">100%</progress></div>
+          <div class="life-attribute" data-life-attribute="rest"><span class="life-icon rest moon">☾</span><label>Rest</label><strong>100%</strong><progress max="100" value="100">100%</progress></div>
+          <div class="life-attribute" data-life-attribute="wellbeing"><span class="life-icon wellbeing brain-circuit">⌁</span><label>Wellbeing</label><strong>100%</strong><progress max="100" value="100">100%</progress></div>
         </details>
-        <details open>
-          <summary><span>Neural Activity</span></summary>
-          <dl class="metric-list">
-            <div><dt>Neurons</dt><dd data-stat="neurons">5</dd></div>
-            <div><dt>Synapses</dt><dd data-stat="synapses">4</dd></div>
-            <div><dt>Memories</dt><dd data-stat="memories">0</dd></div>
-            <div><dt>Neural Age</dt><dd>—</dd></div>
-          </dl>
-        </details>
-        <section class="mindling-file" aria-labelledby="mindling-file-title">
-          <p id="mindling-file-title">Mindling File</p>
-          <strong data-profile-filename>Mindling.md</strong>
-          <span>Living profile</span>
-          <button type="button" data-download-profile>Download</button>
-        </section>
-        <details open>
-          <summary><span>Today</span></summary>
-          <div class="today-state"><i></i><p>Mindling not created yet.<small>The Neural Seed is waiting.</small></p></div>
-        </details>
+        <details open class="energy-panel"><summary><span>Daily Energy</span></summary><div class="energy-heading"><span aria-hidden="true">ϟ</span><strong data-energy-value>10 / 10</strong></div><progress data-energy-progress max="10" value="10">10 / 10</progress><small data-energy-reset>Resets at 00:00 UTC</small><div data-energy-message hidden><b>OUT OF ENERGY</b><p>You've used your free energy for today. Come back after the daily reset or use tokens for additional activities.</p></div><button class="coming-soon" type="button" disabled>Energy top-up · COMING SOON</button></details>
+        <details open><summary><span>Player Activities</span></summary><div class="activity-grid">
+          <button type="button" data-activity-mode="TALK"><b>Talk to Mindling</b><span>Share a thought or personal experience.</span><small>1 Energy · +5 Wellbeing</small></button>
+          <button type="button" data-activity-mode="TEACH"><b>Teach Mindling</b><span>Introduce new knowledge.</span><small>2 Energy · +10 Wellbeing</small></button>
+          <button type="button" data-activity-mode="DEEP_TRAINING"><b>Deep Training</b><span>Explore and connect knowledge through a focused learning activity.</span><small>3 Energy · +15 Wellbeing</small></button>
+        </div></details>
+        <details><summary><span>Basic Care</span></summary><div class="care-grid"><button type="button" data-care="NOURISH">Nourish <small>Free</small></button><button type="button" data-care="REST">Rest <small>Free</small></button><button type="button" data-care="CARE">Care <small>Free</small></button></div></details>
+        <details><summary><span>Social Status</span></summary><p class="social-offline"><b>Social Connections — Not Connected</b><span>Autonomous networking is not currently available. No exchanges are being simulated.</span></p></details>
+        <details><summary><span>Neural Activity</span></summary><dl class="metric-list"><div><dt>Neurons</dt><dd data-stat="neurons">5</dd></div><div><dt>Synapses</dt><dd data-stat="synapses">4</dd></div><div><dt>Memories</dt><dd data-stat="memories">0</dd></div></dl></details>
+        <section class="mindling-file" aria-labelledby="mindling-file-title"><p id="mindling-file-title">Mindling File</p><strong data-profile-filename>Mindling.md</strong><span>Living profile</span><button type="button" data-download-profile>Download</button></section>
+        <section class="memorial" data-memorial hidden><strong>DECEASED</strong><p>Your Mindling's life cycle has ended. Its identity and memories remain preserved as a read-only archive.</p><span data-memorial-age></span><span data-memorial-dates></span><button type="button" data-new-mindling>Raise a new Mindling</button></section>
       </aside>
-
       <form class="interaction glass-panel" id="interaction-form">
         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="6" cy="16" r="2"/><circle cx="18" cy="16" r="2"/><path d="m12 7-5 7m10 0-5-7m-4 9h8"/></svg>
-        <fieldset class="input-modes" aria-label="Input mode"><legend class="sr-only">Input mode</legend><button type="button" class="selected" data-input-mode="TALK" aria-pressed="true">Talk</button><button type="button" data-input-mode="TEACH" aria-pressed="false">Teach</button></fieldset>
+        <fieldset class="input-modes" aria-label="Input mode"><legend class="sr-only">Input mode</legend><button type="button" class="selected" data-input-mode="TALK" aria-pressed="true">Talk</button><button type="button" data-input-mode="TEACH" aria-pressed="false">Teach</button><button type="button" data-input-mode="DEEP_TRAINING" aria-pressed="false">Deep Training</button></fieldset>
         <label class="sr-only" for="mindling-input">Talk to or teach your Mindling</label>
         <input id="mindling-input" maxlength="140" autocomplete="off" placeholder="Talk to your Mindling...">
         <span class="interaction-status" role="status" aria-live="polite"></span>

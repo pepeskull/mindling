@@ -37,7 +37,7 @@ export function evaluateMemory({ content, mode, memories, pathways, semantic }) 
   const quality = inputQuality(tokens, normalizedContent);
   const novelty = Math.max(0, 1 - (semantic.related[0]?.similarity || 0));
   const potential = Math.min(1,
-    (mode === "TEACH" ? MEMORY_RULES.weights.teaching : 0) +
+    (["TEACH", "DEEP_TRAINING"].includes(mode) ? MEMORY_RULES.weights.teaching : 0) +
     quality * MEMORY_RULES.weights.quality + novelty * MEMORY_RULES.weights.novelty +
     (pathwayIds.length ? MEMORY_RULES.weights.pathway : 0)
   );

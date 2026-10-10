@@ -1,9 +1,5 @@
-import { loadEquivalenceCandidate, loadKnowledgeTopicCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
+import { loadEquivalenceCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
 import { evaluateShadowIdentity, selectShadowCandidate } from "./canonical-identity.js";
-import { KNOWLEDGE_RELATION_MATRIX, KNOWLEDGE_RELATION_RULES, productionKnowledgeFloor, shadowKnowledgeDecision } from "./knowledge-relation.js";
-import { inspectTopicPair, KNOWLEDGE_TOPIC_MULTILINGUAL, KNOWLEDGE_TOPIC_NINE, runE5ImplementationAudit, simulateTopicAreas, summarizeTopicScores } from "./knowledge-topic-e5.js";
-import { auditJinaModel, inspectJinaPair, JINA_TOPIC_MODEL, loadJinaTopicCandidate, runJinaMatrix, runJinaMultilingual, simulateJinaAreas } from "./knowledge-topic-jina.js";
-import { deriveKnowledgeDevelopment } from "../brain/knowledge-development.js";
 
 export const SEMANTIC_RULES = Object.freeze({
   candidateLimit: 3,
@@ -57,222 +53,24 @@ function decidePair(similarity, forward, reverse) {
 }
 
 export class SemanticEngine {
-  #loader; #equivalenceLoader; #propositionLoader; #knowledgeTopicLoader; #jinaLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #knowledgeTopicPromise; #knowledgeTopicModel; #knowledgeTopicError; #jinaPromise; #jinaModel; #jinaError; #status = "idle"; #diagnosticTracing = false; #lastProductionTrace = null;
-  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate, propositionLoader = loadPropositionCandidate, knowledgeTopicLoader = loadKnowledgeTopicCandidate, jinaLoader = loadJinaTopicCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; this.#propositionLoader = propositionLoader; this.#knowledgeTopicLoader = knowledgeTopicLoader; this.#jinaLoader = jinaLoader; }
+  #loader; #equivalenceLoader; #propositionLoader; #models; #readyPromise; #equivalencePromise; #propositionPromise; #status = "idle";
+  constructor(loader = loadSemanticModels, equivalenceLoader = loadEquivalenceCandidate, propositionLoader = loadPropositionCandidate) { this.#loader = loader; this.#equivalenceLoader = equivalenceLoader; this.#propositionLoader = propositionLoader; }
   get status() { return this.#status; }
   get modelInfo() { return SEMANTIC_MODELS; }
-  get runtimeInfo() { return this.#models ? { backend: this.#models.backend, encoder: SEMANTIC_MODELS.encoder, pairClassifier: SEMANTIC_MODELS.pairClassifier } : null; }
-  enableDiagnosticTracing() { this.#diagnosticTracing = true; }
-  get lastProductionTrace() { return this.#lastProductionTrace ? structuredClone(this.#lastProductionTrace) : null; }
   initialize() {
-    if (!this.#readyPromise) {
-      this.#status = "loading";
-      this.#readyPromise = this.#loader().then(models => { this.#models = models; this.#status = "ready"; return this; })
-        .catch(error => { this.#status = "unavailable"; throw error; });
-    }
+    if (!this.#readyPromise) { this.#status = "loading"; this.#readyPromise = this.#loader().then(models => { this.#models = models; this.#status = "ready"; return this; }).catch(error => { this.#status = "unavailable"; throw error; }); }
     return this.#readyPromise;
   }
   async encode(text) { await this.initialize(); return this.#models.encode(text); }
-  retrieveCandidates(embedding, memories, limit = SEMANTIC_RULES.candidateLimit) {
-    return memories.filter(memory => memory.embedding?.length === embedding.length)
-      .map(memory => ({ memory, similarity: cosineSimilarity(embedding, memory.embedding) }))
-      .filter(candidate => candidate.similarity >= SEMANTIC_RULES.retrievalFloor)
-      .sort((left, right) => right.similarity - left.similarity).slice(0, limit);
-  }
-  async comparePair(input, memory, similarity) {
-    if (normalizedExact(input) === normalizedExact(memory.content)) return { relation: "SAME_MEANING", confidence: 1, similarity };
-    const [forward, reverse] = await Promise.all([this.#models.classify(input, memory.content), this.#models.classify(memory.content, input)]);
-    return decidePair(similarity, forward, reverse);
-  }
-  async diagnosePair(left, right) {
-    const [leftEmbedding, rightEmbedding] = await Promise.all([this.encode(left), this.encode(right)]);
-    const cosine = cosineSimilarity(leftEmbedding, rightEmbedding);
-    const [forward, reverse] = await Promise.all([this.#models.classify(left, right), this.#models.classify(right, left)]);
-    return { left, right, cosine, forward, reverse, ...decidePair(cosine, forward, reverse) };
-  }
-  async inspectEmbeddings(left, right, previewLength = 12) {
-    const [leftEmbedding, rightEmbedding] = await Promise.all([this.encode(left), this.encode(right)]);
-    return {
-      left: { dimensions: leftEmbedding.length, norm: vectorNorm(leftEmbedding), preview: [...leftEmbedding.slice(0, previewLength)] },
-      right: { dimensions: rightEmbedding.length, norm: vectorNorm(rightEmbedding), preview: [...rightEmbedding.slice(0, previewLength)] },
-      identical: identicalVectors(leftEmbedding, rightEmbedding),
-      sameBuffer: leftEmbedding.buffer === rightEmbedding.buffer,
-      cosine: cosineSimilarity(leftEmbedding, rightEmbedding)
-    };
-  }
-  async inspectEquivalence(left, right) {
-    this.#equivalencePromise ||= this.#equivalenceLoader();
-    const encode = await this.#equivalencePromise;
-    const leftEmbedding = await encode(left);
-    const rightEmbedding = await encode(right);
-    return { model: SEMANTIC_MODELS.equivalenceCandidate, score: cosineSimilarity(leftEmbedding, rightEmbedding), dimensions: leftEmbedding.length, label: "CANDIDATE_SCORE_ONLY", canonicalAuthority: false };
-  }
-  async diagnoseWithEquivalence(left, right) {
-    const semantic = await this.diagnosePair(left, right);
-    const equivalence = await this.inspectEquivalence(left, right);
-    const proposition = await this.inspectPropositionEquivalence(left, right);
-    return { ...semantic, retrievalEligible: semantic.cosine >= SEMANTIC_RULES.retrievalFloor, nli: { forward: semantic.forward, reverse: semantic.reverse }, equivalence, proposition };
-  }
-  async inspectPropositionEquivalence(left, right) {
-    this.#propositionPromise ||= this.#propositionLoader();
-    const compare = await this.#propositionPromise;
-    const output = await compare(left, right);
-    return { model: SEMANTIC_MODELS.propositionCandidate, label: "STS_SIMILARITY_REGRESSION", rawLogit: output.rawLogit, score: output.score, stsbScore: output.score * 5, canonicalAuthority: false };
-  }
-  async inspectSemanticIdentity(left, right, canonicalAuthority = false) {
-    const evidence = await this.diagnoseWithEquivalence(left, right);
-    const identityEvidence = {
-      left, right,
-      retrieval: { cosine: evidence.cosine, eligible: evidence.retrievalEligible, floor: SEMANTIC_RULES.retrievalFloor },
-      nli: {
-        forward: evidence.forward,
-        reverse: evidence.reverse,
-        mutualEntailment: evidence.mutualEntailment,
-        mutualMargin: evidence.mutualMargin,
-        maximumNeutral: evidence.maximumNeutral,
-        maximumContradiction: Math.max(evidence.forward.contradiction, evidence.reverse.contradiction)
-      },
-      paraphrase: evidence.equivalence,
-      stsb: evidence.proposition,
-      currentCanonicalRelation: evidence.relation,
-      currentDecisionReason: evidence.reason,
-      canonicalAuthority
-    };
-    return { ...identityEvidence, shadow: { ...evaluateShadowIdentity(identityEvidence), canonicalAuthority } };
-  }
-  async inspectCandidateIdentities(input, memories) {
-    const embedding = await this.encode(input);
-    const candidates = this.retrieveCandidates(embedding, memories);
-    const evaluated = [];
-    for (let index = 0; index < candidates.length; index += 1) {
-      const candidate = candidates[index];
-      const evidence = await this.inspectSemanticIdentity(input, candidate.memory.content);
-      evaluated.push({ rank: index + 1, memoryId: candidate.memory.id, canonicalContent: candidate.memory.content,
-        retrieval: { cosine: candidate.similarity, eligible: true }, productionDecision: evidence.currentCanonicalRelation,
-        productionDecisionReason: evidence.currentDecisionReason, shadow: evidence.shadow, canonicalAuthority: false });
-    }
-    const selected = selectShadowCandidate(evaluated);
-    return { input, candidates: evaluated, shadowSelection: selected ? { memoryId: selected.memoryId, rank: selected.rank } : null, canonicalAuthority: false };
-  }
-  async inspectKnowledgeRelation(left, right) {
-    const evidence = await this.diagnoseWithEquivalence(left, right);
-    const forwardEntailment = probability(evidence.forward, "entailment"); const reverseEntailment = probability(evidence.reverse, "entailment");
-    const result = {
-      left, right, embeddingCosine: evidence.cosine,
-      nli: { forward: evidence.forward, reverse: evidence.reverse, mutualEntailment: Math.min(forwardEntailment, reverseEntailment),
-        entailmentAsymmetry: Math.abs(forwardEntailment - reverseEntailment),
-        maxContradiction: Math.max(probability(evidence.forward, "contradiction"), probability(evidence.reverse, "contradiction")),
-        maxNeutral: Math.max(probability(evidence.forward, "neutral"), probability(evidence.reverse, "neutral")) },
-      paraphraseSimilarity: evidence.equivalence.score, stsScore: evidence.proposition.score,
-      productionKnowledgeEligible: evidence.cosine >= productionKnowledgeFloor,
-      productionAreaRelation: evidence.cosine >= productionKnowledgeFloor ? "EMBEDDING_CANDIDATE" : "NOT_ELIGIBLE",
-      canonicalAuthority: false
-    };
-    return { ...result, shadow: shadowKnowledgeDecision(result) };
-  }
-  async shadowKnowledgeRelation(left, right) { return (await this.inspectKnowledgeRelation(left, right)).shadow; }
-  async runKnowledgeRelationMatrix() {
-    const results = [];
-    for (const pair of KNOWLEDGE_RELATION_MATRIX) results.push({ group: pair.group, expected: pair.expected, ...await this.inspectKnowledgeRelation(pair.left, pair.right) });
-    return results;
-  }
-  get knowledgeTopicE5Status() {
-    return { model: SEMANTIC_MODELS.knowledgeTopicCandidate, status: this.#knowledgeTopicModel ? "ready" : this.#knowledgeTopicError ? "unavailable" : this.#knowledgeTopicPromise ? "loading" : "idle",
-      debugOnly: true, canonicalAuthority: false, ...(this.#knowledgeTopicModel ? { backend: this.#knowledgeTopicModel.backend, loadMilliseconds: this.#knowledgeTopicModel.loadMilliseconds,
-        attempts: this.#knowledgeTopicModel.attempts, artifact: this.#knowledgeTopicModel.artifact, inputStrategy: this.#knowledgeTopicModel.inputStrategy,
-        modelContract: this.#knowledgeTopicModel.contract } : {}),
-      ...(this.#knowledgeTopicError ? { error: String(this.#knowledgeTopicError.message || this.#knowledgeTopicError) } : {}) };
-  }
-  async #getKnowledgeTopicModel() {
-    if (!this.#knowledgeTopicPromise) this.#knowledgeTopicPromise = this.#knowledgeTopicLoader().then(model => (this.#knowledgeTopicModel = model))
-      .catch(error => { this.#knowledgeTopicError = error; throw error; });
-    return this.#knowledgeTopicPromise;
-  }
-  async inspectKnowledgeTopicE5(left, right, caches = null) {
-    const model = await this.#getKnowledgeTopicModel();
-    const cached = (cache, text, operation) => {
-      if (!cache) return operation();
-      if (!cache.has(text)) cache.set(text, operation());
-      return cache.get(text);
-    };
-    return inspectTopicPair({ left, right,
-      productionEncode: text => cached(caches?.production, text, () => this.encode(text)),
-      e5Encode: text => cached(caches?.e5, text, () => model.encode(text)), cosine: cosineSimilarity });
-  }
-  async auditE5Implementation() {
-    const model = await this.#getKnowledgeTopicModel();
-    return runE5ImplementationAudit(model, cosineSimilarity);
-  }
-  async runKnowledgeTopicE5Matrix() {
-    const startedAt = globalThis.performance?.now?.() ?? Date.now(); const rows = []; const caches = { production: new Map(), e5: new Map() };
-    for (const pair of KNOWLEDGE_RELATION_MATRIX) rows.push({ group: pair.group, expected: pair.expected, ...await this.inspectKnowledgeTopicE5(pair.left, pair.right, caches) });
-    return { model: SEMANTIC_MODELS.knowledgeTopicCandidate, inputStrategy: "SYMMETRIC_PASSAGE_PREFIX", rows,
-      summary: summarizeTopicScores(rows), elapsedMilliseconds: (globalThis.performance?.now?.() ?? Date.now()) - startedAt,
-      uniqueInputs: caches.e5.size,
-      predeclaredCriteria: { hardNegativeRejection: 1, differentTopicRejection: .95, sameTopicRecall: .8 },
-      classificationStatus: "RAW_DISTRIBUTIONS_FIRST", canonicalAuthority: false, persistence: "NONE" };
-  }
-  async runKnowledgeTopicE5Multilingual() {
-    const rows = []; const caches = { production: new Map(), e5: new Map() };
-    for (const pair of KNOWLEDGE_TOPIC_MULTILINGUAL) rows.push({ ...pair, ...await this.inspectKnowledgeTopicE5(pair.left, pair.right, caches) });
-    return { rows, summary: summarizeTopicScores(rows), heldOut: true, thresholdTuningAllowed: false, canonicalAuthority: false, persistence: "NONE" };
-  }
-  async simulateKnowledgeAreasE5(memories = null, options = {}) {
-    const model = await this.#getKnowledgeTopicModel();
-    const expected = new Set(KNOWLEDGE_TOPIC_NINE); const activeIsFrozenCorpus = memories?.length === expected.size && memories.every(memory => expected.has(memory.content));
-    const source = activeIsFrozenCorpus ? memories.map(memory => ({ id: memory.id, content: memory.content })) : KNOWLEDGE_TOPIC_NINE.map((content, index) => ({ id: `e5-nine-${index + 1}`, content }));
-    return simulateTopicAreas(source, text => model.encode(text), cosineSimilarity, options.threshold ?? null);
-  }
-  get jinaStatus() {
-    return { model: JINA_TOPIC_MODEL.id, revision: JINA_TOPIC_MODEL.revision,
-      status: this.#jinaModel ? "ready" : this.#jinaError ? "unavailable" : this.#jinaPromise ? "loading" : "idle",
-      backend: this.#jinaModel?.backend || null, quantization: JINA_TOPIC_MODEL.dtype,
-      authority: "SHADOW_ONLY", persistence: "NONE", lastError: this.#jinaError ? String(this.#jinaError.message || this.#jinaError) : null,
-      ...(this.#jinaModel ? { loadMilliseconds: this.#jinaModel.loadMilliseconds, providerAttempts: this.#jinaModel.attempts,
-        artifact: JINA_TOPIC_MODEL.artifact, approximateGraphBytes: JINA_TOPIC_MODEL.approximateGraphBytes } : {}) };
-  }
-  async #getJinaModel() {
-    if (!this.#jinaPromise) this.#jinaPromise = this.#jinaLoader().then(model => (this.#jinaModel = model))
-      .catch(error => { this.#jinaError = error; throw error; });
-    return this.#jinaPromise;
-  }
-  async inspectKnowledgeTopicJina(left, right) { return inspectJinaPair(await this.#getJinaModel(), left, right); }
-  async runKnowledgeTopicJinaMatrix() { return runJinaMatrix(await this.#getJinaModel()); }
-  async runKnowledgeTopicJinaMultilingual() { return runJinaMultilingual(await this.#getJinaModel()); }
-  async simulateKnowledgeAreasJina() { return simulateJinaAreas(await this.#getJinaModel()); }
-  async auditJinaImplementation() { return auditJinaModel(await this.#getJinaModel()); }
-  async simulateKnowledgeAreas(memories) {
-    const local = [];
-    for (const memory of memories) local.push({ ...memory, embedding: memory.embedding ? new Float32Array(memory.embedding) : await this.encode(memory.content) });
-    const candidates = new Map();
-    for (const memory of local) {
-      const ranked = local.filter(other => other.id !== memory.id).map(other => ({ left: memory, right: other, similarity: cosineSimilarity(memory.embedding, other.embedding) }))
-        .sort((left, right) => right.similarity - left.similarity || String(left.right.id).localeCompare(String(right.right.id))).slice(0, KNOWLEDGE_RELATION_RULES.candidateLimit);
-      for (const pair of ranked) { const key = [pair.left.id, pair.right.id].sort().join("\u0000"); if (!candidates.has(key) || pair.similarity > candidates.get(key).similarity) candidates.set(key, pair); }
-    }
-    const bounded = [...candidates.values()].sort((left, right) => right.similarity - left.similarity).slice(0, KNOWLEDGE_RELATION_RULES.maximumCandidatePairs);
-    const relations = [];
-    for (const pair of bounded) relations.push({ leftId: pair.left.id, rightId: pair.right.id, ...await this.inspectKnowledgeRelation(pair.left.content, pair.right.content) });
-    let clusters = local.map(memory => [memory.id]); const relationFor = (left, right) => relations.find(item => (item.leftId === left && item.rightId === right) || (item.leftId === right && item.rightId === left));
-    const allowedMerges = []; const blockedMerges = [];
-    for (const relation of relations.filter(item => item.shadow.decision === "SAME_AREA")) {
-      const leftCluster = clusters.find(cluster => cluster.includes(relation.leftId)); const rightCluster = clusters.find(cluster => cluster.includes(relation.rightId));
-      if (leftCluster === rightCluster) continue;
-      const boundary = leftCluster.flatMap(left => rightCluster.map(right => relationFor(left, right)));
-      if (boundary.every(item => item?.shadow.decision === "SAME_AREA")) {
-        const merged = [...leftCluster, ...rightCluster].sort(); clusters = clusters.filter(cluster => cluster !== leftCluster && cluster !== rightCluster); clusters.push(merged);
-        allowedMerges.push({ left: leftCluster, right: rightCluster, evidence: boundary.map(item => ({ leftId: item.leftId, rightId: item.rightId, decision: item.shadow.decision })) });
-      } else blockedMerges.push({ left: leftCluster, right: rightCluster, reason: "UNCERTAIN_OR_MISSING_COMPLETE_LINK_EVIDENCE" });
-    }
-    return { productionAreas: deriveKnowledgeDevelopment(local).areas, shadowAreas: clusters.sort((left, right) => left[0].localeCompare(right[0])),
-      candidatePairs: relations, allowedMerges, blockedMerges, candidateLimit: KNOWLEDGE_RELATION_RULES.candidateLimit,
-      maximumCandidatePairs: KNOWLEDGE_RELATION_RULES.maximumCandidatePairs, canonicalAuthority: false, persistence: "NONE" };
-  }
+  retrieveCandidates(embedding, memories, limit = SEMANTIC_RULES.candidateLimit) { return memories.filter(memory => memory.embedding?.length === embedding.length).map(memory => ({ memory, similarity: cosineSimilarity(embedding, memory.embedding) })).filter(candidate => candidate.similarity >= SEMANTIC_RULES.retrievalFloor).sort((a,b) => b.similarity-a.similarity).slice(0,limit); }
+  async diagnosePair(left, right) { const [a,b] = await Promise.all([this.encode(left),this.encode(right)]); const similarity=cosineSimilarity(a,b); const [forward,reverse]=await Promise.all([this.#models.classify(left,right),this.#models.classify(right,left)]); return { left,right,...decidePair(similarity,forward,reverse),forward,reverse }; }
+  async inspectEquivalence(left,right) { this.#equivalencePromise ||= this.#equivalenceLoader(); const encode=await this.#equivalencePromise; const [a,b]=await Promise.all([encode(left),encode(right)]); return { score:cosineSimilarity(a,b) }; }
+  async inspectPropositionEquivalence(left,right) { this.#propositionPromise ||= this.#propositionLoader(); return (await this.#propositionPromise)(left,right); }
+  async inspectSemanticIdentity(left,right,canonicalAuthority=false) { const [base,paraphrase,stsb]=await Promise.all([this.diagnosePair(left,right),this.inspectEquivalence(left,right),this.inspectPropositionEquivalence(left,right)]); const evidence={left,right,retrieval:{cosine:base.similarity,eligible:base.similarity>=SEMANTIC_RULES.retrievalFloor},nli:{forward:base.forward,reverse:base.reverse,mutualEntailment:base.mutualEntailment,mutualMargin:base.mutualMargin,maximumNeutral:base.maximumNeutral,maximumContradiction:Math.max(base.forward.contradiction,base.reverse.contradiction)},paraphrase:{score:paraphrase.score},stsb:{score:stsb.score},currentCanonicalRelation:base.relation,currentDecisionReason:base.reason,canonicalAuthority}; return {...evidence,shadow:{...evaluateShadowIdentity(evidence),canonicalAuthority}}; }
   async evaluate(content, memories) {
     const embedding = await this.encode(content);
     const exact = memories.find(memory => normalizedExact(memory.content) === normalizedExact(content));
     if (exact) {
-      if (this.#diagnosticTracing) this.#lastProductionTrace = { input: content, selectedMemoryId: exact.id, selectedCanonicalContent: exact.content, productionDecision: "SAME_MEANING", productionDecisionReason: "exact normalized duplicate", candidates: [], canonicalAuthority: false };
       return { embedding, match: exact, relation: "SAME_MEANING", confidence: 1, related: [] };
     }
     // Legacy records are embedded lazily on the first comparison. Startup stays
@@ -290,14 +88,6 @@ export class SemanticEngine {
         confidence: strongest?.shadow.evidence.mutualEntailment || 0, similarity: candidate.similarity, memory: candidate.memory, identityEvidence: evidence });
     }
     const match = decisions.filter(decision => decision.relation === "SAME_MEANING").sort((left, right) => right.confidence - left.confidence || right.similarity - left.similarity)[0];
-    if (this.#diagnosticTracing) this.#lastProductionTrace = {
-      input: content, selectedMemoryId: match?.memory.id || null, selectedCanonicalContent: match?.memory.content || null,
-      productionDecision: match ? "SAME_MEANING" : decisions[0]?.relation || "DISTINCT",
-      productionDecisionReason: match?.reason || decisions[0]?.reason || "no retrieved candidate",
-      candidates: decisions.map((decision, index) => ({ rank: index + 1, memoryId: decision.memory.id, canonicalContent: decision.memory.content, retrievalScore: decision.similarity, productionDecision: decision.relation, productionDecisionReason: decision.reason,
-        representativeIdentities: decision.identityEvidence.map(item => ({ representative: item.right, identity: item.shadow.identity, reasons: item.shadow.reasons })) })),
-      canonicalAuthority: false
-    };
     return { embedding, match: match?.memory || null, relation: match ? "SAME_MEANING" : decisions[0]?.relation || "DISTINCT", confidence: match?.confidence || decisions[0]?.confidence || 0, related: decisions.filter(decision => decision.relation === "RELATED") };
   }
 }
