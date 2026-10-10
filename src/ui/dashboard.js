@@ -63,6 +63,7 @@ export class Dashboard {
       document.querySelector(`[data-stat="${key}"]`).textContent = value;
     }
     if (!state.name) return;
+    document.querySelector("[data-life-status-title]").textContent = `${state.name} — Life Status`;
     document.querySelector(".hero-copy h1").textContent = `${state.name} is awake.`;
     document.querySelector(".hero-copy span").textContent = "It starts with a few neurons. What it becomes is up to you.";
     document.querySelector(".pathways-copy").textContent = state.pathways.join(" · ");
