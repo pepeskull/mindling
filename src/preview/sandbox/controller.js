@@ -1,7 +1,7 @@
 import { EvolutionPreview } from '../evolution-preview.js';
 import { STAGES } from '../evolution-model.js';
 import { presentationFor } from '../dashboard-presentation.js';
-import { conditionFor } from '../../life/life-system.js';
+import { condition, carePreview, PREVIEW_LIFE } from './life.js';
 import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,DAY,visualMapping } from './engine.js';
 import { analyzeLearning } from './gemini.js';
 import { PreviewStore } from './storage.js';
@@ -49,7 +49,7 @@ export class SandboxPreview extends EvolutionPreview {
     await this.change(s=>learn(s,{id:crypto.randomUUID(),text,assessment,source:'GEMINI',mindId:m.id}));
     document.querySelector('#mindling-input').value='';
   }
-  async care(){throw Error('Preview care is introduced in M4.3.');}
+  async care(type){await this.change(s=>carePreview(s,type));}
   async runFixture(){
     const text='Photosynthesis converts light energy into chemical energy stored in glucose.';
     const assessment={meaningful:true,duplicate:false,quality:1,concept:'photosynthesis energy conversion',memory:text,area:'Biology',kind:'concept',embedding:[1,0,0,0,0,0,0,0]};
@@ -65,6 +65,12 @@ export class SandboxPreview extends EvolutionPreview {
     this.presentation.stage=null;
     this.refreshNetwork();
     const alive=m.life.lifeState==='ALIVE';
+    this.view.reduced=!alive||this.motion.matches;this.seed.setReducedMotion(!alive||this.motion.matches);
+    if(!alive)this.timeline.network.reset();
+    document.querySelector('[data-memorial]').hidden=alive;
+    document.querySelector('[data-memorial-age]').textContent=alive?'':`Test identity ${m.id}`;
+    document.querySelector('[data-memorial-dates]').textContent=alive?'':`Died at ${new Date(m.life.deathAt).toISOString()}`;
+    document.querySelector('[data-new-mindling]').disabled=false;
     document.querySelector('#mindling-input').disabled=!alive;
     document.querySelector('#interaction-form button[type=submit]').disabled=!alive;
     document.querySelector('[data-download-profile]').disabled=true;
@@ -90,8 +96,10 @@ export class SandboxPreview extends EvolutionPreview {
   refreshNetwork(){
     if(!this.view||!this.presentation)return;
     const state=presentationFor(this.timeline,this.view.morph),m=this.state?.mind;
-    if(m){state.neurons=m.nodes.length;state.synapses=m.synapses.length;state.memories=m.memories.length;state.life={...m.life,condition:conditionFor(m.life.attributes,m.life.lifeState==='DECEASED')};}
-    this.presentation.update(state);this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;
+    if(m){state.neurons=m.nodes.length;state.synapses=m.synapses.length;state.memories=m.memories.length;state.life={...m.life,condition:condition(m.life)};}
+    this.presentation.update(state);
+    if(m){document.querySelector('[data-life-warning] span').textContent=m.life.lifeState==='DECEASED'?'Neural collapse is permanent. Create a new test identity.':`Neural stability: ${Math.max(0,100*(1-(m.life.strain||0)/PREVIEW_LIFE.collapseStrain)).toFixed(0)}% · Free care protects stability.`;}
+    this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;
   }
   destroy(){this.requestAbort?.abort();this.listeners.abort();this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }

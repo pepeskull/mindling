@@ -1,3 +1,4 @@
+import { advancePreviewLife } from './life.js';
 import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
 import { STAGES } from '../evolution-model.js';
 export const HOUR = 3600000, DAY = 24 * HOUR;
@@ -17,7 +18,7 @@ export function newMindling(state,{name='Test Mindling',pathway='Researcher',id=
   const next=structuredClone(state), seed=neuralSeedRecords();
   if(next.mind && !next.tombstones.some(t=>t.id===next.mind.id)) next.tombstones.push({id:next.mind.id,at:next.now,reason:'REPLACED'});
   next.mind={id,name:name.trim(),pathways:[pathway],createdAt:next.now,stage:1,enteredAt:next.now,stageXP:0,lifetimeXP:0,milestones:[],history:[],processed:[],lastLearning:null,
-    nodes:seed.neurons,synapses:seed.synapses,memories:[],areas:[],life:{attributes:{health:100,nutrition:100,rest:100,wellbeing:100},lastAt:next.now,lifeState:'ALIVE',deathAt:null,care:{}},energy:{day:Math.floor(next.now/DAY),remaining:10},stageHistory:[]};
+    nodes:seed.neurons,synapses:seed.synapses,memories:[],areas:[],life:{attributes:{health:100,nutrition:100,rest:100,wellbeing:100},lastAt:next.now,lifeState:'ALIVE',deathAt:null,strain:0,care:{}},energy:{day:Math.floor(next.now/DAY),remaining:10},stageHistory:[]};
   return next;
 }
 export function eligibility(state) {
@@ -68,7 +69,7 @@ export function learn(state,{id,text,assessment,source='fixture',mindId=state.mi
 export function advanceTime(state,hours) {
   const next=structuredClone(state);next.now=new VirtualClock(next.now).advance(hours);
   if(next.mind && next.mind.energy.day!==Math.floor(next.now/DAY))next.mind.energy={day:Math.floor(next.now/DAY),remaining:10};
-  return next;
+  return advancePreviewLife(next);
 }
 // Reset the displayed offset, never rewind physiological time or award/cooldown history.
 export function resetClock(state) { const next=structuredClone(state);next.origin=next.now;next.clockResets++;return next; }
