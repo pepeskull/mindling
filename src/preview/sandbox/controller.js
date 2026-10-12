@@ -3,6 +3,7 @@ import { STAGES } from '../evolution-model.js';
 import { presentationFor } from '../dashboard-presentation.js';
 import { condition, carePreview, PREVIEW_LIFE } from './life.js';
 import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,DAY,visualMapping } from './engine.js';
+import { TestWalletUI } from './wallet-ui.js';
 import { analyzeLearning } from './gemini.js';
 import { PreviewStore } from './storage.js';
 
@@ -34,6 +35,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.listen(document.querySelector('[data-new-mindling]'),'click',()=>this.panel.querySelector('[data-sandbox="new"]').click());
     document.querySelector('#interaction-form button[type=submit]').textContent='Analyze with Gemini';
     document.querySelector('#mindling-input').placeholder='Explicitly submit new learning to Gemini…';
+    this.walletUI=new TestWalletUI(this);
     this.renderState();
   }
   listen(node,type,fn){node.addEventListener(type,fn,{signal:this.listeners.signal});}
@@ -101,5 +103,5 @@ export class SandboxPreview extends EvolutionPreview {
     if(m){document.querySelector('[data-life-warning] span').textContent=m.life.lifeState==='DECEASED'?'Neural collapse is permanent. Create a new test identity.':`Neural stability: ${Math.max(0,100*(1-(m.life.strain||0)/PREVIEW_LIFE.collapseStrain)).toFixed(0)}% · Free care protects stability.`;}
     this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;
   }
-  destroy(){this.requestAbort?.abort();this.listeners.abort();this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
+  destroy(){this.walletUI?.destroy();this.requestAbort?.abort();this.listeners.abort();this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }
