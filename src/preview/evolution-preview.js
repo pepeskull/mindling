@@ -16,7 +16,7 @@ export class EvolutionPreview {
   frame = null; disposed = false; lastTime = null; elapsed = 0; displayedStage = 1;
   seedWeight = 1; seedFrom = 1; transition = 1;
   motion = matchMedia('(prefers-reduced-motion: reduce)');
-  constructor({ forceCanvas = false } = {}) { this.forceCanvas = forceCanvas; }
+  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot } = {}) { this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; }
   countdown = new AutomaticNetworkCountdown();
   async start() {
     this.host = document.querySelector('#scene');
@@ -24,7 +24,7 @@ export class EvolutionPreview {
     this.originalLabel = this.host.getAttribute('aria-label');
     document.querySelector('#app').classList.add('dashboard-preview');
     this.dashboard = new Dashboard(new EventBus(), { readOnly: true });
-    const snapshot = await readDashboardSnapshot();
+    const snapshot = await this.snapshotProvider();
     if (this.disposed) return;
     this.dashboard.showSnapshot(snapshot);
     this.presentation = new PreviewDashboardPresentation();

@@ -67,7 +67,7 @@ with sync_playwright() as p:
     }""")
     before=page.evaluate(SNAPSHOT)
     page.add_init_script(INSTRUMENT);page.emulate_media(reduced_motion='no-preference')
-    page.goto(BASE+'/?stage-preview=1');page.wait_for_selector('#scene[data-backend=three]')
+    page.goto(BASE+'/?stage-preview=1&preview-mode=demo');page.wait_for_selector('#scene[data-backend=three]')
     assert page.locator('.dashboard-chrome').is_visible()
     assert page.locator('.topbar').count()==1 and page.locator('#scene .preview-growth canvas').count()==1
     assert page.locator('.preview-toolbar, .evolution-preview, .preview-heading, [data-action]').count()==0
@@ -121,7 +121,7 @@ with sync_playwright() as p:
     # A fresh profile must not acquire an empty database or fictional player data.
     fresh=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
     fallback=fresh.new_page();route_three(fallback,blocked=True);fallback.add_init_script(INSTRUMENT)
-    fallback.goto(BASE+'/?stage-preview=1');fallback.wait_for_selector('#scene[data-backend=canvas]')
+    fallback.goto(BASE+'/?stage-preview=1&preview-mode=demo');fallback.wait_for_selector('#scene[data-backend=canvas]')
     assert fallback.locator('[data-energy-value]').inner_text()=='—'
     assert fallback.evaluate('indexedDB.databases()')==[]
     fallback.wait_for_function("document.querySelector('#scene').dataset.stage==='7'",timeout=40000)
