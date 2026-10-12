@@ -3,6 +3,7 @@ import { STAGES } from '../evolution-model.js';
 import { presentationFor } from '../dashboard-presentation.js';
 import { conditionFor } from '../../life/life-system.js';
 import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,DAY,visualMapping } from './engine.js';
+import { analyzeLearning } from './gemini.js';
 import { PreviewStore } from './storage.js';
 
 export class SandboxPreview extends EvolutionPreview {
@@ -15,7 +16,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.timeline.pause();
     document.querySelector('#app').classList.add('sandbox-mode');
     this.panel=document.createElement('details');this.panel.className='sandbox-controls glass-panel';this.panel.open=true;
-    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Only content you explicitly submit with “Analyze with Gemini” is sent to Google. Saved production data is never sent.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
+    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Only content you explicitly submit with “Analyze with Gemini” is sent to Google. Saved production data is never sent.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><label>Preview API access token <input data-api-token type="password" autocomplete="off" placeholder="Kept only in this page"></label><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
     document.querySelector('#app').append(this.panel);
     this.listen(this.panel,'click',e=>{const button=e.target.closest('button');if(!button)return;this.action(async()=>{
       if(button.dataset.hours)return this.change(s=>advanceTime(s,Number(button.dataset.hours)));
@@ -39,7 +40,15 @@ export class SandboxPreview extends EvolutionPreview {
   async action(fn){if(this.busy)return;this.busy=true;this.status('Working…');try{await fn();this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;}}
   status(text){const el=this.panel?.querySelector('[data-sandbox-status]');if(el)el.textContent=text;}
   async change(reducer){this.state=await this.store.change(reducer);if(!this.disposed)this.renderState();}
-  async submitLearning(){throw Error('Gemini is unavailable until the preview API is configured. No learning was awarded.');}
+  async submitLearning(){
+    const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
+    const text=document.querySelector('#mindling-input').value;
+    this.requestAbort=new AbortController();
+    const assessment=await analyzeLearning({text,pathway:m.pathways[0],token:this.panel.querySelector('[data-api-token]').value,signal:this.requestAbort.signal});
+    if(this.disposed)return;
+    await this.change(s=>learn(s,{id:crypto.randomUUID(),text,assessment,source:'GEMINI',mindId:m.id}));
+    document.querySelector('#mindling-input').value='';
+  }
   async care(){throw Error('Preview care is introduced in M4.3.');}
   async runFixture(){
     const text='Photosynthesis converts light energy into chemical energy stored in glucose.';
@@ -84,5 +93,5 @@ export class SandboxPreview extends EvolutionPreview {
     if(m){state.neurons=m.nodes.length;state.synapses=m.synapses.length;state.memories=m.memories.length;state.life={...m.life,condition:conditionFor(m.life.attributes,m.life.lifeState==='DECEASED')};}
     this.presentation.update(state);this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;
   }
-  destroy(){this.listeners.abort();this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
+  destroy(){this.requestAbort?.abort();this.listeners.abort();this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }
