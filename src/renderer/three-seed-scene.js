@@ -223,6 +223,8 @@ export class ThreeSeedScene {
 
   highlightRoute(route) { this.#routeHighlight = route || { neuronIds: [], synapseIds: [] }; }
 
+  selectAt(event) { return this.#pick(event, true); }
+
   #pick(event, select) {
     if (!event) { this.#hovered = null; return; }
     const bounds = this.#host.getBoundingClientRect();
@@ -234,6 +236,7 @@ export class ThreeSeedScene {
     const hit = this.#raycaster.intersectObjects(this.#interactiveObjects, false)[0]?.object.userData.selection || null;
     if (select) { this.#selected = hit; this.#onSelection?.(hit); }
     else this.#hovered = hit;
+    return hit;
   }
 
   #addDepthParticles() {

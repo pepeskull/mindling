@@ -9,9 +9,10 @@ async function startProduction() {
 }
 async function start() {
   if (new URLSearchParams(location.search).get('stage-preview') === '1') {
-    const { EvolutionPreview } = await import('../src/preview/evolution-preview.js');
+    const demo = new URLSearchParams(location.search).get('preview-mode') === 'demo';
+    const Preview = demo ? (await import('../src/preview/evolution-preview.js')).EvolutionPreview : (await import('../src/preview/sandbox/controller.js')).SandboxPreview;
     if (stopped) return;
-    active = new EvolutionPreview();
+    active = new Preview();
     await active.start();
   } else await startProduction();
 }

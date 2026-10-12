@@ -72,6 +72,11 @@ export class CanvasSeedScene {
 
   highlightRoute(route) { this.#routeHighlight = route || { neuronIds: [], synapseIds: [] }; }
 
+  selectAt(event) {
+    const b=this.#host.getBoundingClientRect();
+    return this.#pick({clientX:b.left+(event.clientX-b.left)*this.#width/b.width,clientY:b.top+(event.clientY-b.top)*this.#height/b.height});
+  }
+
   #pick(event) {
     const bounds = this.#host.getBoundingClientRect();
     const x = event.clientX - bounds.left; const y = event.clientY - bounds.top;
@@ -86,6 +91,7 @@ export class CanvasSeedScene {
       }
     }
     this.#selected = hit; this.#onSelection?.(hit);
+    return hit;
   }
 
   #projectNodes(elapsed) {
