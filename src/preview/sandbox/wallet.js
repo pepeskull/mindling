@@ -7,7 +7,7 @@ export function quote(state,market=MARKET){
 }
 export function simulatePurchase(input,q,{confirmed=false,market=MARKET}={}){
   if(!confirmed)throw Error('Confirm the simulated purchase');
-  if(!q||q.mode!=='SIMULATED'||q.playerId!==input.player.id||q.mindId!==input.mind?.id||input.mind.life.lifeState!=='ALIVE')throw Error('Invalid purchase identity');
+  if(!q||typeof q.id!=='string'||q.id.length<8||q.id.length>100||q.mode!=='SIMULATED'||q.playerId!==input.player.id||q.mindId!==input.mind?.id||input.mind.life.lifeState!=='ALIVE')throw Error('Invalid purchase identity');
   if(input.now<q.issuedAt||input.now>=q.expiresAt||q.expiresAt-q.issuedAt!==60000)throw Error('Quote expired');
   const expected=quote(input,market),old=BigInt(q.priceMicroUSD);
   if(old<=0n||((market.priceMicroUSD>old?market.priceMicroUSD-old:old-market.priceMicroUSD)*10000n)/old>100n||q.units!==expected.units||q.decimals!==market.decimals||q.feeLamports!==expected.feeLamports)throw Error('Price changed; request a new quote');

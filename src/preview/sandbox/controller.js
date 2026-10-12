@@ -1,4 +1,5 @@
 import { EvolutionPreview } from '../evolution-preview.js';
+import { AutomaticNetworkCountdown } from '../automatic-playback.js';
 import { STAGES } from '../evolution-model.js';
 import { presentationFor } from '../dashboard-presentation.js';
 import { condition, carePreview, PREVIEW_LIFE } from './life.js';
@@ -11,8 +12,10 @@ export class SandboxPreview extends EvolutionPreview {
   constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'})}); this.listeners=new AbortController(); }
   async start() {
     if(new URLSearchParams(location.search).get('stage-preview')!=='1')throw Error('Sandbox requires explicit preview URL');
-    this.store=await new PreviewStore().open();
-    this.state=await this.store.change(s=>s||createSandbox());
+    const store=await new PreviewStore().open();
+    if(this.disposed){store.close();return;}
+    this.store=store;this.state=await this.store.change(s=>s||createSandbox());
+    if(this.disposed){store.close();return;}
     await super.start();if(this.disposed)return;
     this.timeline.pause();
     document.querySelector('#app').classList.add('sandbox-mode');
@@ -22,7 +25,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.listen(this.panel,'click',e=>{const button=e.target.closest('button');if(!button)return;this.action(async()=>{
       if(button.dataset.hours)return this.change(s=>advanceTime(s,Number(button.dataset.hours)));
       switch(button.dataset.sandbox){
-        case 'new': if(confirm('Create a new isolated test Mindling? The current test identity will be archived.'))await this.change(s=>newMindling(s,{name:this.panel.querySelector('[data-test-name]').value,pathway:this.panel.querySelector('[data-test-pathway]').value,confirmed:true}));break;
+        case 'new': if(confirm('Create a new isolated test Mindling? The current test identity will be archived.'))await this.change(s=>newMindling(s,{name:this.panel.querySelector('[data-test-name]').value,pathway:this.panel.querySelector('[data-test-pathway]').value,confirmed:true}));this.panel.open=false;break;
         case 'reset': if(confirm('Reset preview gameplay? Production data and the test player wallet are preserved.'))await this.change(s=>{const n=newMindling(s,{confirmed:true});n.origin=n.now;return n;});break;
         case 'clock':await this.change(resetClock);break;
         case 'evolve':await this.change(evolve);break;
@@ -35,13 +38,19 @@ export class SandboxPreview extends EvolutionPreview {
     this.listen(document.querySelector('[data-new-mindling]'),'click',()=>this.panel.querySelector('[data-sandbox="new"]').click());
     document.querySelector('#interaction-form button[type=submit]').textContent='Analyze with Gemini';
     document.querySelector('#mindling-input').placeholder='Explicitly submit new learning to Gemini…';
+    this.interaction.connect(this.host,{onTap:event=>{
+      if(!this.state.mind)return;
+      const hit=this.timeline.stage===1?this.seed.selectAt(event):null;
+      const id=this.timeline.stage===1?(hit?.type==='neuron'?hit.id:null):this.view.pickCanonical(event);
+      if(id){this.panel.querySelector('[data-node-selection]').value=id;this.inspectNode(id);}
+    }});
     this.walletUI=new TestWalletUI(this);
     this.renderState();
   }
   listen(node,type,fn){node.addEventListener(type,fn,{signal:this.listeners.signal});}
-  async action(fn){if(this.busy)return;this.busy=true;this.status('Working…');try{await fn();this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;}}
-  status(text){const el=this.panel?.querySelector('[data-sandbox-status]');if(el)el.textContent=text;}
-  async change(reducer){this.state=await this.store.change(reducer);if(!this.disposed)this.renderState();}
+  async action(fn){if(this.busy)return;this.busy=true;this.status('Working…');try{await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;}}
+  status(text){if(this.disposed)return;const el=this.panel?.querySelector('[data-sandbox-status]');if(el)el.textContent=text;const inline=document.querySelector('#interaction-form .interaction-status');if(inline){inline.textContent=text;inline.classList.add('visible');}}
+  async change(reducer){const memories=this.state.mind?.memories.length||0;this.state=await this.store.change(reducer);if(!this.disposed){this.renderState();if(this.state.mind?.memories.length>memories){const edge=this.state.mind.synapses[(this.state.mind.memories.length-1)%4];this.seed.signal({source:'origin',destination:edge.to,synapse:edge.id,outcome:'MEMORY_FORMATION'});}}}
   async submitLearning(){
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
     const text=document.querySelector('#mindling-input').value;
@@ -59,7 +68,9 @@ export class SandboxPreview extends EvolutionPreview {
     this.status('Deterministic fixture — no Gemini request. Repeating it earns no XP.');
   }
   renderState(){
-    const m=this.state.mind;if(!m){this.refreshNetwork();return;}
+    const m=this.state.mind;if(!m){document.querySelector('.hero-copy h1').textContent='Create a test Mindling';document.querySelectorAll('[data-stat]').forEach(el=>el.textContent='0');return;}
+    if(this.identityId!==m.id){this.identityId=m.id;this.countdown=new AutomaticNetworkCountdown();this.timeline.network.reset();}
+    this.seed.update({nodes:m.nodes.slice(0,5),synapses:m.synapses.slice(0,4)});
     const stage=m.stage;if(this.timeline.stage!==stage){this.timeline.select(stage);this.syncStage();this.host.dataset.stage=String(stage);}
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.
     const subtitle=this.presentation.subtitle;document.querySelector('.hero-copy').append(subtitle);
@@ -68,7 +79,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.refreshNetwork();
     const alive=m.life.lifeState==='ALIVE';
     this.view.reduced=!alive||this.motion.matches;this.seed.setReducedMotion(!alive||this.motion.matches);
-    if(!alive)this.timeline.network.reset();
+    if(!alive){this.timeline.network.reset();this.countdown.started=true;}
     document.querySelector('[data-memorial]').hidden=alive;
     document.querySelector('[data-memorial-age]').textContent=alive?'':`Test identity ${m.id}`;
     document.querySelector('[data-memorial-dates]').textContent=alive?'':`Died at ${new Date(m.life.deathAt).toISOString()}`;
@@ -94,13 +105,16 @@ export class SandboxPreview extends EvolutionPreview {
     this.view.morph.target.nodes.forEach((node,i)=>{const id=this.view.canonicalMapping[i];const strength=m.synapses.filter(e=>e.from===id||e.to===id).reduce((sum,e)=>sum+e.strength,0);node.baseRadius??=node.radius;node.radius=node.baseRadius*(1+Math.min(.35,strength*.05));});
     this.view.morph.tick(0);this.view.buffers.rebuild(this.view.morph);this.view.centralSegments=this.view.buffers.segmentCount;
   }
-  inspectNode(id){const m=this.state.mind;this.panel.querySelector('[data-node-info]').textContent=`${id}: ${m.memories.filter(v=>v.neuronIds.includes(id)).length} memories · ${m.synapses.filter(e=>e.from===id||e.to===id).length} connections`;}
+  inspectNode(id){this.view.selectedCanonical=id;this.seed.highlightRoute({neuronIds:[id],synapseIds:[]});const m=this.state.mind;this.panel.querySelector('[data-node-info]').textContent=`${id}: ${m.memories.filter(v=>v.neuronIds.includes(id)).length} memories · ${m.synapses.filter(e=>e.from===id||e.to===id).length} connections`;}
   refreshNetwork(){
     if(!this.view||!this.presentation)return;
     const state=presentationFor(this.timeline,this.view.morph),m=this.state?.mind;
     if(m){state.neurons=m.nodes.length;state.synapses=m.synapses.length;state.memories=m.memories.length;state.life={...m.life,condition:condition(m.life)};}
+    if(!m)return;
+    const changed=this.presentation.stage!==state.stage.number;
     this.presentation.update(state);
-    if(m){document.querySelector('[data-life-warning] span').textContent=m.life.lifeState==='DECEASED'?'Neural collapse is permanent. Create a new test identity.':`Neural stability: ${Math.max(0,100*(1-(m.life.strain||0)/PREVIEW_LIFE.collapseStrain)).toFixed(0)}% · Free care protects stability.`;}
+    if(changed){document.querySelector('.life-panel').title='Actual isolated sandbox Life Status';document.querySelector('[data-life-warning] span').textContent=m.life.lifeState==='DECEASED'?'Neural collapse is permanent. Create a new test identity.':`Neural stability: ${Math.max(0,100*(1-(m.life.strain||0)/PREVIEW_LIFE.collapseStrain)).toFixed(0)}% · Free care protects stability.`;}
+    if(m.life.lifeState==='DECEASED'){this.view.reduced=true;this.seed.setReducedMotion(true);}
     this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;
   }
   destroy(){this.walletUI?.destroy();this.requestAbort?.abort();this.listeners.abort();this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}

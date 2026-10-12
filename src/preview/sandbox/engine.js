@@ -60,8 +60,9 @@ export function learn(state,{id,text,assessment,source='fixture',mindId=state.mi
   if(n.nodes.length<64)n.nodes.push({id:nodeId,position:[0,0,0],size:.6});
   const edge=n.synapses.find(e=>e.to===nodeId);
   if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}else n.synapses.push({id:`origin-${nodeId}`,from:'origin',to:nodeId,strength:.28,activations:1});
+  const foundation=n.synapses[n.memories.length%4];foundation.strength=Math.min(1,foundation.strength+.05);foundation.activations++;
   const related=n.memories.filter(v=>cosine(v.embedding,a.embedding)>=.62).map(v=>v.id);
-  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,embedding:[...a.embedding],createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:['origin',nodeId],synapseIds:[`origin-${nodeId}`],relatedMemoryIds:related,source,areaSuggestion:a.area});
+  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,embedding:[...a.embedding],createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:['origin',foundation.to,nodeId],synapseIds:[foundation.id,`origin-${nodeId}`],relatedMemoryIds:related,source,areaSuggestion:a.area});
   n.areas=[...new Set(n.memories.map(v=>v.areaSuggestion))];
   n.life.attributes.wellbeing=Math.min(100,n.life.attributes.wellbeing+10);
   return next;

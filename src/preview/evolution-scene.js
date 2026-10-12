@@ -157,7 +157,7 @@ export class EvolutionScene {
     this.root.scale.setScalar(this.interaction.zoom * framing * (this.reduced ? 1 : 1 + .008 * Math.sin(elapsed)));
     for (let i = 0; i < MAX_NODES; i++) {
       this.matrix.position.fromArray(b.positions, i * 3); this.matrix.scale.setScalar(b.radii[i]); this.matrix.updateMatrix(); this.soma.setMatrixAt(i, this.matrix.matrix);
-      this.color.setHex(COLORS[b.regions[i]]); this.soma.setColorAt(i, this.color);
+      this.color.setHex(this.selectedCanonical && this.canonicalMapping?.[i] === this.selectedCanonical ? 0xffffff : COLORS[b.regions[i]]); this.soma.setColorAt(i, this.color);
     }
     this.soma.instanceMatrix.needsUpdate = true; this.soma.instanceColor.needsUpdate = true;
     for (const [object, count] of [[this.fibers, b.segmentCount * 2], [this.links, b.networkCount * 2], [this.pulses, b.pulseCount]]) { object.geometry.setDrawRange(0, count); object.geometry.attributes.position.needsUpdate = true; }
@@ -182,13 +182,23 @@ export class EvolutionScene {
       for (let i = 0; i < count; i++) { this.project(array, i * 6, p); this.project(array, i * 6 + 3, p, 2); c.moveTo(p[0], p[1]); c.lineTo(p[2], p[3]); } c.stroke();
     }
     for (let i = 0; i < MAX_NODES; i++) if (b.radii[i] > .001) {
-      const scale = this.project(b.positions, i * 3, p); c.fillStyle = `#${COLORS[b.regions[i]].toString(16)}`;
+      const scale = this.project(b.positions, i * 3, p); c.fillStyle = this.selectedCanonical && this.canonicalMapping?.[i] === this.selectedCanonical ? "#ffffff" : `#${COLORS[b.regions[i]].toString(16)}`;
       const breath = this.reduced ? 1 : 1 + .04 * Math.sin(elapsed + i);
       c.beginPath(); c.arc(p[0], p[1], Math.max(.5, b.radii[i] * scale * breath), 0, Math.PI * 2); c.fill();
       c.strokeStyle = 'rgba(170,225,210,.15)'; c.beginPath(); c.arc(p[0], p[1], b.radii[i] * scale * 1.7, 0, Math.PI * 2); c.stroke();
     }
     c.fillStyle = '#e1fff4'; for (let i = 0; i < b.pulseCount; i++) { this.project(b.pulses, i * 3, p); c.beginPath(); c.arc(p[0], p[1], 2.2, 0, Math.PI * 2); c.fill(); }
     if (network.state === 'DISCOVERING' && !this.reduced) { c.strokeStyle = `rgba(145,199,223,${Math.max(0,.4-network.elapsed*.2)})`; c.beginPath(); c.arc(this.width / 2, this.height / 2, (1 + network.elapsed) * Math.min(this.width, this.height) * .18, 0, Math.PI * 2); c.stroke(); }
+  }
+  pickCanonical(event) {
+    const rect=this.canvas.getBoundingClientRect(), pointer={x:event.clientX-rect.left,y:event.clientY-rect.top};
+    let best=null,distance=18;const p=new Float32Array(2);
+    for(let i=0;i<this.morph.target.nodes.length;i++){
+      if(this.three){const v=new this.three.Vector3().fromArray(this.buffers.positions,i*3).applyMatrix4(this.root.matrixWorld).project(this.camera);if(v.z< -1||v.z>1)continue;p[0]=(v.x+1)*this.width/2;p[1]=(1-v.y)*this.height/2;}
+      else this.project(this.buffers.positions,i*3,p);
+      const d=Math.hypot(pointer.x-p[0],pointer.y-p[1]);if(d<distance){distance=d;best=this.canonicalMapping?.[i]||null;}
+    }
+    return best;
   }
   // Project the same remote geometry used for rendering, including camera/root transforms.
   projectRemote(index) {

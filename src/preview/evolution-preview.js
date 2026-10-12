@@ -50,6 +50,9 @@ export class EvolutionPreview {
     for (const node of document.querySelectorAll('.topbar, .left-stack, .right-panel, .hero-copy, #interaction-form')) this.observer.observe(node);
     window.addEventListener('resize', this.resize);
     document.addEventListener('visibilitychange', this.visibility);
+    if(new URLSearchParams(location.search).get('preview-mode')==='demo'){
+      this.modeLink=document.createElement('a');this.modeLink.className='preview-mode-link';this.modeLink.href='?stage-preview=1';this.modeLink.textContent='Open interactive sandbox';document.querySelector('#app').append(this.modeLink);
+    }
     this.timeline.play();
     this.resize(); this.refresh(); this.schedule();
   }
@@ -111,7 +114,7 @@ export class EvolutionPreview {
     if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null;
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);
-    this.presentation?.destroy(); this.dashboard?.destroy();
+    this.modeLink?.remove();this.presentation?.destroy(); this.dashboard?.destroy();
     this.timeline.pause(); this.timeline.network.reset(); this.interaction.disconnect(); this.seed?.destroy(); this.view?.destroy();
     this.host?.replaceChildren(); this.host?.removeAttribute('style');
     if (this.host) { this.host.setAttribute('aria-label', this.originalLabel); delete this.host.dataset.stage; delete this.host.dataset.backend; delete this.host.dataset.network; }
