@@ -106,9 +106,9 @@ Run `node --test tests/*.test.mjs`, then serve locally and run `MINDLING_TEST_UR
 
 ### Recorded test results
 
-- Full Node suite: **79 tests, 74 passing, 5 failing**. All 14 new M4 tests pass.
-- Four pre-existing failures retained unchanged: missing semantic matcher in legacy memory evaluation; modal phrasing expecting REINFORCEMENT instead of STIMULATION; reinforcement-history test with the same mismatch; old experimental-loader/public-benchmark removal invariant.
-- One newly conflicting legacy assertion is retained unchanged: `topology, token, and non-destructive schema invariants` requires the entire `api/` directory not to exist. This milestone explicitly requires a serverless Gemini API. The new gated API is present, so that assertion fails. This is **not** reported as a pre-existing failure or a green suite. All its canonical topology, schema-version and disabled-payment checks remain unchanged.
+- Historical M4 delivery results (before the [repository cleanup](../repository-cleanup.md)): **79 tests, 74 passing, 5 failing**. All 14 new M4 tests pass.
+- At that historical point, four pre-existing failures remained: missing semantic matcher in legacy memory evaluation; two REINFORCEMENT-versus-STIMULATION expectations; and the old experimental-loader/public-benchmark removal invariant.
+- At that historical point, one legacy assertion also prohibited the required serverless Gemini API. The later cleanup resolves both repository invariants: obsolete experiments are absent, and the API directory has an exact allowlist for the protected entrypoint. Canonical topology, schema-version and disabled-payment checks remain unchanged.
 - Chromium Canvas and real Three.js: test identity creation, accepted local fixture, semantic client fixture response, XP/actual graph counts, interactive stage 1→2, Memory UI, quote/QR/simulated purchase, collapse, reload without revival, new identity with wallet preservation, Gemini 503 failure with no mutation, mobile navigation. Production database opens are instrumented to throw throughout sandbox sessions, and none occur.
 - Automatic demo regression: all seven synchronized stages, three named peers, rotation/zoom label anchoring, disconnect, mobile/reduced motion, hidden-tab countdown, repeated start/destroy and normal gameplay resumption pass. Its production database before/after snapshot comparison remains unchanged.
 

@@ -52,19 +52,3 @@ export function evaluateShadowIdentity(evidence) {
     canonicalAuthority: false
   };
 }
-
-export function selectShadowCandidate(candidates) {
-  const same = candidates.filter(candidate => candidate.shadow.identity === "SAME");
-  if (!same.length) return null;
-  return [...same].sort((left, right) =>
-    right.shadow.evidence.mutualEntailment - left.shadow.evidence.mutualEntailment ||
-    right.retrieval.cosine - left.retrieval.cosine || left.rank - right.rank)[0];
-}
-
-export function analyzeIdentityTriangle(edges) {
-  const identities = edges.map(edge => edge.shadow.identity);
-  const status = identities.every(value => value === "SAME") ? "CONSISTENT_SAME_CLUSTER" :
-    identities.every(value => value === "NOT_SAME") ? "CONSISTENT_SEPARATE" :
-      identities.includes("UNCERTAIN") ? "UNCERTAIN" : "INCONSISTENT";
-  return { status, edges, canonicalAuthority: false };
-}

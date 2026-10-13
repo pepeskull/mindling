@@ -2,6 +2,7 @@
 Gemini responses here are explicit fixtures, never a live API verification.
 """
 import os
+from support.browser_branding import verify_branding
 import subprocess
 import tempfile
 from pathlib import Path
@@ -21,7 +22,7 @@ with sync_playwright() as p:
         page.evaluate('''async()=>{const {MindlingDatabase}=await import('/src/storage/database.js');const db=await new MindlingDatabase().open();await db.put('mindling',{id:'primary',name:'Protected production identity'});await db.put('memories',{id:'private-memory',content:'Private production content'});db.close();}''')
         page.unroute('**/js/bootstrap.js')
         page.add_init_script('''(()=>{const original=indexedDB.open.bind(indexedDB);window.__productionAccess=0;indexedDB.open=(name,...args)=>{if(name==='mindling-db'){window.__productionAccess++;throw Error('Production storage access from sandbox');}return original(name,...args);};})();''')
-        page.goto(BASE+'/?stage-preview=1');page.wait_for_selector('.sandbox-controls')
+        page.goto(BASE+'/?stage-preview=1');page.wait_for_selector('.sandbox-controls');verify_branding(page, f'sandbox-{backend}-desktop')
         assert page.locator('#scene').get_attribute('data-backend')==backend
         page.on('dialog',lambda d:d.accept())
         page.locator('[data-sandbox="new"]').click();page.wait_for_function("document.querySelector('.hero-copy h1').textContent==='Test Mindling is learning.'")
@@ -80,7 +81,7 @@ with sync_playwright() as p:
         assert page.locator('[data-stat=memories]').text_content()=='0'
         assert not errors,errors
         page.locator('.sandbox-controls summary').first.click();page.screenshot(path=f'/tmp/m4-{backend}.png')
-        page.set_viewport_size({'width':390,'height':844});page.screenshot(path=f'/tmp/m4-{backend}-mobile.png')
+        page.set_viewport_size({'width':390,'height':844});verify_branding(page, f'sandbox-{backend}-mobile');page.screenshot(path=f'/tmp/m4-{backend}-mobile.png')
         page.locator('[data-mobile-view=development]').click();assert page.locator('.left-stack').is_visible()
         context.close()
         print(f'PASS {backend}: learning, real sandbox stats, memory UI, death, wallet, persistence, no production access, mobile',flush=True)

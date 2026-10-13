@@ -93,7 +93,6 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelector('[data-energy-reset]').textContent='Free Energy resets on the next virtual UTC day';
     document.querySelector('[data-neural-cycle]').textContent=`NC ${String(1+Math.floor((this.state.now-m.createdAt)/DAY)).padStart(4,'0')}`;
     document.querySelector('[data-neural-cycles]').textContent=`${1+Math.floor((this.state.now-m.createdAt)/DAY)} Neural Cycles`;
-    document.querySelector('.storage-status').textContent='Preview sandbox · isolated storage';
     document.querySelector('.hero-copy h1').textContent=`${m.name} ${alive?'is learning.':'— Neural Collapse'}`;
     if(!this.panel)return;
     const gate=eligibility(this.state);

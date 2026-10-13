@@ -1,5 +1,5 @@
 import { loadEquivalenceCandidate, loadPropositionCandidate, loadSemanticModels, SEMANTIC_MODELS } from "./semantic-model.js";
-import { evaluateShadowIdentity, selectShadowCandidate } from "./canonical-identity.js";
+import { evaluateShadowIdentity } from "./canonical-identity.js";
 
 export const SEMANTIC_RULES = Object.freeze({
   candidateLimit: 3,
@@ -22,14 +22,6 @@ export const cosineSimilarity = (left, right) => {
   for (let index = 0; index < left.length; index += 1) { dot += left[index] * right[index]; leftMagnitude += left[index] ** 2; rightMagnitude += right[index] ** 2; }
   return dot / (Math.sqrt(leftMagnitude) * Math.sqrt(rightMagnitude) || 1);
 };
-const vectorNorm = vector => Math.sqrt([...vector].reduce((sum, value) => sum + value * value, 0));
-const identicalVectors = (left, right) => {
-  if (left.byteLength !== right.byteLength) return false;
-  const leftBytes = new Uint8Array(left.buffer, left.byteOffset, left.byteLength);
-  const rightBytes = new Uint8Array(right.buffer, right.byteOffset, right.byteLength);
-  return leftBytes.every((value, index) => value === rightBytes[index]);
-};
-
 const probability = (scores, name) => scores[name] ?? scores[`label_${name}`] ?? 0;
 
 function decidePair(similarity, forward, reverse) {
