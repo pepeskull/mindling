@@ -10,7 +10,7 @@ import { analyzeLearning } from './gemini.js';
 import { PreviewStore } from './storage.js';
 
 export class SandboxPreview extends EvolutionPreview {
-  constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'})}); this.listeners=new AbortController(); }
+  constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'}),originalFraming:true}); this.listeners=new AbortController(); }
   async start() {
     if(new URLSearchParams(location.search).get('stage-preview')!=='1')throw Error('Sandbox requires explicit preview URL');
     const store=await new PreviewStore().open();
@@ -20,9 +20,9 @@ export class SandboxPreview extends EvolutionPreview {
     this.stabilityRow=document.createElement('div');this.stabilityRow.className='life-attribute';this.stabilityRow.dataset.lifeAttribute='neuralStability';
     this.stabilityRow.innerHTML='<svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><label>Neural Stability</label><strong>—</strong><progress aria-label="Neural Stability" max="100" value="100">100%</progress>';
     document.querySelector('[data-life-warning]').before(this.stabilityRow);
+    document.querySelector('#app').classList.add('sandbox-mode');
     await super.start();if(this.disposed)return;
     this.timeline.pause();
-    document.querySelector('#app').classList.add('sandbox-mode');
     this.panel=document.createElement('details');this.panel.className='sandbox-controls glass-panel';this.panel.open=true;
     this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Only content you explicitly submit with “Analyze with Gemini” is sent to Google. Saved production data is never sent.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><label>Preview API access token <input data-api-token type="password" autocomplete="off" placeholder="Kept only in this page"></label><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
     document.querySelector('#app').append(this.panel);

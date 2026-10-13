@@ -16,7 +16,7 @@ export class EvolutionPreview {
   frame = null; disposed = false; lastTime = null; elapsed = 0; displayedStage = 1;
   seedWeight = 1; seedFrom = 1; transition = 1;
   motion = matchMedia('(prefers-reduced-motion: reduce)');
-  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot } = {}) { this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; }
+  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot, originalFraming = false } = {}) { this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; this.originalFraming = originalFraming; }
   countdown = new AutomaticNetworkCountdown();
   async start() {
     this.host = document.querySelector('#scene');
@@ -36,13 +36,13 @@ export class EvolutionPreview {
     let three = null;
     if (!this.forceCanvas) { try { three = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js'); } catch { /* Native Canvas fallback. */ } }
     if (this.disposed) return;
-    this.view = new EvolutionScene({ three, interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true });
-    const framing={referenceHeight:()=>document.querySelector('#app').clientHeight};
+    this.view = new EvolutionScene({ three, interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming });
+    const framing=this.originalFraming?null:{referenceHeight:()=>document.querySelector('#app').clientHeight};
     this.seed = three ? new ThreeSeedScene(three, null, this.interaction, framing) : new CanvasSeedScene(null, this.interaction, framing);
     try { this.view.mount(this.growthHost); this.seed.mount(this.seedHost, structuredClone(createNeuralSeedState())); }
     catch {
       this.view.destroy(); this.seed.destroy?.(); this.seedHost.replaceChildren(); this.growthHost.replaceChildren();
-      this.view = new EvolutionScene({ interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true }); this.view.mount(this.growthHost);
+      this.view = new EvolutionScene({ interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming }); this.view.mount(this.growthHost);
       this.seed = new CanvasSeedScene(null, this.interaction, framing); this.seed.mount(this.seedHost, structuredClone(createNeuralSeedState()));
     }
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
@@ -71,7 +71,8 @@ export class EvolutionPreview {
     const { width, height } = this.host.getBoundingClientRect();
     if (width === this.width && height === this.height) return;
     this.width = width; this.height = height;
-    this.view?.resize(width, height); this.seed?.resize(width, height);
+    const renderHeight=this.originalFraming?Math.max(1,height-44):height;
+    this.view?.resize(width, renderHeight); this.seed?.resize(width, renderHeight);
   };
   motionChanged = () => {
     this.view.reduced = this.motion.matches;

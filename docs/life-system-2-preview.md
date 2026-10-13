@@ -2,6 +2,8 @@
 
 Life 2.0 runs only at `/?stage-preview=1`. The production Life System 1.0 formulas, eligibility rules, daily allowance and database schema are unchanged. Shared presentation formatting and the requested typography apply to all modes; the Neural Stability row is mounted only by the sandbox controller.
 
+The sandbox camera/framing solution recorded below is superseded by the [original-size restoration](sandbox-size-restoration.md). Life 2.0 and its typography remain current; the automatic demo retains shared framing.
+
 ## Survival rules
 
 Every virtual hour Nutrition decreases by 1.4, Rest by 1.1, Wellbeing by 1 and the stimulation reserve by 2 percentage points. Basic Care uses the existing free gains and 6/8/12-hour cooldowns. Sandbox care can be preventive below 100%; production retains its 85% Nutrition, 80% Rest and 90% Health eligibility thresholds. Care never replenishes stimulation or immediately changes Neural Stability.

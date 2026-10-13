@@ -104,8 +104,9 @@ class RenderBuffers {
 }
 
 export class EvolutionScene {
-  constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage, fitDashboard = false } = {}) {
+  constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage, fitDashboard = false, originalFraming = false } = {}) {
     this.fitDashboard = fitDashboard; this.three = three; this.interaction = interaction; this.reduced = reduced;
+    this.useSharedFraming = fitDashboard && !originalFraming;
     this.morph = new Morphology(17, provider); this.buffers = new RenderBuffers(); this.centralSegments = 0;
     // One envelope covers all seven stages, avoiding camera jumps during morphs.
     this.framingRadius = Math.max(...Array.from({length:7},(_,i)=>morphologyRadius(provider(i+1))));
@@ -122,7 +123,7 @@ export class EvolutionScene {
     this.renderer = new T.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75)); this.canvas = this.renderer.domElement; this.host.append(this.canvas);
     this.scene = new T.Scene(); this.root = new T.Group(); this.scene.add(this.root);
-    this.camera = this.fitDashboard ? new T.OrthographicCamera(-1,1,1,-1,.1,40) : new T.PerspectiveCamera(36, 1, .1, 40); this.camera.position.z = 9;
+    this.camera = this.useSharedFraming ? new T.OrthographicCamera(-1,1,1,-1,.1,40) : new T.PerspectiveCamera(36, 1, .1, 40); this.camera.position.z = 9;
     this.scene.add(new T.AmbientLight(0xd5eee8, 2)); const light = new T.DirectionalLight(0xffffff, 2.5); light.position.set(-2, 3, 5); this.scene.add(light);
     this.soma = new T.InstancedMesh(new T.IcosahedronGeometry(1, 1), new T.MeshStandardMaterial({ color: 0xffffff, roughness: .38, metalness: .1, emissive: 0x29423c, emissiveIntensity: .5 }), MAX_NODES);
     this.soma.instanceMatrix.setUsage(T.DynamicDrawUsage); this.soma.frustumCulled = false; this.root.add(this.soma);
@@ -140,22 +141,27 @@ export class EvolutionScene {
   select(stage) { this.morph.select(stage, this.reduced); this.buffers.rebuild(this.morph); this.centralSegments = this.buffers.segmentCount; }
   resize(width, height) {
     if (!width || !height) return; this.width = width; this.height = height;
-    if (this.fitDashboard) this.updateFraming();
+    if (this.useSharedFraming) this.updateFraming();
     if (this.three) { this.renderer.setSize(width, height, false); this.camera.aspect = width / height;
+      if(this.fitDashboard&&!this.useSharedFraming){
+        // Original sandbox perspective/portrait framing, before Life System 2.0.
+        const framing=width<height?Math.min(1,width/height*1.3):1;
+        this.camera.position.z=Math.max(9,4.2*framing/(Math.tan(Math.PI/10)*this.camera.aspect));
+      }
       this.camera.updateProjectionMatrix(); }
     else { const dpr = Math.min(devicePixelRatio, 1.5); this.canvas.width = width * dpr; this.canvas.height = height * dpr; this.context.setTransform(dpr, 0, 0, dpr, 0, 0); }
   }
   render(elapsed, delta, network) {
     if (this.morph.progress < 1) { this.morph.tick(delta); this.buffers.rebuild(this.morph); this.centralSegments = this.buffers.segmentCount; }
     this.buffers.segmentCount = this.centralSegments; this.buffers.animate(this.morph, network, elapsed, this.reduced);
-    if(this.fitDashboard)this.updateFraming(network);
+    if(this.useSharedFraming)this.updateFraming(network);
     if (this.three) this.renderThree(elapsed, network); else this.renderCanvas(elapsed, network);
   }
   renderThree(elapsed, network) {
     const b = this.buffers;
     this.root.rotation.set(this.interaction.rotation.x, this.interaction.rotation.y, 0);
     const framing = this.width < this.height ? Math.min(1, this.width / this.height * 1.3) : 1;
-    this.root.scale.setScalar((this.fitDashboard?this.framing.zoom:this.interaction.zoom*framing) * (this.reduced ? 1 : 1 + .008 * Math.sin(elapsed)));
+    this.root.scale.setScalar((this.useSharedFraming?this.framing.zoom:this.interaction.zoom*framing) * (this.reduced ? 1 : 1 + .008 * Math.sin(elapsed)));
     for (let i = 0; i < MAX_NODES; i++) {
       this.matrix.position.fromArray(b.positions, i * 3); this.matrix.scale.setScalar(b.radii[i]); this.matrix.updateMatrix(); this.soma.setMatrixAt(i, this.matrix.matrix);
       this.color.setHex(this.selectedCanonical && this.canonicalMapping?.[i] === this.selectedCanonical ? 0xffffff : COLORS[b.regions[i]]); this.soma.setColorAt(i, this.color);
@@ -170,7 +176,7 @@ export class EvolutionScene {
     const ry = this.interaction.rotation.y, rx = this.interaction.rotation.x;
     const x = array[k] * Math.cos(ry) + array[k + 2] * Math.sin(ry), z = -array[k] * Math.sin(ry) + array[k + 2] * Math.cos(ry);
     const y = array[k + 1] * Math.cos(rx) - z * Math.sin(rx);
-    const scale = this.fitDashboard ? this.framing.unit * this.framing.zoom : Math.min(this.width / 7.8, this.height / 5.3) * this.interaction.zoom;
+    const scale = this.useSharedFraming ? this.framing.unit * this.framing.zoom : Math.min(this.width / 7.8, this.height / 5.3) * this.interaction.zoom;
     out[offset] = this.width / 2 + x * scale; out[offset + 1] = this.height / 2 - y * scale;
     return scale;
   }
