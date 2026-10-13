@@ -33,6 +33,7 @@ with sync_playwright() as p:
         page.locator('[data-hours="1"]').click();page.wait_for_function("document.querySelector('[data-diagnostics]').textContent.includes('Offset: 0.04')")
         page.locator('[data-sandbox="fixture"]').click();page.wait_for_function("document.querySelector('[data-sandbox-status]').textContent.includes('duplicate')")
         assert page.locator('[data-stat=memories]').text_content()=='1'
+        page.locator('[data-hours="1"]').click()
         # Explicit fixture response exercises the real client/schema/engine boundary, not the live Gemini service.
         submitted=[]
         assessment={'meaningful':True,'duplicate':False,'quality':.95,'concept':'gravitational attraction','memory':'Gravity attracts bodies with mass.','area':'Physics','kind':'concept','embedding':[0,1]+[0]*766}
@@ -79,10 +80,31 @@ with sync_playwright() as p:
         page.locator('.sandbox-controls summary').first.click();page.wait_for_function("document.querySelector('[data-sandbox-status]').textContent.includes('not configured')")
         assert page.locator('[data-energy-value]').text_content()=='10 / 10'
         assert page.locator('[data-stat=memories]').text_content()=='0'
+        # Talk stays local; Deep Training uses the explicit Gemini assessment and
+        # pays its distinct three-Energy cost without changing production rules.
+        local_requests=[]
+        page.unroute('**/api/preview-learning')
+        def training_reply(route):
+            local_requests.append(route.request.post_data_json)
+            route.fulfill(json={'assessment':assessment})
+        page.route('**/api/preview-learning',training_reply)
+        page.locator('[data-input-mode="TALK"]').click()
+        page.locator('#mindling-input').fill('I have been thinking about how a learning mind needs regular care.')
+        page.locator('#interaction-form button[type=submit]').click()
+        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='9 / 10'")
+        assert local_requests==[] and page.locator('[data-stat=memories]').text_content()=='0'
+        for _ in range(2):page.locator('[data-hours="1"]').click()
+        page.locator('[data-input-mode="DEEP_TRAINING"]').click()
+        page.locator('#mindling-input').fill('Gravity describes attraction between bodies with mass.')
+        page.locator('#interaction-form button[type=submit]').click()
+        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='6 / 10'")
+        assert len(local_requests)==1 and page.locator('[data-stat=memories]').text_content()=='1'
         assert not errors,errors
         page.locator('.sandbox-controls summary').first.click();page.screenshot(path=f'/tmp/m4-{backend}.png')
         page.set_viewport_size({'width':390,'height':844});verify_branding(page, f'sandbox-{backend}-mobile');page.screenshot(path=f'/tmp/m4-{backend}-mobile.png')
         page.locator('[data-mobile-view=development]').click();assert page.locator('.left-stack').is_visible()
+        assert page.locator('[data-life-attribute="neuralStability"]').is_visible()
+        for label in page.locator('[data-life-attribute] strong').all_text_contents():assert label.endswith('%') and label[:-1].isdigit(),label
         context.close()
         print(f'PASS {backend}: learning, real sandbox stats, memory UI, death, wallet, persistence, no production access, mobile',flush=True)
     # Lifecycle runs against the real shell with bootstrap suppressed; no timers or network calls needed.

@@ -1,8 +1,7 @@
 /* Reuse the production shell and panels; only the visualization gets a new mount. */
 .dashboard-preview #scene{overflow:hidden;min-width:0;min-height:0}
-.dashboard-preview .preview-layer{position:absolute;inset:22px 0;pointer-events:none}
+.dashboard-preview .preview-layer{position:absolute;inset:0;pointer-events:none}
 .dashboard-preview .preview-layer canvas{display:block;width:100%;height:100%}
-.dashboard-preview .preview-seed{transform:scale(.5)}
 .dashboard-preview #interaction-form :disabled{cursor:not-allowed}
 .dashboard-preview .hero-copy{max-width:calc(100% - 2 * var(--panel-width) - 9vw);width:100%}
 .dashboard-preview .hero-copy h1{font-size:clamp(18px,2vw,28px)}

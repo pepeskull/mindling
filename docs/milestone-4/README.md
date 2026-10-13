@@ -2,6 +2,8 @@
 
 Base: `5b7b017` (PR #49 merged). This milestone does **not** activate production progression, Gemini learning, new life/death rules, or payments.
 
+The sandbox survival calibration and camera framing described below are the historical M4 baseline. They are superseded by [sandbox Life System 2.0](../life-system-2-preview.md); production Life 1.0 remains unchanged.
+
 ## Architecture assessment
 
 Production is native HTML/CSS/ES modules with a `MindlingApp`, event-driven Dashboard, canonical five-neuron seed, semantic memory engine, existing conservative Knowledge Area clustering, and IndexedDB `mindling-db` version 2. Production identity uses P-256, not Solana Ed25519; its identity record must never be repurposed as a wallet. The current Life System runs from wall time and resets ten free Energy each UTC day. Vercel previously served static files only and blocks tests/docs/benchmark paths.

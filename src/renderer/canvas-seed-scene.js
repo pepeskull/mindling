@@ -1,5 +1,6 @@
 import { SceneInteraction } from "./scene-interaction.js";
 import { NEURAL_SEED_MORPHOLOGY as MORPHOLOGY, seededValue } from "./neural-morphology.js";
+import { previewFraming } from './scene-framing.js';
 
 function activityLevelFor(signal, neuronId, now = performance.now() / 1000) {
   if (!signal) return 0;
@@ -27,7 +28,7 @@ export class CanvasSeedScene {
   #ambientIndex = 0;
   #routeHighlight = { neuronIds: [], synapseIds: [] };
 
-  constructor(onSelection, interaction = null) { this.#onSelection = onSelection; if (interaction) { this.#interaction = interaction; this.#ownsInteraction = false; } }
+  constructor(onSelection, interaction = null, framing = null) { this.framing = framing; this.#onSelection = onSelection; if (interaction) { this.#interaction = interaction; this.#ownsInteraction = false; } }
 
   mount(host, model) {
     this.#host = host;
@@ -96,8 +97,9 @@ export class CanvasSeedScene {
 
   #projectNodes(elapsed) {
     const centerX = this.#width / 2;
-    const centerY = this.#height * 0.52;
-    const scale = Math.min(this.#width, this.#height) * 0.18 * this.#interaction.zoom;
+    const centerY = this.#height * (this.framing ? .5 : .52);
+    const fit = this.framing ? previewFraming(this.#width, this.#height, this.framing.referenceHeight(), 1.5, this.#interaction.zoom) : null;
+    const scale = fit ? fit.unit * fit.zoom : Math.min(this.#width, this.#height) * 0.18 * this.#interaction.zoom;
     const angle = this.#interaction.rotation.y;
 
     return new Map(
@@ -108,8 +110,8 @@ export class CanvasSeedScene {
           id: node.id,
           index,
           x: centerX + (x * Math.cos(angle) + z * Math.sin(angle)) * scale,
-          y: centerY - y * scale,
-          radius: 14 * node.size * (1 + breath)
+          y: centerY - (fit ? y * Math.cos(this.#interaction.rotation.x) - (-x*Math.sin(angle)+z*Math.cos(angle))*Math.sin(this.#interaction.rotation.x) : y) * scale,
+          radius: (fit ? .23 * scale : 14) * node.size * (1 + breath)
         }];
       })
     );

@@ -1,5 +1,6 @@
 import { SceneInteraction } from "./scene-interaction.js";
 import { NEURAL_SEED_MORPHOLOGY as MORPHOLOGY, seededValue } from "./neural-morphology.js";
+import { previewFraming, SEED_CAMERA } from './scene-framing.js';
 
 export class ThreeSeedScene {
   #three;
@@ -30,7 +31,8 @@ export class ThreeSeedScene {
   #ownsInteraction = true;
   #reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  constructor(three, onSelection, interaction = null) {
+  constructor(three, onSelection, interaction = null, framing = null) {
+    this.framing = framing;
     if (interaction) { this.#interaction = interaction; this.#ownsInteraction = false; }
     this.#three = three;
     this.#onSelection = onSelection;
@@ -51,8 +53,8 @@ export class ThreeSeedScene {
     host.append(this.#renderer.domElement);
 
     this.#scene = new T.Scene();
-    this.#camera = new T.PerspectiveCamera(36, 1, 0.1, 30);
-    this.#camera.position.z = 5.8;
+    this.#camera = new T.PerspectiveCamera(SEED_CAMERA.fov, 1, 0.1, 30);
+    this.#camera.position.z = SEED_CAMERA.distance;
     this.#seedGroup = new T.Group();
     this.#scene.add(this.#seedGroup);
     this.#addLighting();
@@ -290,6 +292,7 @@ export class ThreeSeedScene {
     if (!width || !height) return;
     this.#renderer.setSize(width, height, false);
     this.#camera.aspect = width / height;
+    this.width = width; this.height = height;
     this.#camera.updateProjectionMatrix();
   }
 
@@ -301,7 +304,16 @@ export class ThreeSeedScene {
       this.#interaction.rotation.y + ambientTurn,
       0
     );
-    this.#seedGroup.scale.setScalar(1.28 * this.#interaction.zoom);
+    if (this.framing) {
+      const fit = previewFraming(this.width, this.height, this.framing.referenceHeight(), 1.5, this.#interaction.zoom);
+      // Orthographic preview camera shares Canvas pixel projection, avoiding an
+      // additional portrait perspective shrink. The production camera is unchanged.
+      if (!this.#camera.isOrthographicCamera) this.#camera = new this.#three.OrthographicCamera(-1, 1, 1, -1, .1, 30);
+      this.#camera.position.z = SEED_CAMERA.distance;
+      this.#camera.left = -this.width / (2 * fit.unit); this.#camera.right = -this.#camera.left;
+      this.#camera.top = this.height / (2 * fit.unit); this.#camera.bottom = -this.#camera.top;
+      this.#camera.updateProjectionMatrix(); this.#seedGroup.scale.setScalar(fit.zoom);
+    } else this.#seedGroup.scale.setScalar(SEED_CAMERA.scale * this.#interaction.zoom);
 
     for (const object of this.#nodeMeshes) {
       const breath = this.#reducedMotion
