@@ -144,7 +144,7 @@ export class EvolutionScene {
     if (this.useSharedFraming) this.updateFraming();
     if (this.three) { this.renderer.setSize(width, height, false); this.camera.aspect = width / height;
       if(this.fitDashboard&&!this.useSharedFraming){
-        // Original sandbox perspective/portrait framing, before Life System 2.0.
+        // Original preview perspective/portrait framing, before Life System 2.0.
         const framing=width<height?Math.min(1,width/height*1.3):1;
         this.camera.position.z=Math.max(9,4.2*framing/(Math.tan(Math.PI/10)*this.camera.aspect));
       }

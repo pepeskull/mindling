@@ -16,13 +16,14 @@ export class EvolutionPreview {
   frame = null; disposed = false; lastTime = null; elapsed = 0; displayedStage = 1;
   seedWeight = 1; seedFrom = 1; transition = 1;
   motion = matchMedia('(prefers-reduced-motion: reduce)');
-  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot, originalFraming = false } = {}) { this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; this.originalFraming = originalFraming; }
+  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot, originalFraming = true } = {}) { this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; this.originalFraming = originalFraming; }
   countdown = new AutomaticNetworkCountdown();
   async start() {
     this.host = document.querySelector('#scene');
     if (!this.host) throw new Error('Dashboard scene container is required');
     this.originalLabel = this.host.getAttribute('aria-label');
     document.querySelector('#app').classList.add('dashboard-preview');
+    document.querySelector('#app').classList.toggle('original-preview-framing', this.originalFraming);
     this.dashboard = new Dashboard(new EventBus(), { readOnly: true });
     const snapshot = await this.snapshotProvider();
     if (this.disposed) return;
@@ -120,6 +121,6 @@ export class EvolutionPreview {
     this.timeline.pause(); this.timeline.network.reset(); this.interaction.disconnect(); this.seed?.destroy(); this.view?.destroy();
     this.host?.replaceChildren(); this.host?.removeAttribute('style');
     if (this.host) { this.host.setAttribute('aria-label', this.originalLabel); delete this.host.dataset.stage; delete this.host.dataset.backend; delete this.host.dataset.network; }
-    document.querySelector('#app')?.classList.remove('dashboard-preview');
+    document.querySelector('#app')?.classList.remove('dashboard-preview', 'original-preview-framing');
   }
 }
