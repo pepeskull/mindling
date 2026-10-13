@@ -79,7 +79,7 @@ export class Dashboard {
       document.querySelectorAll('.life-panel progress, [data-energy-progress]').forEach(node => { node.hidden = false; });
       this.#renderLife(snapshot.life, Date.parse(snapshot.life.lastSimulationAt || snapshot.life.birthTimestamp));
     }
-    document.querySelector('.storage-status').textContent = snapshot.status === 'saved' ? 'Read-only · Saved snapshot' : snapshot.status === 'empty' ? 'Read-only · No saved Mindling' : 'Read-only · Storage unavailable';
+    this.setStorageStatus(snapshot.status !== 'unavailable');
     document.querySelectorAll('[data-care], [data-activity-mode], [data-input-mode], [data-new-mindling], #mindling-input, #interaction-form button[type=submit]').forEach(node => { node.disabled = true; node.title = 'Gameplay actions are disabled in development preview'; });
     document.querySelector('[data-download-profile]').disabled = !snapshot.state;
     document.querySelector('#mindling-input').placeholder = 'Read-only development preview';
@@ -214,7 +214,8 @@ export class Dashboard {
 
   setStorageStatus(available) {
     const status = document.querySelector(".storage-status");
-    status.textContent = available ? "Local-first · Ready" : "Local storage unavailable";
+    status.hidden = available;
+    status.textContent = available ? "" : "Local storage unavailable";
   }
 
   async #submitInteraction(event) {

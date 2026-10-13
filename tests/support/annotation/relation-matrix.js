@@ -1,24 +1,4 @@
-import { KNOWLEDGE_RULES } from "../brain/knowledge-development.js";
-
-// Diagnostic hypotheses only. These reuse existing confidence bands and must
-// not become production area authority without real-browser calibration.
-export const KNOWLEDGE_RELATION_RULES = Object.freeze({ supportFloor: .75, candidateLimit: 3, maximumCandidatePairs: 24 });
-
-export function shadowKnowledgeDecision(evidence) {
-  const support = [evidence.paraphraseSimilarity, evidence.stsScore];
-  const allSupport = support.every(score => score >= KNOWLEDGE_RELATION_RULES.supportFloor);
-  const noSupport = support.every(score => score < KNOWLEDGE_RELATION_RULES.supportFloor);
-  let decision = "UNCERTAIN"; let reason = "EVIDENCE_NOT_YET_SEPARABLE";
-  if (evidence.productionKnowledgeEligible && allSupport && evidence.nli.maxContradiction < .9) {
-    decision = "SAME_AREA"; reason = "MULTI_MODEL_TOPIC_HYPOTHESIS";
-  } else if (!evidence.productionKnowledgeEligible && noSupport) {
-    decision = "DIFFERENT_AREA"; reason = "ALL_SIMILARITY_EVIDENCE_WEAK";
-  } else if (evidence.nli.maxContradiction >= .9) {
-    reason = "NLI_CONTRADICTION_IS_NOT_TOPIC_EXCLUSION";
-  }
-  return { decision, reason, canonicalAuthority: false };
-}
-
+// Frozen comparison corpus for annotation fixture disjointness tests only.
 const groupPairs = (name, sentences) => {
   const pairs = [];
   for (let left = 0; left < sentences.length; left += 1) for (let right = left + 1; right < sentences.length; right += 1) pairs.push({ group: name, expected: "SAME_TOPIC", left: sentences[left], right: sentences[right] });
@@ -59,4 +39,3 @@ const structuralParaphrases = [
 ].map(([left, right]) => ({ group: "same-subject-different-structure", expected: "SAME_TOPIC", left, right }));
 
 export const KNOWLEDGE_RELATION_MATRIX = Object.freeze([...browserPairs, ...generalizationWithin, ...generalizationCross, ...hardNegatives, ...structuralParaphrases]);
-export const productionKnowledgeFloor = KNOWLEDGE_RULES.clusterSimilarity;

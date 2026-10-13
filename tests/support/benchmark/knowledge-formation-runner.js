@@ -1,4 +1,4 @@
-import { createProvisionalTopic } from "../../../src/semantic/knowledge-area-foundation.js";
+import { createProvisionalTopic } from "../semantic/knowledge-area-foundation.js";
 
 const now = () => globalThis.performance?.now?.() ?? Date.now();
 const hashStep = (hash, value) => [...String(value)].reduce((state, character) => Math.imul(state ^ character.codePointAt(0), 16777619) >>> 0, hash);

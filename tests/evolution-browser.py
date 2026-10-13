@@ -5,6 +5,7 @@ The CDN files are fetched with curl's verified TLS, then delivered unchanged to 
 because the cloud proxy CA is absent from its trust store. No certificate bypass is used.
 """
 import json
+from support.browser_branding import verify_branding
 import os
 from pathlib import Path
 import subprocess
@@ -58,6 +59,8 @@ with sync_playwright() as p:
     page.locator('[data-next]').click();page.locator('[data-next]').click();page.locator('#mindling-name').fill('Dashboard Test');page.locator('[data-next]').click();page.locator('[data-create]').click()
     page.wait_for_function("document.querySelector('#onboarding').hidden")
     page.locator('#mindling-input').fill('Hello');page.locator('#interaction-form button[type=submit]').click();page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='9 / 10'")
+    verify_branding(page, 'normal-desktop')
+    page.set_viewport_size({'width':390,'height':844}); verify_branding(page, 'normal-mobile'); page.set_viewport_size({'width':1440,'height':1000})
     # Yesterday's energy must remain yesterday's energy in preview; do not run daily resets.
     page.evaluate("""async()=>{
       const db=await new Promise(r=>{const q=indexedDB.open('mindling-db');q.onsuccess=()=>r(q.result)});
@@ -114,6 +117,7 @@ with sync_playwright() as p:
     assert page.evaluate('window.__testMetrics().pending')==1
     assert not errors,errors
     # Reload without the parameter: gameplay really resumes and resets stale daily energy.
+    verify_branding(page, 'demo-desktop')
     page.goto(BASE);page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='10 / 10'")
     page.wait_for_function("!document.querySelector('#mindling-input').disabled && document.querySelectorAll('#scene canvas').length===1")
     assert page.locator('#mindling-input').is_enabled() and page.locator('#scene canvas').count()==1
@@ -121,7 +125,7 @@ with sync_playwright() as p:
     # A fresh profile must not acquire an empty database or fictional player data.
     fresh=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')
     fallback=fresh.new_page();route_three(fallback,blocked=True);fallback.add_init_script(INSTRUMENT)
-    fallback.goto(BASE+'/?stage-preview=1&preview-mode=demo');fallback.wait_for_selector('#scene[data-backend=canvas]')
+    fallback.goto(BASE+'/?stage-preview=1&preview-mode=demo');fallback.wait_for_selector('#scene[data-backend=canvas]');verify_branding(fallback, 'demo-mobile')
     assert fallback.locator('[data-energy-value]').inner_text()=='—'
     assert fallback.evaluate('indexedDB.databases()')==[]
     fallback.wait_for_function("document.querySelector('#scene').dataset.stage==='7'",timeout=40000)

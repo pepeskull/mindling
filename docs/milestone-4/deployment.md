@@ -35,7 +35,7 @@ Pinned requests use `gemini-2.5-flash:generateContent` with a response schema an
 ## Production activation checklist — separate explicit approval required
 
 - Keep new mechanics behind the preview URL; keep the AI gate absent in Production until a separately approved rollout.
-- Resolve the legacy “api directory must not exist” test contract explicitly without weakening unrelated canonical/data/payment invariants.
+- The cleanup replaces the legacy API-directory prohibition with an exact allowlist for `preview-learning.js`, retaining the gated handler and unrelated canonical/data/payment invariants.
 - Review progression/XP and the documented slower-decay/neural-reserve balancing decision with users.
 - Complete real Gemini privacy, abuse, cost, quality, language and adversarial duplicate tests; move award authority server-side for production if anti-cheat matters.
 - Complete versioned additive production migration, exports, backups, blocked-upgrade and rollback tests. Never import preview records.

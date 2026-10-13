@@ -1,4 +1,7 @@
+import { renderFooterLinks } from '../src/ui/footer-links.js';
 import { MindlingApp } from "../src/app/app.js";
+
+renderFooterLinks();
 
 let active = null;
 let stopped = false;

@@ -1,11 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { addAnnotation, adjudicationCsv, analyzeAgreement, annotationRunCsv, createAnnotationRun,
-  deterministicPresentation, validateAdjudications, validateAnnotationRun, validateDataset } from "../tools/topic-annotation/annotation-core.js";
-import { KNOWLEDGE_RELATION_MATRIX } from "../src/semantic/knowledge-relation.js";
+  deterministicPresentation, validateAdjudications, validateAnnotationRun, validateDataset } from "./support/annotation/annotation-core.js";
+import { KNOWLEDGE_RELATION_MATRIX } from "./support/annotation/relation-matrix.js";
 
-const dataset = validateDataset(JSON.parse(readFileSync(new URL("../tools/topic-annotation/pilot-dataset.json", import.meta.url), "utf8")));
+const dataset = validateDataset(JSON.parse(readFileSync(new URL("./support/annotation/pilot-dataset.json", import.meta.url), "utf8")));
 const small = validateDataset({ schemaVersion: 1, datasetId: "test", version: "1", title: "Test data", pairs: [
   { id: "one", category: "same", left: "Alpha concerns a subject.", right: "Beta concerns that subject." },
   { id: "two", category: "different", left: "Gamma is one fact.", right: "Delta is another fact." },
@@ -79,11 +79,11 @@ test("JSON validation rejects mismatches and CSV exports preserve original sente
   assert.match(adjudicationCsv(small, a, b, adjudication), /"ADJUDICATED"/);
 });
 
-test("standalone tool remains isolated from Mindling production and AI inference", () => {
+test("annotation test support remains isolated and obsolete browser application is absent", () => {
   const productionApp = readFileSync(new URL("../src/app/app.js", import.meta.url), "utf8");
-  const tool = readFileSync(new URL("../tools/topic-annotation/app.js", import.meta.url), "utf8");
-  const core = readFileSync(new URL("../tools/topic-annotation/annotation-core.js", import.meta.url), "utf8");
+  assert.equal(existsSync(new URL("../tools", import.meta.url)), false);
+  const core = readFileSync(new URL("./support/annotation/annotation-core.js", import.meta.url), "utf8");
   assert.doesNotMatch(productionApp, /topic-annotation|annotation-core/);
-  assert.doesNotMatch(tool + core, /indexedDB|SemanticEngine|transformers|pipeline\(|fetch\([^)]*model/iu);
-  assert.match(tool, /localStorage/); assert.match(tool, /pilot-dataset\.json/);
+  assert.doesNotMatch(core, /indexedDB|SemanticEngine|transformers|pipeline\(|fetch\([^)]*model/iu);
+  assert.doesNotMatch(core, /localStorage|document\.|window\./);
 });

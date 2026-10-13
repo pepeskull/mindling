@@ -1,5 +1,5 @@
 import test from "node:test"; import assert from "node:assert/strict";
-import { createProvisionalTopic, createTopicHypothesis, createTopicVerification, evaluateShadowBoundary, TOPIC_RELATION } from "../src/semantic/knowledge-area-foundation.js";
+import { createProvisionalTopic, createTopicHypothesis, createTopicVerification, evaluateShadowBoundary, TOPIC_RELATION } from "./support/semantic/knowledge-area-foundation.js";
 test("provisional areas remain non-authoritative",()=>{const memory=Object.freeze({id:"m1",content:"A bicycle has two wheels."});const area=createProvisionalTopic(memory);assert.equal(area.status,"PROVISIONAL");assert.deepEqual(area.sourceMemoryIds,["m1"]);assert.equal(area.canonicalAuthority,false)});
 test("labels cannot authorize membership",()=>{const hypothesis=createTopicHypothesis({label:"Cycling",memoryIds:["m1"]});assert.equal(hypothesis.discoveryAuthority,false)});
 test("uncertain evidence blocks complete-boundary merges",()=>{const evidence=createTopicVerification({leftId:"a",rightId:"b",decision:TOPIC_RELATION.UNCERTAIN,verifier:"test"});assert.equal(evidence.decision,"UNCERTAIN");assert.equal(evaluateShadowBoundary(["a"],["b"],[evidence]).mergeAuthorized,false)});
