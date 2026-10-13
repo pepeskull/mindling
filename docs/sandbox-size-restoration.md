@@ -1,5 +1,7 @@
 # Restore original sandbox model sizing
 
+This report records PR #53. The subsequent [automatic demo restoration](demo-framing-restoration.md) also enables original framing in the demo and scopes the shared CSS to `.original-preview-framing`.
+
 Reference: `1a06abc`, before Life System 2.0. The sizing change came from `e7db801` (PR #52), which removed the half-size seed transform, removed the 22px layer margins, changed preview backing dimensions, and introduced shared orthographic/pixel framing.
 
 This change restores that earlier configuration specifically for the interactive sandbox at `/?stage-preview=1`. It does not revert any Life 2.0, typography, Neural Stability, progression, learning, wallet or storage code. Main-app renderers are unchanged. The automatic demo keeps its current shared framing.

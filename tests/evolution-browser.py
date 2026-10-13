@@ -166,18 +166,30 @@ with sync_playwright() as p:
     }""")
     assert result['pending']==0 and result['visibilityListeners']==0,result
     print('PASS lifecycle: repeated read-only dashboard mount, hidden countdown pause, single resume and cleanup',flush=True)
-    for backend in ['three','canvas']:
+    for backend, viewport in [(b, v) for b in ['three','canvas'] for v in [{'width':1440,'height':1000}, {'width':390,'height':844}]]:
         labels=context.new_page();route_three(labels,blocked=backend=='canvas');labels.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'));labels.goto(BASE)
+        labels.set_viewport_size(viewport)
         labels.evaluate("""async(backend)=>{
           const {EvolutionPreview}=await import('/src/preview/evolution-preview.js');
           const p=new EvolutionPreview({forceCanvas:backend==='canvas'});await p.start();cancelAnimationFrame(p.frame);p.frame=null;
-          p.timeline.select(7);p.syncStage();p.view.select(7);p.view.morph.tick(2);p.timeline.network.start();p.timeline.network.tick(14);
+          p.timeline.pause();p.timeline.select(7);p.syncStage();p.view.select(7);p.view.morph.tick(2);
           const draw=()=>{p.view.render(0,0,p.timeline.network);p.refreshNetwork();};draw();
+          if(!p.originalFraming||p.view.useSharedFraming)throw new Error('Original fixed framing missing');
+          if(getComputedStyle(p.seedHost).transform!=='matrix(0.5, 0, 0, 0.5, 0, 0)')throw new Error('Original seed scale missing');
+          const framing=()=>{
+            if(p.view.three)return [...p.view.camera.projectionMatrix.elements,p.view.camera.position.z,...p.view.root.scale.toArray()];
+            const out=new Float32Array(2);const scale=p.view.project(p.view.buffers.positions,0,out);return [scale,...out];
+          };
+          const fixed=JSON.stringify(framing());p.timeline.network.start();
+          for(const delta of [.4,.9,3,10]){p.timeline.network.tick(delta);draw();if(JSON.stringify(framing())!==fixed)throw new Error(`Network ${p.timeline.network.state} changed framing`);}
+          if(p.timeline.network.state!=='EXCHANGING')throw new Error('Network did not connect');
           const positions=()=>p.view.labels.map((el,i)=>{const anchor=p.view.projectRemote(i);if(el.hidden||Math.abs(parseFloat(el.style.left)-anchor.x)>1||Math.abs(parseFloat(el.style.top)-anchor.y)>1)throw new Error('Unanchored label');return el.style.left+el.style.top;});
           const before=positions();p.interaction.rotation.y+=.3;draw();const rotated=positions();if(before.every((v,i)=>v===rotated[i]))throw new Error('Rotation did not move labels');
           p.interaction.zoom=.8;draw();const zoomed=positions();if(rotated.every((v,i)=>v===zoomed[i]))throw new Error('Zoom did not move labels');
           p.timeline.network.stop();p.timeline.network.tick(2);draw();if(p.view.labels.some(el=>!el.hidden))throw new Error('Disconnected labels');
           p.destroy();if(document.querySelector('.preview-peer-label,.preview-simulated'))throw new Error('Label cleanup');
+          if(document.querySelector('#app').classList.contains('original-preview-framing'))throw new Error('Framing class cleanup');
         }""",backend)
-        print(f'PASS {backend}: projected peer labels, rotation, zoom, disconnect and cleanup',flush=True)
+        labels.close()
+        print(f'PASS {backend} {viewport["width"]}px: fixed network framing, projected peer labels, rotation, zoom, disconnect and cleanup',flush=True)
     browser.close()

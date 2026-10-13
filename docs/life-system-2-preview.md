@@ -2,7 +2,7 @@
 
 Life 2.0 runs only at `/?stage-preview=1`. The production Life System 1.0 formulas, eligibility rules, daily allowance and database schema are unchanged. Shared presentation formatting and the requested typography apply to all modes; the Neural Stability row is mounted only by the sandbox controller.
 
-The sandbox camera/framing solution recorded below is superseded by the [original-size restoration](sandbox-size-restoration.md). Life 2.0 and its typography remain current; the automatic demo retains shared framing.
+The camera/framing solution recorded below is superseded by the [sandbox original-size restoration](sandbox-size-restoration.md) and the [automatic demo restoration](demo-framing-restoration.md). Both previews now use the original fixed framing, including during network discovery. Life 2.0 and its typography remain current.
 
 ## Survival rules
 

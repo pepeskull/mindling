@@ -2,8 +2,8 @@
 .dashboard-preview #scene{overflow:hidden;min-width:0;min-height:0}
 .dashboard-preview .preview-layer{position:absolute;inset:0;pointer-events:none}
 .dashboard-preview .preview-layer canvas{display:block;width:100%;height:100%}
-.sandbox-mode .preview-layer{inset:22px 0}
-.sandbox-mode .preview-seed{transform:scale(.5)}
+.original-preview-framing .preview-layer{inset:22px 0}
+.original-preview-framing .preview-seed{transform:scale(.5)}
 .dashboard-preview #interaction-form :disabled{cursor:not-allowed}
 .dashboard-preview .hero-copy{max-width:calc(100% - 2 * var(--panel-width) - 9vw);width:100%}
 .dashboard-preview .hero-copy h1{font-size:clamp(18px,2vw,28px)}
