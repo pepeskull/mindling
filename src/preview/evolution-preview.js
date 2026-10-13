@@ -37,12 +37,13 @@ export class EvolutionPreview {
     if (!this.forceCanvas) { try { three = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js'); } catch { /* Native Canvas fallback. */ } }
     if (this.disposed) return;
     this.view = new EvolutionScene({ three, interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true });
-    this.seed = three ? new ThreeSeedScene(three, null, this.interaction) : new CanvasSeedScene(null, this.interaction);
+    const framing={referenceHeight:()=>document.querySelector('#app').clientHeight};
+    this.seed = three ? new ThreeSeedScene(three, null, this.interaction, framing) : new CanvasSeedScene(null, this.interaction, framing);
     try { this.view.mount(this.growthHost); this.seed.mount(this.seedHost, structuredClone(createNeuralSeedState())); }
     catch {
       this.view.destroy(); this.seed.destroy?.(); this.seedHost.replaceChildren(); this.growthHost.replaceChildren();
       this.view = new EvolutionScene({ interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true }); this.view.mount(this.growthHost);
-      this.seed = new CanvasSeedScene(null, this.interaction); this.seed.mount(this.seedHost, structuredClone(createNeuralSeedState()));
+      this.seed = new CanvasSeedScene(null, this.interaction, framing); this.seed.mount(this.seedHost, structuredClone(createNeuralSeedState()));
     }
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
     this.motion.addEventListener('change', this.motionChanged);
@@ -70,7 +71,7 @@ export class EvolutionPreview {
     const { width, height } = this.host.getBoundingClientRect();
     if (width === this.width && height === this.height) return;
     this.width = width; this.height = height;
-    this.view?.resize(width, Math.max(1, height - 44)); this.seed?.resize(width, Math.max(1, height - 44));
+    this.view?.resize(width, height); this.seed?.resize(width, height);
   };
   motionChanged = () => {
     this.view.reduced = this.motion.matches;

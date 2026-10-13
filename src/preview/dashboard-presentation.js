@@ -1,5 +1,6 @@
 import { STAGES } from './evolution-model.js';
 import { conditionFor, warningFor } from '../life/life-system.js';
+import { formatLifePercentage } from '../ui/life-format.js';
 
 export const PEER_NAMES = Object.freeze(['Nova', 'Echo', 'Atlas']);
 export const PRESETS = Object.freeze([
@@ -50,9 +51,9 @@ export class PreviewDashboardPresentation {
       for (const [name, value] of Object.entries(state.life.attributes)) {
         const row = q(`[data-life-attribute="${name}"]`), progress = row.querySelector('progress');
         const valueLabel = row.querySelector('strong');
-        valueLabel.textContent = `${value}%`;
+        valueLabel.textContent = formatLifePercentage(value);
         if (!matchMedia('(prefers-reduced-motion: reduce)').matches) valueLabel.animate([{ opacity: .45 }, { opacity: 1 }], { duration: 400 });
-        progress.hidden = false; progress.value = value; progress.textContent = `${value}%`;
+        progress.hidden = false; progress.value = value; progress.textContent = formatLifePercentage(value);
         row.classList.toggle('critical', value <= 14);
       }
       q('[data-life-condition]').textContent = state.life.condition;

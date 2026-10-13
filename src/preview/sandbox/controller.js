@@ -2,8 +2,9 @@ import { EvolutionPreview } from '../evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../automatic-playback.js';
 import { STAGES } from '../evolution-model.js';
 import { presentationFor } from '../dashboard-presentation.js';
-import { condition, carePreview, PREVIEW_LIFE } from './life.js';
-import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,DAY,visualMapping } from './engine.js';
+import { condition, carePreview, previewWarning } from './life.js';
+import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,talk,upgradeSandbox,DAY,visualMapping } from './engine.js';
+import { LIFE_RULES } from '../../life/life-system.js';
 import { TestWalletUI } from './wallet-ui.js';
 import { analyzeLearning } from './gemini.js';
 import { PreviewStore } from './storage.js';
@@ -14,8 +15,11 @@ export class SandboxPreview extends EvolutionPreview {
     if(new URLSearchParams(location.search).get('stage-preview')!=='1')throw Error('Sandbox requires explicit preview URL');
     const store=await new PreviewStore().open();
     if(this.disposed){store.close();return;}
-    this.store=store;this.state=await this.store.change(s=>s||createSandbox());
+    this.store=store;this.state=await this.store.change(s=>s?upgradeSandbox(s):createSandbox());
     if(this.disposed){store.close();return;}
+    this.stabilityRow=document.createElement('div');this.stabilityRow.className='life-attribute';this.stabilityRow.dataset.lifeAttribute='neuralStability';
+    this.stabilityRow.innerHTML='<svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><label>Neural Stability</label><strong>—</strong><progress aria-label="Neural Stability" max="100" value="100">100%</progress>';
+    document.querySelector('[data-life-warning]').before(this.stabilityRow);
     await super.start();if(this.disposed)return;
     this.timeline.pause();
     document.querySelector('#app').classList.add('sandbox-mode');
@@ -33,11 +37,16 @@ export class SandboxPreview extends EvolutionPreview {
       }
     });});
     this.listen(document.querySelector('#interaction-form'),'submit',e=>{e.preventDefault();this.action(()=>this.submitLearning());});
-    for(const button of document.querySelectorAll('[data-care]'))this.listen(button,'click',()=>this.action(()=>this.care(button.dataset.care)));
+    for(const button of document.querySelectorAll('[data-care]')){
+      const detail=button.querySelector('small');
+      this.careLabels??=[];this.careLabels.push([detail,detail.textContent]);
+      detail.textContent=`Free · ${LIFE_RULES.care[button.dataset.care].cooldownHours}h`;
+      this.listen(button,'click',()=>this.action(()=>this.care(button.dataset.care)));
+    }
+    for(const button of document.querySelectorAll('[data-input-mode],[data-activity-mode]'))this.listen(button,'click',()=>this.setActivity(button.dataset.inputMode||button.dataset.activityMode));
     this.listen(this.panel.querySelector('[data-node-selection]'),'change',e=>this.inspectNode(e.target.value));
     this.listen(document.querySelector('[data-new-mindling]'),'click',()=>this.panel.querySelector('[data-sandbox="new"]').click());
-    document.querySelector('#interaction-form button[type=submit]').textContent='Analyze with Gemini';
-    document.querySelector('#mindling-input').placeholder='Explicitly submit new learning to Gemini…';
+    this.setActivity('TEACH');
     this.interaction.connect(this.host,{onTap:event=>{
       if(!this.state.mind)return;
       const hit=this.timeline.stage===1?this.seed.selectAt(event):null;
@@ -54,13 +63,21 @@ export class SandboxPreview extends EvolutionPreview {
   async submitLearning(){
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
     const text=document.querySelector('#mindling-input').value;
+    const activity=this.activity;
+    if(this.activity==='TALK'){await this.change(s=>talk(s,text));document.querySelector('#mindling-input').value='';this.status('Thought shared locally. Stimulation improves; stability recovers over virtual time.');return;}
     this.requestAbort=new AbortController();
     const assessment=await analyzeLearning({text,pathway:m.pathways[0],token:this.panel.querySelector('[data-api-token]').value,signal:this.requestAbort.signal});
     if(this.disposed)return;
-    await this.change(s=>learn(s,{id:crypto.randomUUID(),text,assessment,source:'GEMINI',mindId:m.id}));
+    await this.change(s=>learn(s,{id:crypto.randomUUID(),text,assessment,source:'GEMINI',mindId:m.id,activity}));
     document.querySelector('#mindling-input').value='';
   }
   async care(type){await this.change(s=>carePreview(s,type));}
+  setActivity(type){
+    this.activity=type;
+    document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{const selected=(b.dataset.inputMode||b.dataset.activityMode)===type;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));});
+    document.querySelector('#interaction-form button[type=submit]').textContent=type==='TALK'?'Share thought':'Analyze with Gemini';
+    document.querySelector('#mindling-input').placeholder=type==='TALK'?'Share a meaningful thought locally…':'Explicitly submit new learning to Gemini…';
+  }
   async runFixture(){
     const text='Photosynthesis converts light energy into chemical energy stored in glucose.';
     const assessment={meaningful:true,duplicate:false,quality:1,concept:'photosynthesis energy conversion',memory:text,area:'Biology',kind:'concept',embedding:[1,0,0,0,0,0,0,0]};
@@ -87,7 +104,8 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelector('#mindling-input').disabled=!alive;
     document.querySelector('#interaction-form button[type=submit]').disabled=!alive;
     document.querySelector('[data-download-profile]').disabled=true;
-    document.querySelectorAll('[data-care]').forEach(b=>{b.disabled=!alive;});
+    document.querySelectorAll('[data-care]').forEach(b=>{b.disabled=!alive;b.title=`Free preventive care; ${LIFE_RULES.care[b.dataset.care].cooldownHours}-hour virtual cooldown`;});
+    document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{b.disabled=!alive||m.energy.remaining<LIFE_RULES.activity[b.dataset.inputMode||b.dataset.activityMode].energyCost;b.title='Sandbox activity: shared two-hour virtual cooldown';});
     document.querySelector('[data-energy-value]').textContent=`${m.energy.remaining} / 10`;
     const bar=document.querySelector('[data-energy-progress]');bar.hidden=false;bar.value=m.energy.remaining;
     document.querySelector('[data-energy-reset]').textContent='Free Energy resets on the next virtual UTC day';
@@ -112,9 +130,9 @@ export class SandboxPreview extends EvolutionPreview {
     if(!m)return;
     const changed=this.presentation.stage!==state.stage.number;
     this.presentation.update(state);
-    if(changed){document.querySelector('.life-panel').title='Actual isolated sandbox Life Status';document.querySelector('[data-life-warning] span').textContent=m.life.lifeState==='DECEASED'?'Neural collapse is permanent. Create a new test identity.':`Neural stability: ${Math.max(0,100*(1-(m.life.strain||0)/PREVIEW_LIFE.collapseStrain)).toFixed(0)}% · Free care protects stability.`;}
+    if(changed){document.querySelector('.life-panel').title='Actual isolated sandbox Life System 2.0';document.querySelector('[data-life-warning] span').textContent=previewWarning(m.life);}
     if(m.life.lifeState==='DECEASED'){this.view.reduced=true;this.seed.setReducedMotion(true);}
     this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;
   }
-  destroy(){this.walletUI?.destroy();this.requestAbort?.abort();this.listeners.abort();this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
+  destroy(){this.walletUI?.destroy();this.requestAbort?.abort();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }

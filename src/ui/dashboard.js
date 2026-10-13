@@ -2,6 +2,7 @@ import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 import { LIFE_RULES, lifeStageFor, neuralCycles, warningFor } from "../life/life-system.js";
+import { formatLifePercentage } from './life-format.js';
 
 export class Dashboard {
   #unsubscribe;
@@ -185,7 +186,7 @@ export class Dashboard {
     document.querySelector("[data-life-condition]").dataset.condition = life.condition;
     for (const [name, value] of Object.entries(life.attributes)) {
       const row = document.querySelector(`[data-life-attribute="${name}"]`); const rounded = Math.round(value);
-      row.querySelector("strong").textContent = `${rounded}%`; row.querySelector("progress").value = rounded; row.classList.toggle("critical", rounded <= 14);
+      row.querySelector("strong").textContent = formatLifePercentage(value); row.querySelector("progress").value = value; row.querySelector('progress').textContent = formatLifePercentage(value); row.classList.toggle("critical", rounded <= 14);
     }
     document.querySelector("[data-energy-value]").textContent = `${life.energy.remaining} / ${life.energy.maximum}`;
     document.querySelector("[data-energy-progress]").value = life.energy.remaining;
