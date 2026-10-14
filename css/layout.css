@@ -2,4 +2,5 @@
 .left-stack .left-panel{left:auto}.header-status .stage-chip{justify-self:auto}
 
 .site-footer .footer-links{display:flex;align-items:center;gap:16px;padding:0;border:0;background:none}.site-footer .footer-links a,.site-footer .footer-links span{padding:0;color:var(--text-secondary);font-size:inherit;text-decoration:none}.site-footer .footer-links a:hover,.site-footer .footer-links a:focus-visible{color:var(--text-primary)}.site-footer .footer-links [aria-disabled=true]{color:var(--text-muted);cursor:default}.site-footer .storage-status[hidden]{display:none}
-footer.site-footer{backdrop-filter:blur(22px) saturate(115%);-webkit-backdrop-filter:blur(22px) saturate(115%)}
+footer.site-footer{height:44px;padding-bottom:14px;backdrop-filter:blur(22px) saturate(115%);-webkit-backdrop-filter:blur(22px) saturate(115%)}
+.site-footer .footer-tagline{position:absolute;bottom:2px;left:3.2vw;right:3.2vw;margin:0;text-align:center;font-size:inherit;line-height:12px;color:var(--text-muted);text-transform:none}
