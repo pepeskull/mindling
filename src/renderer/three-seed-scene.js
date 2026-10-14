@@ -65,9 +65,9 @@ export class ThreeSeedScene {
 
   #addLighting() {
     const T = this.#three;
-    this.#scene.add(new T.AmbientLight(0xdce7e5, 0.25));
-    const keyLight = new T.PointLight(0xc7eee7, 6, 8);
-    keyLight.position.set(-1.5, 2, 3);
+    this.#scene.add(new T.AmbientLight(0xd5eee8, 2));
+    const keyLight = new T.DirectionalLight(0xffffff, 2.5);
+    keyLight.position.set(-2, 3, 5);
     this.#scene.add(keyLight);
   }
 
@@ -79,20 +79,23 @@ export class ThreeSeedScene {
     const glowTexture = this.#createGlowTexture();
     this.#entryPulse = new T.Sprite(new T.SpriteMaterial({ map: glowTexture, color: 0xd9fff7, transparent: true, opacity: 0, depthWrite: false, blending: T.AdditiveBlending }));
     this.#entryPulse.scale.setScalar(0.12); this.#entryPulse.visible = false; this.#seedGroup.add(this.#entryPulse);
-    this.#somaMaterial = new T.MeshPhysicalMaterial({
-      color: 0xa8c4c0, emissive: 0x6daca2, emissiveIntensity: 0.42,
-      roughness: 0.46, transmission: 0.08, transparent: true, opacity: 0.82
+    // Match Neural Cluster's surface and palette without changing seed dimensions.
+    this.#somaMaterial = new T.MeshStandardMaterial({
+      color: 0x9bd5c5, emissive: 0x29423c, emissiveIntensity: 0.5,
+      roughness: 0.38, metalness: 0.1
     });
-    this.#dendriteMaterial = new T.LineBasicMaterial({ color: 0x9bc7bf, transparent: true, opacity: 0.42 });
-    this.#synapseMaterial = new T.MeshBasicMaterial({ color: 0xa6d2ca, transparent: true, opacity: 0.2 });
+    this.#dendriteMaterial = new T.LineBasicMaterial({ color: 0x8fc9bb, transparent: true, opacity: 0.26 });
+    this.#synapseMaterial = new T.MeshBasicMaterial({ color: 0x8fc9bb, transparent: true, opacity: 0.26 });
+    const colors = [0x9bd5c5, 0x7daebe, 0xb7c9de, 0x9abfcb, 0xc0b3d2];
     const dendriteVertices = [];
     const coreGeometry = new T.SphereGeometry(0.105, 16, 12);
 
     model.nodes.forEach((node, index) => {
       const mesh = new T.Mesh(
         this.#createSomaGeometry(index),
-        this.#somaMaterial
+        index === 0 ? this.#somaMaterial : this.#somaMaterial.clone()
       );
+      mesh.material.color.setHex(colors[index % colors.length]);
       mesh.position.copy(positions.get(node.id));
       mesh.scale.setScalar(node.size);
       mesh.userData = { phase: index * 1.31, baseSize: node.size };
@@ -109,9 +112,9 @@ export class ThreeSeedScene {
       const halo = new T.Sprite(
         new T.SpriteMaterial({
           map: glowTexture,
-          color: index ? 0x7ea8a1 : 0xd8fff8,
+          color: colors[index % colors.length],
           transparent: true,
-          opacity: index ? 0.13 : 0.22,
+          opacity: 0.06,
           depthWrite: false,
           blending: T.AdditiveBlending
         })
@@ -139,7 +142,7 @@ export class ThreeSeedScene {
   }
 
   #createSomaGeometry(index) {
-    const geometry = new this.#three.IcosahedronGeometry(0.23, MORPHOLOGY.somaDetail);
+    const geometry = new this.#three.IcosahedronGeometry(0.23, 1);
     const positions = geometry.attributes.position;
     for (let vertex = 0; vertex < positions.count; vertex += 1) {
       const x = positions.getX(vertex); const y = positions.getY(vertex); const z = positions.getZ(vertex);
@@ -156,19 +159,14 @@ export class ThreeSeedScene {
     const T = this.#three;
     for (let branch = 0; branch < MORPHOLOGY.primaryDendrites; branch += 1) {
       const seed = nodeIndex * 31 + branch;
-      const theta = (branch / MORPHOLOGY.primaryDendrites) * Math.PI * 2 + seededValue(seed) * 0.7;
-      const elevation = (seededValue(seed + 11) - 0.5) * 1.25;
-      const direction = new T.Vector3(Math.cos(theta), elevation, Math.sin(theta)).normalize();
-      const side = new T.Vector3(-direction.z, seededValue(seed + 19) - 0.5, direction.x).normalize();
+      const theta = (branch / MORPHOLOGY.primaryDendrites) * Math.PI * 2 + seededValue(seed);
       const length = MORPHOLOGY.dendriteLength * scale * (0.72 + seededValue(seed + 7) * 0.42);
-      const start = origin.clone().addScaledVector(direction, 0.17 * scale);
-      const bend = origin.clone().addScaledVector(direction, length * 0.58).addScaledVector(side, length * 0.16);
-      const tip = origin.clone().addScaledVector(direction, length).addScaledVector(side, length * 0.06);
-      this.#pushSegment(vertices, start, bend); this.#pushSegment(vertices, bend, tip);
-      if (branch % 2 === 0) {
-        const twig = tip.clone().addScaledVector(side, length * 0.32).addScaledVector(direction, -length * 0.08);
-        this.#pushSegment(vertices, bend, twig);
-      }
+      const tip = origin.clone().add(new T.Vector3(
+        Math.cos(theta),
+        Math.sin(theta),
+        seededValue(nodeIndex + branch * 7) - 0.5
+      ).normalize().multiplyScalar(length));
+      this.#pushSegment(vertices, origin, tip);
     }
   }
 
@@ -189,7 +187,7 @@ export class ThreeSeedScene {
     );
     mesh.userData.selection = { type: "synapse", id: synapse.id };
     mesh.userData.strength = synapse.strength ?? 0.2;
-    mesh.material.opacity = 0.16 + mesh.userData.strength * 0.25;
+    mesh.material.opacity = 0.22 + mesh.userData.strength * 0.2;
     this.#seedGroup.add(mesh);
     this.#interactiveObjects.push(mesh);
     this.#synapseVisuals.set(synapse.id, mesh);
@@ -284,7 +282,7 @@ export class ThreeSeedScene {
   update(model) {
     for (const synapse of model.synapses) {
       const mesh = this.#synapseVisuals.get(synapse.id);
-      if (mesh) { mesh.userData.strength = synapse.strength ?? 0.2; mesh.material.opacity = 0.16 + mesh.userData.strength * 0.25; }
+      if (mesh) { mesh.userData.strength = synapse.strength ?? 0.2; mesh.material.opacity = 0.22 + mesh.userData.strength * 0.2; }
     }
   }
 
@@ -319,14 +317,14 @@ export class ThreeSeedScene {
       const breath = this.#reducedMotion
         ? 0
         : Math.sin(elapsed * 1.15 + object.userData.phase) * 0.035;
-      if (object.isSprite) object.material.opacity = 0.13 + breath;
+      if (object.isSprite) object.material.opacity = 0.06 + breath;
       else {
         const focused = (this.#selected?.type === "neuron" && this.#selected.id === object.userData.selection?.id) || this.#routeHighlight.neuronIds.includes(object.userData.selection?.id);
         const hovered = this.#hovered?.type === "neuron" && this.#hovered.id === object.userData.selection?.id;
         object.scale.setScalar(object.userData.baseSize * (1 + breath) * (focused ? 1.1 : hovered ? 1.05 : 1));
       }
     }
-    for (const [id, mesh] of this.#synapseVisuals) mesh.material.opacity = (0.16 + (mesh.userData.strength ?? .2) * .25) * (this.#routeHighlight.synapseIds.includes(id) ? 1.8 : 1);
+    for (const [id, mesh] of this.#synapseVisuals) mesh.material.opacity = (0.22 + (mesh.userData.strength ?? .2) * .2) * (this.#routeHighlight.synapseIds.includes(id) ? 1.8 : 1);
     this.#updateSignal(elapsed);
     if (!this.#reducedMotion) this.#particles.rotation.y = elapsed * 0.012;
     this.#renderer.render(this.#scene, this.#camera);
@@ -362,9 +360,9 @@ export class ThreeSeedScene {
       const destinationGlow = Math.max(0, 1 - Math.abs(normalized - .82) * 7);
       const source = this.#nodeVisuals.get(signal.route.source);
       const destination = this.#nodeVisuals.get(signal.route.destination);
-      if (source) source.halo.material.opacity = .13 + sourceGlow * .32;
+      if (source) source.halo.material.opacity = .06 + sourceGlow * .32;
       if (source) source.core.material.opacity = .06 + sourceGlow * .48;
-      if (destination) { destination.halo.material.opacity = .13 + destinationGlow * .4; destination.core.material.opacity = .06 + destinationGlow * .58; }
+      if (destination) { destination.halo.material.opacity = .06 + destinationGlow * .4; destination.core.material.opacity = .06 + destinationGlow * .58; }
       if (normalized >= 1) { this.#signal = null; pulse.visible = false; this.#entryPulse.visible = false; }
     }
   }
