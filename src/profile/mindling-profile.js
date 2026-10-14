@@ -1,3 +1,5 @@
+import { STAGES } from '../preview/evolution-model.js';
+
 const titleCase = value => value.replace(/_/g, " ").replace(/\b\w/g, character => character.toUpperCase());
 
 export function safeProfileFilename(name) {
@@ -11,7 +13,7 @@ export function generateMindlingProfile(state, life = null) {
     `# ${state.name}`,
     "", "## Identity", "",
     `Mindling ID: ${state.mindlingId}`,
-    "Stage: Neural Seed",
+    `Stage: ${Number.isInteger(state.stage) ? STAGES[state.stage - 1].name : 'Neural Seed'}`,
     `Created: ${state.createdAt}`,
     "", "## Personality", ""
   ];
@@ -19,6 +21,7 @@ export function generateMindlingProfile(state, life = null) {
   lines.push("", "## Pathways", "", ...state.pathways.map(pathway => `- ${pathway}`));
   lines.push("", "## Neural State", "", `Neurons: ${state.nodes.length}`, `Synapses: ${state.synapses.length}`, `Memories: ${state.memories.length}`);
   if (life) lines.push("", "## Life", "", `Condition: ${life.condition}`, `Health: ${Math.round(life.attributes.health)}%`, `Nutrition: ${Math.round(life.attributes.nutrition)}%`, `Rest: ${Math.round(life.attributes.rest)}%`, `Wellbeing: ${Math.round(life.attributes.wellbeing)}%`, `Birth: ${life.birthTimestamp}`, ...(life.deathTimestamp ? [`Death: ${life.deathTimestamp}`] : []));
+  if (life?.version === 2) lines.push(`Neural Stability: ${Math.round(life.attributes.neuralStability)}%`, `Stimulation: ${Math.round(life.stimulation)}%`, `Learning XP: ${state.lifetimeXP}`, `Stage XP: ${state.stageXP}`);
   lines.push("", "## Development", "", "Status: UNSPECIALIZED", "", "## Memory", "", `Formed Memories: ${state.memories.length}`);
   if (strengths.length) lines.push(`Strongest Memory Strength: ${Math.round(Math.max(...strengths) * 100)}%`);
   return `${lines.join("\n")}\n`;

@@ -29,10 +29,10 @@ Capture sizes are 1440×1000 desktop and 390×844 mobile, with the same “Scale
 
 | View | Enlarged before this change | Restored | Pre-Life-2 reference |
 | --- | --- | --- | --- |
-| Sandbox desktop | [Before](images/sandbox-restoration/before-sandbox-three-desktop.png) | [Restored](images/sandbox-restoration/after-sandbox-three-desktop.png) | [Original](images/life-v2/before-sandbox-three-desktop.png) |
-| Sandbox mobile | [Before](images/sandbox-restoration/before-sandbox-three-mobile.png) | [Restored](images/sandbox-restoration/after-sandbox-three-mobile.png) | [Original](images/life-v2/before-sandbox-three-mobile.png) |
+| Sandbox desktop | Before (image removed) | Restored (image removed) | Original (image removed) |
+| Sandbox mobile | Before (image removed) | Restored (image removed) | Original (image removed) |
 
-Canvas restoration: [desktop](images/sandbox-restoration/after-sandbox-canvas-desktop.png), [mobile](images/sandbox-restoration/after-sandbox-canvas-mobile.png). The screenshot harness also captures the main app and all 28 combinations of stage, backend and viewport under `/tmp/mindling-sizing-restoration/`.
+Canvas restoration: desktop (image removed), mobile (image removed). The screenshot harness also captures the main app and all 28 combinations of stage, backend and viewport under `/tmp/mindling-sizing-restoration/`.
 
 Life 2.0 and larger typography remain visible in the restored screenshots; only the brain geometry returns to the older size and framing. WebGL captures briefly keep the real render loop active so Chromium composites the CSS-transformed canvas correctly.
 

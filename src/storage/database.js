@@ -1,6 +1,8 @@
+import { migrateGameplay, dashboardLife } from '../app/gameplay-state.js';
+
 const DB_NAME = "mindling-db";
-const DB_VERSION = 2;
-const STORES = ["meta","mindling","identity","neurons","synapses","memories","knowledge","pathways","activities","events","settings","entitlements","life","energyJournal","memorials"];
+const DB_VERSION = 3;
+const STORES = ["meta","mindling","identity","neurons","synapses","memories","knowledge","pathways","activities","events","settings","entitlements","life","energyJournal","memorials","gameplay"];
 
 export class MindlingDatabase {
   #db = null;
@@ -8,14 +10,16 @@ export class MindlingDatabase {
     if (!globalThis.indexedDB) throw new Error("IndexedDB is unavailable");
     this.#db = await new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+      let abandoned = false;
       request.onupgradeneeded = () => {
+        if (abandoned) { request.transaction.abort(); return; }
         const db = request.result;
         for (const store of STORES) if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: "id" });
         request.transaction.objectStore("meta").put({ id: "schema", version: DB_VERSION, application: "play-mindling" });
       };
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => { if (abandoned) request.result.close(); else resolve(request.result); };
       request.onerror = () => reject(request.error || new Error("Could not open local storage"));
-      request.onblocked = () => reject(new Error("Database upgrade was blocked"));
+      request.onblocked = () => { abandoned = true; reject(new Error("Close other Mindling tabs to finish the storage upgrade. Your data is preserved.")); };
     });
     this.#db.onversionchange = () => this.close();
     return this;
@@ -23,6 +27,52 @@ export class MindlingDatabase {
   async get(store, id) { return this.#request(store, "readonly", target => target.get(id)); }
   async getAll(store) { return this.#request(store, "readonly", target => target.getAll()); }
   async put(store, value) { return this.#request(store, "readwrite", target => target.put(value)); }
+  async changeGameplay(reducer, { identity = null, journal = null } = {}) {
+    if (!this.#db) throw Error('Database is not open');
+    const names = ['gameplay', 'mindling', 'life', 'identity', 'neurons', 'synapses', 'memories', 'pathways', 'energyJournal', 'memorials', 'settings'];
+    return new Promise((resolve, reject) => {
+      const tx = this.#db.transaction(names, 'readwrite'), data = {}; let next, error, pending = names.length;
+      for (const name of names) {
+        const request = tx.objectStore(name).getAll();
+        request.onsuccess = () => {
+          data[name] = request.result;
+          if (--pending) return;
+          try {
+            const saved = data.gameplay.find(item => item.id === 'primary');
+            if (saved && saved.state?.version !== 1) throw Error('Unsupported gameplay data; existing records have been preserved.');
+            const initial = saved ? saved.state : migrateGameplay(data, Date.now());
+            next = reducer(structuredClone(initial));
+            next.revision = (initial.revision || 0) + 1;
+            if (initial.mind && next.mind?.id !== initial.mind.id && initial.mind.life.lifeState !== 'DECEASED') throw Error('A living identity cannot be replaced.');
+            if (next.mind && next.tombstones.some(item => item.id === next.mind.id) && next.mind.life.lifeState !== 'DECEASED') throw Error('A deceased identity cannot be revived.');
+            if (!saved && data.life.length) tx.objectStore('settings').put({ id: `life-before-v2:${initial.mind?.id || 'unassigned'}`, records: structuredClone(data.life) });
+            tx.objectStore('gameplay').put({ id: 'primary', state: next });
+            const archive = mind => tx.objectStore('memorials').put({ id: `life-v2:${mind.id}`, mindling: structuredClone(mind), life: dashboardLife({ mind }), memories: structuredClone(mind.memories), archivedAt: new Date().toISOString() });
+            if (initial.mind && next.mind?.id !== initial.mind.id) archive(initial.mind);
+            if (next.mind) {
+              const m = next.mind;
+              tx.objectStore('mindling').put({ ...dashboardStateRecord(m), id: 'primary' });
+              tx.objectStore('life').put(dashboardLife(next));
+              for (const [name, values] of [['neurons', m.nodes], ['synapses', m.synapses], ['memories', m.memories]]) for (const value of values) tx.objectStore(name).put(value);
+              if (m.life.lifeState === 'DECEASED') archive(m);
+            }
+            if (identity) {
+              if (data.memorials.some(item => item.mindling?.mindlingId === identity.mindlingId || item.mindling?.id === identity.mindlingId)) throw Error('An archived identity cannot be reused.');
+              if (!data.identity.some(item => item.id === 'local-identity')) tx.objectStore('identity').put(identity);
+              tx.objectStore('identity').put({ ...identity, id: `mindling:${identity.mindlingId}` });
+            }
+            if (journal && next.mind) {
+              if (data.energyJournal.some(item => item.id === journal.id)) throw Error('Activity already processed');
+              const cost = initial.mind?.energy.day === next.mind.energy.day ? initial.mind.energy.remaining - next.mind.energy.remaining : 10 - next.mind.energy.remaining;
+              tx.objectStore('energyJournal').put({ ...journal, mindlingId: next.mind.id, at: new Date(next.now).toISOString(), energyCost: cost, balanceAfter: next.mind.energy.remaining });
+            }
+          } catch (caught) { error = caught; tx.abort(); }
+        };
+      }
+      tx.oncomplete = () => resolve(next);
+      tx.onabort = tx.onerror = () => reject(error || tx.error || Error('Gameplay could not be saved'));
+    });
+  }
   async createMindling({ identity, pathways, mindling, neurons, synapses, life }) {
     if (!this.#db) throw new Error("Database is not open");
     const stores = ["identity", "pathways", "neurons", "synapses", "mindling", "life"];
@@ -105,3 +155,7 @@ export class MindlingDatabase {
 }
 
 export const databaseConfig = Object.freeze({ name: DB_NAME, version: DB_VERSION, stores: [...STORES] });
+
+function dashboardStateRecord(mind) {
+  return { ...mind, mindlingId: mind.id, createdAt: new Date(mind.createdAt).toISOString() };
+}

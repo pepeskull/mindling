@@ -19,9 +19,13 @@ async function start() {
     await active.start();
   } else await startProduction();
 }
-function showStartupError() {
+function showStartupError(error) {
   const scene = document.querySelector('#scene');
-  if (!scene.querySelector('.scene-error')) scene.insertAdjacentHTML('beforeend', '<p class="scene-error">The Neural Seed could not be rendered.</p>');
+  if (!scene.querySelector('.scene-error')) {
+    const message = document.createElement('p'); message.className = 'scene-error';
+    message.textContent = error?.message || 'Mindling could not start. Your saved data has been preserved.';
+    scene.append(message);
+  }
 }
 start().catch(showStartupError);
 window.addEventListener('pagehide', () => { stopped = true; active?.destroy(); }, { once: true });
