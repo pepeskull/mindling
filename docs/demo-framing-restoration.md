@@ -12,10 +12,10 @@ The comparison uses Agent Mind, reduced motion, identical rotation and zoom, and
 
 | Backend / viewport | Before, connected | Restored, disconnected | Restored, connected |
 | --- | --- | --- | --- |
-| Three.js desktop | [Before](images/demo-restoration/before-connected-three-desktop.png) | [Disconnected](images/demo-restoration/after-disconnected-three-desktop.png) | [Connected](images/demo-restoration/after-connected-three-desktop.png) |
-| Three.js mobile | [Before](images/demo-restoration/before-connected-three-mobile.png) | [Disconnected](images/demo-restoration/after-disconnected-three-mobile.png) | [Connected](images/demo-restoration/after-connected-three-mobile.png) |
-| Canvas desktop | [Before](images/demo-restoration/before-connected-canvas-desktop.png) | [Disconnected](images/demo-restoration/after-disconnected-canvas-desktop.png) | [Connected](images/demo-restoration/after-connected-canvas-desktop.png) |
-| Canvas mobile | [Before](images/demo-restoration/before-connected-canvas-mobile.png) | [Disconnected](images/demo-restoration/after-disconnected-canvas-mobile.png) | [Connected](images/demo-restoration/after-connected-canvas-mobile.png) |
+| Three.js desktop | Before (image removed) | Disconnected (image removed) | Connected (image removed) |
+| Three.js mobile | Before (image removed) | Disconnected (image removed) | Connected (image removed) |
+| Canvas desktop | Before (image removed) | Disconnected (image removed) | Connected (image removed) |
+| Canvas mobile | Before (image removed) | Disconnected (image removed) | Connected (image removed) |
 
 Measured pixels per projected model unit before/after connecting are exactly equal with restored framing: Three.js desktop 95.9037 → 95.9037, mobile 44.2374 → 44.2374; Canvas desktop 101.0394 → 101.0394, mobile 46.9991 → 46.9991. The previous shared framing changed desktop scale from 97.4557 to 54.7132 and mobile from 59.5974 to 33.4589 in both backends.
 

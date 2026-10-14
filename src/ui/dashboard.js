@@ -3,6 +3,8 @@ import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindlin
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 import { LIFE_RULES, lifeStageFor, neuralCycles, warningFor } from "../life/life-system.js";
 import { formatLifePercentage } from './life-format.js';
+import { STAGES } from '../preview/evolution-model.js';
+import { previewWarning } from '../preview/sandbox/life.js';
 
 export class Dashboard {
   #unsubscribe;
@@ -101,7 +103,8 @@ export class Dashboard {
     if (!state.name) return;
     document.querySelector("[data-life-status-title]").textContent = `${state.name} — Life Status`;
     document.querySelector(".hero-copy h1").textContent = `${state.name} is awake.`;
-    document.querySelector(".hero-copy span").textContent = "It starts with a few neurons. What it becomes is up to you.";
+    const subtitle = document.querySelector(".hero-copy span");
+    if (subtitle) subtitle.textContent = "It starts with a few neurons. What it becomes is up to you.";
     document.querySelector(".pathways-copy").textContent = state.pathways.join(" · ");
     document.querySelector(".mindling-id").textContent = state.mindlingId;
     document.querySelector("[data-profile-filename]").textContent = safeProfileFilename(state.name);
@@ -110,6 +113,7 @@ export class Dashboard {
   }
 
   #setMode(mode) {
+    if (this.#pending) return;
     this.#mode = mode;
     document.querySelectorAll("[data-input-mode]").forEach(button => { const selected = button.dataset.inputMode === mode; button.classList.toggle("selected", selected); button.setAttribute("aria-pressed", String(selected)); });
     document.querySelectorAll("[data-activity-mode]").forEach(button => button.classList.toggle("selected", button.dataset.activityMode === mode));
@@ -181,21 +185,24 @@ export class Dashboard {
     const cycles = neuralCycles(life.birthTimestamp, now, life.deathTimestamp);
     document.querySelector("[data-neural-cycle]").textContent = `NC ${String(cycles).padStart(4, "0")}`;
     document.querySelector("[data-neural-cycles]").textContent = `${cycles} Neural ${cycles === 1 ? "Cycle" : "Cycles"}`;
-    document.querySelector("[data-life-stage]").textContent = lifeStageFor(cycles);
+    document.querySelector("[data-life-stage]").textContent = life.version === 2 && life.stage ? STAGES[life.stage - 1].name : lifeStageFor(cycles);
     document.querySelector("[data-life-condition]").textContent = life.condition;
     document.querySelector("[data-life-condition]").dataset.condition = life.condition;
     for (const [name, value] of Object.entries(life.attributes)) {
       const row = document.querySelector(`[data-life-attribute="${name}"]`); const rounded = Math.round(value);
+      if (!row) continue;
       row.querySelector("strong").textContent = formatLifePercentage(value); row.querySelector("progress").value = value; row.querySelector('progress').textContent = formatLifePercentage(value); row.classList.toggle("critical", rounded <= 14);
     }
     document.querySelector("[data-energy-value]").textContent = `${life.energy.remaining} / ${life.energy.maximum}`;
     document.querySelector("[data-energy-progress]").value = life.energy.remaining;
     document.querySelector("[data-energy-reset]").textContent = `Resets ${new Date(life.energy.nextResetAt).toLocaleString([], { dateStyle: "short", timeStyle: "short", timeZone: "UTC" })} UTC`;
-    const warning = warningFor(life);
+    const warning = life.version === 2 ? { message: previewWarning(life).replace('Create a new test identity.', 'Raise a new Mindling when you are ready.') } : warningFor(life);
     document.querySelector("[data-life-warning] span").textContent = warning.message;
     document.querySelectorAll("[data-activity-mode]").forEach(button => { const rule = LIFE_RULES.activity[button.dataset.activityMode]; button.disabled = life.lifeState === "DECEASED" || life.energy.remaining < rule.energyCost; });
     document.querySelectorAll("[data-care]").forEach(button => { button.disabled = life.lifeState === "DECEASED"; });
     document.querySelector("#mindling-input").disabled = life.lifeState === "DECEASED";
+    this.#form.querySelector("button[type=submit]").disabled = this.#pending || life.lifeState === "DECEASED";
+    if (life.version === 2) document.querySelectorAll('[data-input-mode]').forEach(button => { button.disabled = life.lifeState === 'DECEASED' || life.energy.remaining < LIFE_RULES.activity[button.dataset.inputMode].energyCost; });
     document.querySelector("[data-memorial]").hidden = life.lifeState !== "DECEASED";
     if (life.lifeState === "DECEASED") {
       document.querySelector("[data-memorial-age]").textContent = `Neural age: NC ${String(cycles).padStart(4, "0")}`;
@@ -208,7 +215,7 @@ export class Dashboard {
   async #care(type) {
     const result = await this.#onCare(type);
     const messages = { NOT_HUNGRY: "Your Mindling is not hungry.", ALREADY_RESTED: "Your Mindling is already resting.", CARE_COOLDOWN: "Your Mindling needs time before receiving more care.", CARE_NOT_NEEDED: "Your Mindling does not need care right now." };
-    this.#showStatus(result.accepted ? "Care completed" : messages[result.reason] || "Care is unavailable");
+    this.#showStatus(result.accepted ? "Care completed" : result.message || messages[result.reason] || "Care is unavailable");
   }
   show() { document.querySelector(".dashboard-chrome").classList.remove("is-hidden"); }
   hide() { document.querySelector(".dashboard-chrome").classList.add("is-hidden"); }
@@ -229,9 +236,9 @@ export class Dashboard {
     try {
       const result = await this.#onInput(text, this.#mode, crypto.randomUUID());
       if (result.accepted) { input.value = ""; this.#showStatus(`${LIFE_RULES.activity[this.#mode].label} completed`); }
-      else this.#showStatus(result.reason === "OUT_OF_ENERGY" ? "Out of energy" : result.reason === "MINDLING_DECEASED" ? "This Mindling is deceased" : "Activity was not accepted");
+      else this.#showStatus(result.message || (result.reason === "OUT_OF_ENERGY" ? "Out of energy" : result.reason === "MINDLING_DECEASED" ? "This Mindling is deceased" : "Activity was not accepted"));
     } catch { this.#showStatus("Activity could not be saved"); }
-    finally { this.#pending = false; submit.disabled = false; input.focus(); }
+    finally { this.#pending = false; submit.disabled = this.#life?.lifeState === 'DECEASED'; if (!input.disabled) input.focus(); }
   }
 
   destroy() {

@@ -224,6 +224,7 @@ export class ThreeSeedScene {
   highlightRoute(route) { this.#routeHighlight = route || { neuronIds: [], synapseIds: [] }; }
 
   selectAt(event) { return this.#pick(event, true); }
+  hoverAt(event) { return this.#pick(event, false); }
 
   #pick(event, select) {
     if (!event) { this.#hovered = null; return; }

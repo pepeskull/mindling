@@ -16,7 +16,11 @@ export class EvolutionPreview {
   frame = null; disposed = false; lastTime = null; elapsed = 0; displayedStage = 1;
   seedWeight = 1; seedFrom = 1; transition = 1;
   motion = matchMedia('(prefers-reduced-motion: reduce)');
-  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot, originalFraming = true } = {}) { this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; this.originalFraming = originalFraming; }
+  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot, originalFraming = true, interactive = false, autoPlay = true, autoNetwork = true } = {}) {
+    this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; this.originalFraming = originalFraming;
+    this.interactive = interactive; this.autoPlay = autoPlay; this.autoNetwork = autoNetwork;
+    this.events = new EventBus(); this.dashboardOptions = {};
+  }
   countdown = new AutomaticNetworkCountdown();
   async start() {
     this.host = document.querySelector('#scene');
@@ -24,12 +28,12 @@ export class EvolutionPreview {
     this.originalLabel = this.host.getAttribute('aria-label');
     document.querySelector('#app').classList.add('dashboard-preview');
     document.querySelector('#app').classList.toggle('original-preview-framing', this.originalFraming);
-    this.dashboard = new Dashboard(new EventBus(), { readOnly: true });
-    const snapshot = await this.snapshotProvider();
+    this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions });
+    const snapshot = this.snapshotProvider ? await this.snapshotProvider() : null;
     if (this.disposed) return;
-    this.dashboard.showSnapshot(snapshot);
-    this.presentation = new PreviewDashboardPresentation();
-    this.host.setAttribute('aria-label', 'Development preview of neural evolution; saved gameplay is unchanged');
+    if (snapshot) this.dashboard.showSnapshot(snapshot);
+    if (!this.interactive) this.presentation = new PreviewDashboardPresentation();
+    this.host.setAttribute('aria-label', this.interactive ? 'Interactive Mindling neural network' : 'Development preview of neural evolution; saved gameplay is unchanged');
     this.host.innerHTML = `<div class="preview-layer preview-seed"></div><div class="preview-layer preview-growth"></div>`;
     this.sceneHost = this.host; this.seedHost = this.host.querySelector('.preview-seed'); this.growthHost = this.host.querySelector('.preview-growth');
     this.growthHost.style.opacity = '0';
@@ -40,11 +44,12 @@ export class EvolutionPreview {
     this.view = new EvolutionScene({ three, interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming });
     const framing=this.originalFraming?null:{referenceHeight:()=>document.querySelector('#app').clientHeight};
     this.seed = three ? new ThreeSeedScene(three, null, this.interaction, framing) : new CanvasSeedScene(null, this.interaction, framing);
-    try { this.view.mount(this.growthHost); this.seed.mount(this.seedHost, structuredClone(createNeuralSeedState())); }
+    const seedModel = this.seedModel || structuredClone(createNeuralSeedState());
+    try { this.view.mount(this.growthHost); this.seed.mount(this.seedHost, seedModel); }
     catch {
       this.view.destroy(); this.seed.destroy?.(); this.seedHost.replaceChildren(); this.growthHost.replaceChildren();
       this.view = new EvolutionScene({ interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming }); this.view.mount(this.growthHost);
-      this.seed = new CanvasSeedScene(null, this.interaction, framing); this.seed.mount(this.seedHost, structuredClone(createNeuralSeedState()));
+      this.seed = new CanvasSeedScene(null, this.interaction, framing); this.seed.mount(this.seedHost, seedModel);
     }
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
     this.motion.addEventListener('change', this.motionChanged);
@@ -52,10 +57,10 @@ export class EvolutionPreview {
     for (const node of document.querySelectorAll('.topbar, .left-stack, .right-panel, .hero-copy, #interaction-form')) this.observer.observe(node);
     window.addEventListener('resize', this.resize);
     document.addEventListener('visibilitychange', this.visibility);
-    if(new URLSearchParams(location.search).get('preview-mode')==='demo'){
+    if(!this.interactive && new URLSearchParams(location.search).get('preview-mode')==='demo'){
       this.modeLink=document.createElement('a');this.modeLink.className='preview-mode-link';this.modeLink.href='?stage-preview=1';this.modeLink.textContent='Open interactive sandbox';document.querySelector('#app').append(this.modeLink);
     }
-    this.timeline.play();
+    if (this.autoPlay) this.timeline.play();
     this.resize(); this.refresh(); this.schedule();
   }
   resize = () => {
@@ -76,8 +81,8 @@ export class EvolutionPreview {
     this.view?.resize(width, renderHeight); this.seed?.resize(width, renderHeight);
   };
   motionChanged = () => {
-    this.view.reduced = this.motion.matches;
-    this.seed.setReducedMotion(this.motion.matches);
+    this.view.reduced = this.motion.matches || Boolean(this.deceased);
+    this.seed.setReducedMotion(this.view.reduced);
     if (this.motion.matches) { this.view.select(this.timeline.stage); this.transition = 1; this.seedWeight = this.timeline.stage === 1 ? 1 : 0; }
     this.refresh();
   };
@@ -102,7 +107,7 @@ export class EvolutionPreview {
     const delta = this.lastTime === null ? 0 : Math.max(0, (now - this.lastTime) / 1000); this.lastTime = now; this.elapsed += delta;
     const ready = this.timeline.stage === 7 && this.transition === 1 && this.view.morph.progress === 1;
     const previous = this.timeline.stage; this.timeline.tick(delta); this.syncStage(); if (previous !== this.timeline.stage) this.refresh();
-    this.countdown.update(delta, { stage: this.timeline.stage, transitionComplete: ready, network: this.timeline.network });
+    if (this.autoNetwork) this.countdown.update(delta, { stage: this.timeline.stage, transitionComplete: ready, network: this.timeline.network });
     this.interaction.update(delta); this.transition = Math.min(1, this.transition + delta / 1.6);
     const target = this.timeline.stage === 1 ? 1 : 0; this.seedWeight = this.seedFrom * (1 - smooth(this.transition)) + target * smooth(this.transition);
     this.seedHost.style.opacity = String(this.seedWeight); this.growthHost.style.opacity = String(1 - this.seedWeight);

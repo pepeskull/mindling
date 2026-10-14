@@ -34,7 +34,7 @@ export function evolve(state) {
   m.stage++;m.enteredAt=next.now;m.stageXP=0;m.milestones=[];return next;
 }
 export const normalize = value => String(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
-export function cosine(a,b) { if(a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return dot/Math.sqrt(x*y); }
+export function cosine(a,b) { if(!a?.length||!b?.length||a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return x&&y?dot/Math.sqrt(x*y):-1; }
 export function validateAssessment(a) {
   const keys=['meaningful','duplicate','quality','concept','memory','area','kind','embedding'];
   if(!a || Object.keys(a).sort().join()!==keys.sort().join() || typeof a.meaningful!=='boolean' || typeof a.duplicate!=='boolean' || !Number.isFinite(a.quality) || a.quality<0 || a.quality>1 || !['concept','understanding','correction'].includes(a.kind)) throw Error('Invalid learning assessment');
@@ -59,14 +59,18 @@ export function learn(state,{id,text,assessment,source='fixture',mindId=state.mi
   const next=structuredClone(state),n=next.mind;stimulatePreviewLife(n.life,activity,next.now);n.energy={day,remaining:energy-cost};n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);n.milestones.push(a.concept);
   n.history.push({id,day,at:next.now,xp:award,kind:a.kind,source,concept:a.concept});
   // Canonical growth is bounded and independent of the stage's representation count.
-  const nodeId=n.nodes.length<64?`learned-${n.nodes.length}`:n.nodes[5+(n.memories.length%59)].id;
-  if(n.nodes.length<64)n.nodes.push({id:nodeId,position:[0,0,0],size:.6});
-  const edge=n.synapses.find(e=>e.to===nodeId);
-  if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}else n.synapses.push({id:`origin-${nodeId}`,from:'origin',to:nodeId,strength:.28,activations:1});
   const foundation=n.synapses[n.memories.length%4];foundation.strength=Math.min(1,foundation.strength+.05);foundation.activations++;
+  let nodeId=foundation.to, synapseId=foundation.id;
+  // Learning in Neural Seed strengthens its original five-neuron/four-synapse circuit.
+  if(n.stage>1){
+    nodeId=n.nodes.length<64?`learned-${n.nodes.length}`:n.nodes[5+(n.memories.length%59)].id;
+    if(n.nodes.length<64)n.nodes.push({id:nodeId,position:[0,0,0],size:.6});
+    const edge=n.synapses.find(e=>e.to===nodeId);synapseId=edge?.id||`origin-${nodeId}`;
+    if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}else n.synapses.push({id:synapseId,from:'origin',to:nodeId,strength:.28,activations:1});
+  }
   const related=n.memories.filter(v=>cosine(v.embedding,a.embedding)>=.62).map(v=>v.id);
-  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,embedding:[...a.embedding],createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:['origin',foundation.to,nodeId],synapseIds:[foundation.id,`origin-${nodeId}`],relatedMemoryIds:related,source,areaSuggestion:a.area});
-  n.areas=[...new Set(n.memories.map(v=>v.areaSuggestion))];
+  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,embedding:[...a.embedding],createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source,areaSuggestion:a.area});
+  n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];
   return next;
 }
 export function talk(state,text) {
