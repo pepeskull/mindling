@@ -1,12 +1,13 @@
 import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { STAGES } from '../preview/evolution-model.js';
-import { learn, talk, visualMapping, normalize } from '../preview/sandbox/engine.js';
+import { learn, reinforce, talk, visualMapping, normalize } from '../preview/sandbox/engine.js';
 import { carePreview, PREVIEW_LIFE } from '../preview/sandbox/life.js';
 import { analyzeLearning } from '../preview/sandbox/gemini.js';
 import { LIFE_RULES } from '../life/life-system.js';
 import { MindlingDatabase } from '../storage/database.js';
 import { Onboarding } from '../ui/onboarding.js';
 import { createLocalIdentity } from '../identity/identity.js';
+import { exactMemory, memoryContext } from '../semantic/memory-intelligence.js';
 import { SemanticEngine } from '../semantic/semantic-engine.js';
 import { EVENTS } from './events.js';
 import { advanceGameplay, progressGameplay, createGameplayMindling, dashboardLife, dashboardState } from './gameplay-state.js';
@@ -76,7 +77,8 @@ export class MindlingApp extends EvolutionPreview {
       if (!rule) throw Error('Unknown activity');
       if (m.energy.remaining < rule.energyCost) return { accepted: false, reason: 'OUT_OF_ENERGY' };
       const key = normalize(text);
-      if (text.length > 2000 || key.length < 20 || new Set(key.split(' ')).size < 4) throw Error('Share meaningful input of at least four words.');
+      const exact = activity === 'TALK' ? null : exactMemory(m.memories, text);
+      if (text.length > 2000 || (!exact && (key.length < 20 || new Set(key.split(' ')).size < 4))) throw Error('Share meaningful input of at least four words.');
       if (m.life.lastActivity != null && this.state.now - m.life.lastActivity < PREVIEW_LIFE.activityCooldownHours * 3600000) throw Error('Activity cooldown: try again two hours after your last activity.');
       if (activity === 'TALK') {
         await this.change(s => {
@@ -84,24 +86,31 @@ export class MindlingApp extends EvolutionPreview {
           return talk(s, text);
         }, { journal: { id, type: activity } });
       } else {
-        if (m.memories.some(memory => memory.normalized === key || normalize(memory.concept) === key)) throw Error('This learning is already known.');
+        const snapshot = JSON.stringify([m.memories, m.categories]);
+        const commit = reducer => this.change(s => {
+          if (s.mind?.id !== m.id || JSON.stringify([s.mind.memories, s.mind.categories]) !== snapshot) throw Error('Memories changed. Submit again.');
+          return reducer(s);
+        }, { journal: { id, type: activity } });
+        if (exact) {
+          await commit(s => reinforce(s, { id, text, memoryId: exact.id, mindId: m.id, activity }));
+          return { accepted: true, message: 'Already learned. Memory reinforced.' };
+        }
         const identity = await this.db.get('identity', `mindling:${m.id}`) || await this.db.get('identity', 'local-identity');
         if (!identity || identity.mindlingId !== m.id || !identity.privateKey) throw Error('Learning authentication is unavailable. Your identity and memories are preserved.');
-        this.requestAbort = new AbortController();
-        const assessment = await analyzeLearning({ text, pathway: m.pathways[0] || 'Researcher', identity, signal: this.requestAbort.signal });
+        this.legacySemantic ||= new SemanticEngine(); this.memoryEmbeddingCache ||= new Map();
+        let retrieval;
+        try { retrieval = await memoryContext(text, m, this.legacySemantic, this.memoryEmbeddingCache); }
+        catch { throw Error('Memory comparison is temporarily unavailable. No Energy or rewards changed.'); }
         if (this.disposed) return { accepted: false, reason: 'APPLICATION_CLOSED' };
-        // Old memories use a different embedding model. Reuse their original
-        // duplicate matcher rather than compare incompatible vectors or skip them.
-        const legacy = m.memories.filter(memory => memory.source !== 'GEMINI' || memory.embedding?.length !== 768);
-        if (legacy.length) {
-          this.legacySemantic ||= new SemanticEngine();
-          let comparison;
-          try { comparison = await this.legacySemantic.evaluate(text, legacy.map(memory => ({ ...structuredClone(memory), embedding: undefined }))); }
-          catch { throw Error('Legacy memory duplicate checks are unavailable. No Energy or rewards changed.'); }
-          if (comparison.match) throw Error('This learning is already known.');
+        if (retrieval.match) {
+          await commit(s => reinforce(s, { id, text, memoryId: retrieval.match.id, mindId: m.id, activity }));
+          return { accepted: true, message: 'Already learned. Memory reinforced.' };
         }
+        this.requestAbort = new AbortController();
+        const assessment = await analyzeLearning({ text, pathway: m.pathways[0] || 'Researcher', identity, context: retrieval.context, signal: this.requestAbort.signal });
         if (this.disposed) return { accepted: false, reason: 'APPLICATION_CLOSED' };
-        await this.change(s => learn(s, { id, text, assessment, source: 'GEMINI', mindId: m.id, activity }), { journal: { id, type: activity } });
+        await commit(s => learn(s, { id, text, assessment, context: retrieval.context, source: 'GEMINI', mindId: m.id, activity }));
+        if (assessment.relationship === 'repeated') return { accepted: true, message: 'Already learned. Memory reinforced.' };
         const memory = this.state.mind.memories.find(item => item.id === id);
         const edge = this.state.mind.synapses.find(item => item.id === memory?.synapseIds[0]);
         if (edge) this.seed.signal({ source: edge.from, destination: edge.to, synapse: edge.id, outcome: 'MEMORY_FORMATION' });

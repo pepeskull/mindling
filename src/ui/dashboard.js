@@ -131,7 +131,7 @@ export class Dashboard {
     list.innerHTML = this.#knowledgeDevelopment.areas.map(area => {
       const value = Math.round(area.progress * 100);
       const memories = area.memoryIds.map(id => memoriesById.get(id)).filter(Boolean);
-      return `<details class="knowledge-area" open><summary><span><b>${this.#escape(area.label)}</b><small>${area.memoryCount} canonical ${area.memoryCount === 1 ? "memory" : "memories"} · ${Math.round(area.cohesion * 100)}% cohesion</small></span><strong>${value}%</strong></summary><progress max="100" value="${value}">${value}%</progress><div class="area-memory-list">${memories.map(memory => `<details class="memory-record"><summary>${this.#escape(memory.content)}</summary><dl><div><dt>Memory ID</dt><dd>${this.#escape(memory.id)}</dd></div><div><dt>Strength</dt><dd>${Math.round((memory.strength || 0) * 100)}%</dd></div><div><dt>Activations</dt><dd>${memory.activations ?? 0}</dd></div><div><dt>Participating neurons</dt><dd>${(memory.neuronIds || []).length || "—"}</dd></div><div><dt>Relationships</dt><dd>${(memory.relatedMemoryIds || []).length || "—"}</dd></div></dl></details>`).join("")}</div></details>`;
+      return `<details class="knowledge-area" open><summary><span><b>${this.#escape(area.label)}</b><small>${area.memoryCount} canonical ${area.memoryCount === 1 ? "memory" : "memories"} · ${Math.round(area.cohesion * 100)}% cohesion</small></span><strong>${value}%</strong></summary><progress max="100" value="${value}">${value}%</progress><div class="area-memory-list">${memories.map(memory => `<details class="memory-record"><summary>${memory.supersededBy ? "Superseded · " : ""}${this.#escape(memory.content)}</summary><dl><div><dt>Status</dt><dd>${memory.supersededBy ? `Superseded by ${this.#escape(memory.supersededBy)}` : "Current"}</dd></div>${memory.topic ? `<div><dt>Topic</dt><dd>${this.#escape(memory.topic)}</dd></div>` : ""}<div><dt>Memory ID</dt><dd>${this.#escape(memory.id)}</dd></div><div><dt>Strength</dt><dd>${Math.round((memory.strength || 0) * 100)}%</dd></div><div><dt>Activations</dt><dd>${memory.activations ?? 0}</dd></div><div><dt>Participating neurons</dt><dd>${(memory.neuronIds || []).length || "—"}</dd></div><div><dt>Relationships</dt><dd>${(memory.relatedMemoryIds || []).length || "—"}</dd></div></dl></details>`).join("")}</div></details>`;
     }).join("");
   }
 
@@ -235,7 +235,7 @@ export class Dashboard {
     this.#showStatus("Processing signal");
     try {
       const result = await this.#onInput(text, this.#mode, crypto.randomUUID());
-      if (result.accepted) { input.value = ""; this.#showStatus(`${LIFE_RULES.activity[this.#mode].label} completed`); }
+      if (result.accepted) { input.value = ""; this.#showStatus(result.message || `${LIFE_RULES.activity[this.#mode].label} completed`); }
       else this.#showStatus(result.message || (result.reason === "OUT_OF_ENERGY" ? "Out of energy" : result.reason === "MINDLING_DECEASED" ? "This Mindling is deceased" : "Activity was not accepted"));
     } catch { this.#showStatus("Activity could not be saved"); }
     finally { this.#pending = false; submit.disabled = this.#life?.lifeState === 'DECEASED'; if (!input.disabled) input.focus(); }
