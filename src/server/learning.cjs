@@ -93,14 +93,15 @@ function createHandler({env=process.env,fetcher=fetch,now=Date.now,validate=null
     // Model metadata is server-owned, never accepted from generated text.
     if('embedding' in assessment || 'embeddingModel' in assessment)throw new LearningDiagnostic('ASSESSMENT_INVALID');
     assessment.embeddingModel=EMBEDDING_MODEL;
-    let validator,memoryValidator;
+    let validator,memoryValidator,memoryDiagnostic;
     try{
       validator=validate||(await import('../preview/sandbox/engine.js')).validateAssessment;
-      memoryValidator=(await import('../semantic/memory-intelligence.js')).validateMemoryAssessment;
+      const memoryModule=await import('../semantic/memory-intelligence.js');
+      memoryValidator=memoryModule.validateMemoryAssessment;memoryDiagnostic=memoryModule.memoryValidationCode;
     }catch{throw new LearningDiagnostic('VALIDATOR_LOAD');}
     // The general validator also calls memory validation: run that explicitly
     // first so its failures are classified without inspecting exception text.
-    try{memoryValidator(assessment,body.context||{memories:[],categories:[]},body.text);}catch{throw new LearningDiagnostic('MEMORY_INVALID');}
+    try{memoryValidator(assessment,body.context||{memories:[],categories:[]},body.text);}catch(error){throw new LearningDiagnostic(memoryDiagnostic(error));}
     try{validator(assessment,{embeddingRequired:false});}catch{throw new LearningDiagnostic('ASSESSMENT_INVALID');}
     return res.status(200).json({assessment,source:GENERATION_MODEL});
   }catch(error){
