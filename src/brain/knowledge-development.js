@@ -11,7 +11,8 @@ const cosine = (left, right) => {
   return dot / (Math.sqrt(a) * Math.sqrt(b) || 1);
 };
 const averageVector = memories => {
-  const vectors = memories.map(memory => memory.embedding).filter(Boolean);
+  const first = memories.find(memory => memory.embedding?.length);
+  const vectors = memories.filter(memory => memory.embedding?.length && memory.source === first?.source && memory.embedding?.length === first?.embedding.length).map(memory => memory.embedding);
   if (!vectors.length) return null;
   const centroid = new Float32Array(vectors[0].length);
   for (const vector of vectors) for (let index = 0; index < centroid.length; index += 1) centroid[index] += vector[index] / vectors.length;
@@ -62,7 +63,7 @@ export function deriveKnowledgeDevelopment(memories) {
   const similarities = new Map(); const similarityFor = (left, right) => left === right ? 1 : similarities.get(pairKey(left.id, right.id)) ?? -1;
   const edges = [];
   for (let left = 0; left < ordered.length; left += 1) for (let right = left + 1; right < ordered.length; right += 1) {
-    const similarity = cosine(ordered[left].embedding, ordered[right].embedding);
+    const similarity = ordered[left].source === ordered[right].source ? cosine(ordered[left].embedding, ordered[right].embedding) : -1;
     similarities.set(pairKey(ordered[left].id, ordered[right].id), similarity);
     if (similarity >= KNOWLEDGE_RULES.clusterSimilarity) edges.push({ left: ordered[left], right: ordered[right], similarity });
   }
@@ -70,6 +71,7 @@ export function deriveKnowledgeDevelopment(memories) {
   let clusters = ordered.map(memory => [memory]); const clusterByMemory = new Map(clusters.map(cluster => [cluster[0].id, cluster]));
   for (const edge of edges) {
     const leftCluster = clusterByMemory.get(edge.left.id); const rightCluster = clusterByMemory.get(edge.right.id);
+    if (edge.left.categoryId || edge.right.categoryId) continue;
     if (leftCluster === rightCluster || leftCluster.length + rightCluster.length > KNOWLEDGE_RULES.maximumAreaMemories) continue;
     const crossSimilarities = leftCluster.flatMap(left => rightCluster.map(right => similarityFor(left, right)));
     if (Math.min(...crossSimilarities) < KNOWLEDGE_RULES.clusterSimilarity) continue;
@@ -77,6 +79,12 @@ export function deriveKnowledgeDevelopment(memories) {
     clusters = clusters.filter(cluster => cluster !== leftCluster && cluster !== rightCluster); clusters.push(merged);
     for (const memory of merged) clusterByMemory.set(memory.id, merged);
   }
+  const categorized = new Map();
+  for (const memory of ordered.filter(memory => memory.categoryId && memory.category)) {
+    if (!categorized.has(memory.categoryId)) categorized.set(memory.categoryId, []);
+    categorized.get(memory.categoryId).push(memory);
+  }
+  clusters = [...clusters.filter(cluster => !cluster.some(memory => categorized.has(memory.categoryId))), ...categorized.values()];
   clusters.sort((left, right) => String(left[0]?.id).localeCompare(String(right[0]?.id)));
 
   const assignments = [];
@@ -89,8 +97,8 @@ export function deriveKnowledgeDevelopment(memories) {
     const activation = cluster.reduce((sum, memory) => sum + Math.min(memory.activations || 0, KNOWLEDGE_RULES.activationSaturation) / KNOWLEDGE_RULES.activationSaturation, 0) / count;
     const progress = bounded(averageStrength * KNOWLEDGE_RULES.strengthWeight + activation * KNOWLEDGE_RULES.activationWeight +
       Math.min(count / KNOWLEDGE_RULES.memoryDensitySaturation, 1) * KNOWLEDGE_RULES.densityWeight + cohesion * KNOWLEDGE_RULES.cohesionWeight);
-    const memoryIds = cluster.map(memory => memory.id).sort(); const id = `area-${stableHash(memoryIds)}`;
-    const identity = displayIdentity(cluster, cohesion, similarityFor, index);
+    const memoryIds = cluster.map(memory => memory.id).sort(); const id = cluster[0].categoryId || `area-${stableHash(memoryIds)}`;
+    const identity = cluster[0].categoryId && cluster[0].category ? { label: cluster[0].category, source: 'SAVED_CATEGORY', confidence: 'ASSESSED', reason: 'PERSISTENT_CATEGORY' } : displayIdentity(cluster, cohesion, similarityFor, index);
     for (const memory of cluster) assignments.push({ memoryId: memory.id, content: String(memory.content || "").slice(0, 72), areaId: id,
       centroidSimilarity: cosine(memory.embedding, centroid), representativeSimilarities: representatives.map(item => ({ memoryId: item.id, similarity: similarityFor(memory, item) })),
       clusterMinimumSimilarity: pairwise.length ? Math.min(...pairwise) : 1, clusterMedianSimilarity: pairwise.length ? median(pairwise) : 1,

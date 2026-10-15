@@ -1,3 +1,5 @@
+import { normalize, exactMemory, INTELLIGENCE_FIELDS, validateMemoryAssessment, assignCategory } from '../../semantic/memory-intelligence.js';
+export { normalize } from '../../semantic/memory-intelligence.js';
 import { advancePreviewLife, stimulatePreviewLife, upgradePreviewLife } from './life.js';
 import { LIFE_RULES } from '../../life/life-system.js';
 import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
@@ -33,23 +35,34 @@ export function evolve(state) {
   m.stageHistory.push({stage:m.stage,enteredAt:m.enteredAt,leftAt:next.now,xp:m.stageXP,concepts:m.milestones.length});
   m.stage++;m.enteredAt=next.now;m.stageXP=0;m.milestones=[];return next;
 }
-export const normalize = value => String(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
 export function cosine(a,b) { if(!a?.length||!b?.length||a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return x&&y?dot/Math.sqrt(x*y):-1; }
 export function validateAssessment(a) {
   const keys=['meaningful','duplicate','quality','concept','memory','area','kind','embedding'];
+  if(a && INTELLIGENCE_FIELDS.some(key => key in a)){keys.push(...INTELLIGENCE_FIELDS);validateMemoryAssessment(a);}
   if(!a || Object.keys(a).sort().join()!==keys.sort().join() || typeof a.meaningful!=='boolean' || typeof a.duplicate!=='boolean' || !Number.isFinite(a.quality) || a.quality<0 || a.quality>1 || !['concept','understanding','correction'].includes(a.kind)) throw Error('Invalid learning assessment');
   for(const key of ['concept','memory','area'])if(typeof a[key]!=='string'||a[key].trim().length<3||a[key].length>(key==='memory'?1000:100))throw Error('Invalid learning text');
   if(!Array.isArray(a.embedding)||a.embedding.length<8||a.embedding.length>768||a.embedding.some(v=>!Number.isFinite(v)||Math.abs(v)>100)||!a.embedding.some(v=>v!==0))throw Error('Invalid semantic vector');
   return a;
 }
-export function learn(state,{id,text,assessment,source='fixture',mindId=state.mind?.id,activity='TEACH'}) {
+export function learn(state,{id,text,assessment,source='fixture',mindId=state.mind?.id,activity='TEACH',context}) {
   validateAssessment(assessment);
   const m=state.mind,a=assessment,key=normalize(text);
+  if(a.relationship){
+    validateMemoryAssessment(a,context,text);
+    if(a.relatedMemoryId && !m?.memories.some(v=>v.id===a.relatedMemoryId && !v.supersededBy))throw Error('Memory changed. Submit again.');
+    if(['repeated','corrective'].includes(a.relationship) && context?.memories.find(v=>v.id===a.relatedMemoryId)?.content!==m?.memories.find(v=>v.id===a.relatedMemoryId)?.content)throw Error('A full memory is required for this comparison. Existing knowledge is unchanged.');
+    if(a.categoryId && !m?.categories?.some(c=>c.id===a.categoryId))throw Error('Category changed. Submit again.');
+    if(a.relationship==='uncertain')throw Error('The correction could not be verified. Existing knowledge is unchanged.');
+    if(a.meaningful && a.quality>=.75 && a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity,assessment:a});
+  }
   if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
-  if(typeof id!=='string'||!id||id.length>100||m.processed.includes(id))throw Error('Learning event already processed or invalid');
+  if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
   if(typeof text!=='string'||text.length>2000||key.length<20||new Set(key.split(' ')).size<4||!a.meaningful||a.duplicate||a.quality<.75)throw Error('Meaningful new learning is required');
   if(m.lastLearning!==null && state.now-m.lastLearning<XP.cooldown)throw Error('Learning cooldown: advance virtual time');
-  if(m.memories.some(v=>v.normalized===key||normalize(v.concept)===normalize(a.concept)||cosine(v.embedding,a.embedding)>=.88))throw Error('Known or semantically duplicate knowledge');
+  const exact=exactMemory(m.memories,text);
+  if(exact)return reinforce(state,{id,text,memoryId:exact.id,mindId,activity});
+  // Similarity retrieves related concepts; it is not proof of factual equivalence.
+  if(!a.relationship && m.memories.some(v=>cosine(v.embedding,a.embedding)>=.88))throw Error('Known or semantically duplicate knowledge');
   const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=XP[a.kind];
   if(earned+award>XP.daily)throw Error('Daily XP limit reached');
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
@@ -68,9 +81,42 @@ export function learn(state,{id,text,assessment,source='fixture',mindId=state.mi
     const edge=n.synapses.find(e=>e.to===nodeId);synapseId=edge?.id||`origin-${nodeId}`;
     if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}else n.synapses.push({id:synapseId,from:'origin',to:nodeId,strength:.28,activations:1});
   }
-  const related=n.memories.filter(v=>cosine(v.embedding,a.embedding)>=.62).map(v=>v.id);
+  const related=n.memories.filter(v=>!v.supersededBy && ((v.source===source && cosine(v.embedding,a.embedding)>=.62)||v.id===a.relatedMemoryId)).map(v=>v.id);
   n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,embedding:[...a.embedding],createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source,areaSuggestion:a.area});
+  const memory=n.memories.at(-1);
+  if(a.relationship){
+    assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);memory.assessmentConfidence=a.confidence;
+    if(a.relationship==='corrective'){
+      const previous=n.memories.find(v=>v.id===a.relatedMemoryId);
+      previous.supersededBy=id;previous.supersededAt=new Date(next.now).toISOString();
+      memory.correctsMemoryId=previous.id;memory.correctionEvidence=a.evidence;
+    }
+  }
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];
+  return next;
+}
+// Repetitions spend the existing activity cost, with no XP or milestone reward.
+export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity='TEACH',assessment}) {
+  const m=state.mind,key=normalize(text);
+  if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching Mindling');
+  if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
+  if(typeof text!=='string'||text.length>2000||!key)throw Error('Invalid learning text');
+  const memory=m.memories.find(v=>v.id===memoryId);
+  if(!memory||memory.supersededBy)throw Error('This historical memory has been corrected. Teach the current knowledge instead.');
+  if(m.lastLearning!==null && state.now-m.lastLearning<XP.cooldown)throw Error('Learning cooldown is still active');
+  if((m.activityHistory||[]).some(e=>e.key===key&&state.now-e.at<DAY))throw Error('Already learned. This input was reinforced today.');
+  if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
+  const day=Math.floor(state.now/DAY),cost=LIFE_RULES.activity[activity].energyCost,energy=m.energy.day===day?m.energy.remaining:10;
+  if(energy<cost)throw Error('Not enough Energy');
+  const next=structuredClone(state),n=next.mind,target=n.memories.find(v=>v.id===memoryId);
+  stimulatePreviewLife(n.life,activity,next.now);n.energy={day,remaining:energy-cost};n.lastLearning=next.now;n.processed.push(id);
+  if(assessment && !target.categoryId)assignCategory(n,target,assessment);
+  target.strength=Math.min(1,(target.strength||0)+.05);target.activations=(target.activations||0)+1;
+  target.reinforcementCount=(target.reinforcementCount||0)+1;target.lastReinforcedAt=new Date(next.now).toISOString();
+  target.matchedVariants=[...new Set([...(target.matchedVariants||[]),text])].slice(-5);
+  for(const edge of n.synapses.filter(e=>target.synapseIds?.includes(e.id))){edge.strength=Math.min(1,edge.strength+.05);edge.activations++;}
+  n.activityHistory=[...(n.activityHistory||[]),{at:next.now,key,type:activity}].slice(-200);
+  n.history.push({id,day,at:next.now,xp:0,kind:'reinforcement',memoryId,concept:target.concept});
   return next;
 }
 export function talk(state,text) {
