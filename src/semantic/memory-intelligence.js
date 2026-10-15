@@ -1,4 +1,4 @@
-import { cosineSimilarity } from './semantic-engine.js';
+import { cosineSimilarity, memoryVector } from './embeddings.js';
 
 export const normalize = value => String(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 export const exactMemory = (memories, text) => memories.find(memory =>
@@ -41,29 +41,13 @@ export function assignCategory(mind, memory, assessment) {
   memory.categoryId = category.id; memory.category = category.name; memory.topic = assessment.topic;
 }
 
-// Local embeddings never leave the device. Only three retrieved excerpts and
-// twelve relevant category labels enter the signed assessment request.
-export async function memoryContext(text, mind, semantic, cache) {
-  const memories = mind.memories;
-  const local = [];
-  for (const memory of memories) {
-    const key = `${mind.id}:${memory.id}:${memory.content}`;
-    // Original production memories used this same 384-dimensional local encoder.
-    const savedLocal = memory.type === 'learned' && ['TALK','TEACH','DEEP_TRAINING'].includes(memory.source) && memory.embedding?.length === 384 && Array.from(memory.embedding).every(Number.isFinite) && Array.from(memory.embedding).some(value => value !== 0);
-    if (!cache.has(key)) cache.set(key, savedLocal ? memory.embedding : await semantic.encode(memory.content));
-    local.push({ ...memory, embedding: cache.get(key) });
-  }
-  const comparison = local.length ? await semantic.evaluate(text, local) : null;
-  const embedding = comparison?.embedding || (mind.categories?.length ? await semantic.encode(text) : null);
-  const candidates = comparison?.match ? [comparison.match] : semantic.retrieveCandidates(embedding || [], local.filter(m => !m.supersededBy), 3).map(c => c.memory);
-  const categories = [];
-  for (const category of mind.categories || []) {
-    if (!label(category.name) || !memories.some(m => m.categoryId === category.id)) continue;
-    const key = `category:${category.name}`;
-    if (!cache.has(key)) cache.set(key, await semantic.encode(category.name));
-    categories.push({ ...category, score: cosineSimilarity(embedding, cache.get(key)) + (candidates.some(m => m.categoryId === category.id) ? 2 : 0) });
-  }
-  const context = { memories: candidates.map(m => ({ id: m.id, content: m.content.slice(0, 1000) })), categories: categories.sort((a,b) => b.score - a.score).slice(0,12).map(({id,name}) => ({id,name})) };
-  validateMemoryContext(context);
-  return { context, match: comparison?.match };
+// Retrieval is allowed only after every historical memory has a known BGE
+// vector. Unknown legacy vectors remain preserved, never compared by dimension.
+export function memoryContext(embedding, mind) {
+  if(mind.memories.some(m=>!memoryVector(m)))throw Error('Memory preparation is incomplete. No Energy or rewards changed.');
+  const ranked=mind.memories.map(memory=>({memory,score:cosineSimilarity(embedding,memoryVector(memory).values)})).sort((a,b)=>b.score-a.score);
+  const candidates=ranked.slice(0,3).map(item=>item.memory);
+  const categories=(mind.categories||[]).map(category=>({category,score:Math.max(-1,...ranked.filter(item=>item.memory.categoryId===category.id).map(item=>item.score))})).filter(item=>mind.memories.some(m=>m.categoryId===item.category.id)).sort((a,b)=>b.score-a.score).slice(0,12).map(({category:{id,name}})=>({id,name}));
+  const context={memories:candidates.map(m=>({id:m.id,content:m.content})),categories};
+  validateMemoryContext(context);return context;
 }

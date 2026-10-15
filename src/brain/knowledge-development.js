@@ -1,3 +1,4 @@
+import { memoryVector, memorySimilarity } from '../semantic/embeddings.js';
 const CLUSTER_SIMILARITY = 0.62;
 export const KNOWLEDGE_RULES = Object.freeze({ clusterSimilarity: CLUSTER_SIMILARITY, maximumRepresentatives: 3, displayedAreas: 8,
   maximumAreaMemories: 12, strengthWeight: .45, activationWeight: .25, densityWeight: .2, cohesionWeight: .1,
@@ -11,8 +12,7 @@ const cosine = (left, right) => {
   return dot / (Math.sqrt(a) * Math.sqrt(b) || 1);
 };
 const averageVector = memories => {
-  const first = memories.find(memory => memory.embedding?.length);
-  const vectors = memories.filter(memory => memory.embedding?.length && memory.source === first?.source && memory.embedding?.length === first?.embedding.length).map(memory => memory.embedding);
+  const vectors = memories.map(memoryVector).filter(Boolean).map(vector => vector.values);
   if (!vectors.length) return null;
   const centroid = new Float32Array(vectors[0].length);
   for (const vector of vectors) for (let index = 0; index < centroid.length; index += 1) centroid[index] += vector[index] / vectors.length;
@@ -63,7 +63,7 @@ export function deriveKnowledgeDevelopment(memories) {
   const similarities = new Map(); const similarityFor = (left, right) => left === right ? 1 : similarities.get(pairKey(left.id, right.id)) ?? -1;
   const edges = [];
   for (let left = 0; left < ordered.length; left += 1) for (let right = left + 1; right < ordered.length; right += 1) {
-    const similarity = ordered[left].source === ordered[right].source ? cosine(ordered[left].embedding, ordered[right].embedding) : -1;
+    const similarity = memorySimilarity(ordered[left], ordered[right]);
     similarities.set(pairKey(ordered[left].id, ordered[right].id), similarity);
     if (similarity >= KNOWLEDGE_RULES.clusterSimilarity) edges.push({ left: ordered[left], right: ordered[right], similarity });
   }
@@ -91,7 +91,7 @@ export function deriveKnowledgeDevelopment(memories) {
   const areas = clusters.map((cluster, index) => {
     const centroid = averageVector(cluster); const count = cluster.length;
     const pairwise = cluster.flatMap((memory, memoryIndex) => cluster.slice(memoryIndex + 1).map(other => similarityFor(memory, other)));
-    const cohesion = centroid ? cluster.reduce((sum, memory) => sum + Math.max(0, cosine(memory.embedding, centroid)), 0) / count : 0;
+    const cohesion = centroid ? cluster.reduce((sum, memory) => sum + Math.max(0, cosine(memoryVector(memory)?.values, centroid)), 0) / count : 0;
     const representatives = representativesFor(cluster, similarityFor);
     const averageStrength = cluster.reduce((sum, memory) => sum + bounded(memory.strength || 0), 0) / count;
     const activation = cluster.reduce((sum, memory) => sum + Math.min(memory.activations || 0, KNOWLEDGE_RULES.activationSaturation) / KNOWLEDGE_RULES.activationSaturation, 0) / count;
@@ -100,7 +100,7 @@ export function deriveKnowledgeDevelopment(memories) {
     const memoryIds = cluster.map(memory => memory.id).sort(); const id = cluster[0].categoryId || `area-${stableHash(memoryIds)}`;
     const identity = cluster[0].categoryId && cluster[0].category ? { label: cluster[0].category, source: 'SAVED_CATEGORY', confidence: 'ASSESSED', reason: 'PERSISTENT_CATEGORY' } : displayIdentity(cluster, cohesion, similarityFor, index);
     for (const memory of cluster) assignments.push({ memoryId: memory.id, content: String(memory.content || "").slice(0, 72), areaId: id,
-      centroidSimilarity: cosine(memory.embedding, centroid), representativeSimilarities: representatives.map(item => ({ memoryId: item.id, similarity: similarityFor(memory, item) })),
+      centroidSimilarity: cosine(memoryVector(memory)?.values, centroid), representativeSimilarities: representatives.map(item => ({ memoryId: item.id, similarity: similarityFor(memory, item) })),
       clusterMinimumSimilarity: pairwise.length ? Math.min(...pairwise) : 1, clusterMedianSimilarity: pairwise.length ? median(pairwise) : 1,
       assignmentReason: count === 1 ? "SINGLETON_NO_COHERENT_MERGE" : "COMPLETE_LINK_COHERENT" });
     return { id, label: identity.label, labelSource: identity.source, labelConfidence: identity.confidence, labelReason: identity.reason, progress, cohesion,

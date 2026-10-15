@@ -2,13 +2,13 @@ import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { STAGES } from '../preview/evolution-model.js';
 import { learn, reinforce, talk, visualMapping, normalize } from '../preview/sandbox/engine.js';
 import { carePreview, PREVIEW_LIFE } from '../preview/sandbox/life.js';
-import { analyzeLearning } from '../preview/sandbox/gemini.js';
+import { prepareLearning } from '../preview/sandbox/learning.js';
+import { applyMemoryEmbeddings } from '../semantic/embeddings.js';
 import { LIFE_RULES } from '../life/life-system.js';
 import { MindlingDatabase } from '../storage/database.js';
 import { Onboarding } from '../ui/onboarding.js';
 import { createLocalIdentity } from '../identity/identity.js';
-import { exactMemory, memoryContext } from '../semantic/memory-intelligence.js';
-import { SemanticEngine } from '../semantic/semantic-engine.js';
+import { exactMemory } from '../semantic/memory-intelligence.js';
 import { EVENTS } from './events.js';
 import { advanceGameplay, progressGameplay, createGameplayMindling, dashboardLife, dashboardState } from './gameplay-state.js';
 
@@ -87,29 +87,28 @@ export class MindlingApp extends EvolutionPreview {
         }, { journal: { id, type: activity } });
       } else {
         const snapshot = JSON.stringify([m.memories, m.categories]);
-        const commit = reducer => this.change(s => {
+        const commit = (reducer, journal = true) => this.change(s => {
           if (s.mind?.id !== m.id || JSON.stringify([s.mind.memories, s.mind.categories]) !== snapshot) throw Error('Memories changed. Submit again.');
           return reducer(s);
-        }, { journal: { id, type: activity } });
+        }, journal ? { journal: { id, type: activity } } : {});
         if (exact) {
           await commit(s => reinforce(s, { id, text, memoryId: exact.id, mindId: m.id, activity }));
           return { accepted: true, message: 'Already learned. Memory reinforced.' };
         }
         const identity = await this.db.get('identity', `mindling:${m.id}`) || await this.db.get('identity', 'local-identity');
         if (!identity || identity.mindlingId !== m.id || !identity.privateKey) throw Error('Learning authentication is unavailable. Your identity and memories are preserved.');
-        this.legacySemantic ||= new SemanticEngine(); this.memoryEmbeddingCache ||= new Map();
-        let retrieval;
-        try { retrieval = await memoryContext(text, m, this.legacySemantic, this.memoryEmbeddingCache); }
-        catch { throw Error('Memory comparison is temporarily unavailable. No Energy or rewards changed.'); }
-        if (this.disposed) return { accepted: false, reason: 'APPLICATION_CLOSED' };
-        if (retrieval.match) {
-          await commit(s => reinforce(s, { id, text, memoryId: retrieval.match.id, mindId: m.id, activity }));
-          return { accepted: true, message: 'Already learned. Memory reinforced.' };
-        }
         this.requestAbort = new AbortController();
-        const assessment = await analyzeLearning({ text, pathway: m.pathways[0] || 'Researcher', identity, context: retrieval.context, signal: this.requestAbort.signal });
+        const prepared = await prepareLearning({ text, mind:m, pathway: m.pathways[0] || 'Researcher', identity, signal: this.requestAbort.signal });
         if (this.disposed) return { accepted: false, reason: 'APPLICATION_CLOSED' };
-        await commit(s => learn(s, { id, text, assessment, context: retrieval.context, source: 'GEMINI', mindId: m.id, activity }));
+        if (prepared.remaining) {
+          await commit(s => {
+            if(s.mind.life.lifeState!=='ALIVE')throw Error('This Mindling is deceased.');
+            applyMemoryEmbeddings(s.mind,prepared.updates);return s;
+          },false);
+          return {accepted:false,message:`Memory preparation saved. ${prepared.remaining} memories remain; submit again to continue. No Energy or rewards changed.`};
+        }
+        const {assessment,context,updates}=prepared;
+        await commit(s => {applyMemoryEmbeddings(s.mind,updates);return learn(s, { id, text, assessment, context, source: 'CLOUDFLARE', mindId: m.id, activity });});
         if (assessment.relationship === 'repeated') return { accepted: true, message: 'Already learned. Memory reinforced.' };
         const memory = this.state.mind.memories.find(item => item.id === id);
         const edge = this.state.mind.synapses.find(item => item.id === memory?.synapseIds[0]);
