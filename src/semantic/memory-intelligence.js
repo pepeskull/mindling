@@ -1,3 +1,4 @@
+import { validLabel as label } from './assessment-contract.js';
 import { cosineSimilarity, memoryVector } from './embeddings.js';
 
 export const normalize = value => String(value).normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -5,7 +6,6 @@ export const exactMemory = (memories, text) => memories.find(memory =>
   [memory.normalized, memory.normalizedContent, memory.content, ...(memory.matchedVariants || [])]
     .some(value => typeof value === 'string' && normalize(value) === normalize(text)));
 export const INTELLIGENCE_FIELDS = ['category', 'categoryId', 'topic', 'relationship', 'relatedMemoryId', 'confidence', 'evidence'];
-const label = value => typeof value === 'string' && value.trim() === value && value.length >= 2 && value.length <= 60 && /^[\p{L}\p{N}][\p{L}\p{N} &()+.,'’/:-]*$/u.test(value);
 
 // Codes are assigned only here, never copied from model output or exception text.
 const MEMORY_DIAGNOSTICS = new Set([
