@@ -1,7 +1,7 @@
 import { EMBEDDING_MODEL, validEmbedding, memoryVector, applyMemoryEmbeddings } from '../../semantic/embeddings.js';
 import { validateMemoryAssessment, validateMemoryContext, memoryContext } from '../../semantic/memory-intelligence.js';
 import { validateAssessment } from './engine.js';
-async function requestLearning({text,pathway,token,identity,context,operation,signal,fetcher=fetch}) {
+async function requestLearningOnce({text,pathway,token,identity,context,operation,signal,fetcher=fetch}) {
   let body={text,pathway,context,operation},endpoint='/api/preview-learning';
   const headers={'Content-Type':'application/json'};
   if(context){validateMemoryContext(context);body.context=context;}
@@ -17,13 +17,28 @@ async function requestLearning({text,pathway,token,identity,context,operation,si
   }
   if(new TextEncoder().encode(JSON.stringify(body)).length>9000)throw Error('Learning context is too large. No Energy or rewards changed.');
   let response;try{response=await fetcher(endpoint,{method:'POST',headers,body:JSON.stringify(body),signal});}catch{throw Error('Learning is temporarily unavailable. No Energy or XP changed.');}
-  if(!response.ok){const body=await response.json().catch(()=>({}));throw Error(body.error==='REQUEST_REPLAYED'?'This learning request was already submitted. Try again.':'Learning is temporarily unavailable. No Energy or rewards changed.');}
+  if(!response.ok){
+    const body=await response.json().catch(()=>({}));
+    const error=Error(body.error==='REQUEST_REPLAYED'?'This learning request was already submitted. Try again.':'Learning is temporarily unavailable. No Energy or rewards changed.');
+    error.retryable=operation==='assess' && response.status===502 && body.error==='LEARNING_ANALYSIS_FAILED' && body.retryable===true;
+    throw error;
+  }
   try { return await response.json(); }
   catch { throw Error('Learning is temporarily unavailable. No Energy or rewards changed.'); }
 }
 
-// Two bounded operations: embed once to retrieve context, then assess once.
-// No browser inference, automatic retries, or alternate provider fallback.
+async function requestLearning(options) {
+  try { return await requestLearningOnce(options); }
+  catch (error) {
+    if (!error.retryable || options.signal?.aborted) throw error;
+    // One retry only, no re-embedding. Re-sign with a fresh nonce so the normal
+    // authentication, replay and global rate limits apply to every inference.
+    return requestLearningOnce(options);
+  }
+}
+
+// Embed once, then assess (at most twice for incomplete/malformed generated JSON).
+// No retries for upstream failures, invalid references or semantic rejections.
 export async function prepareLearning({mind,...options}) {
   const pending=mind.memories.filter(m=>!memoryVector(m));
   if(mind.memories.some(m=>typeof m.content!=='string'||!m.content.length||m.content.length>1000))throw Error('An older memory cannot be prepared within the safe content limit. Your memories are preserved.');

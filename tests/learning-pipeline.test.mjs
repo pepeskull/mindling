@@ -8,6 +8,7 @@ import {MindlingDatabase} from '../src/storage/database.js';
 import {createLocalIdentity} from '../src/identity/identity.js';
 import {createSandbox,newMindling} from '../src/preview/sandbox/engine.js';
 import {EMBEDDING_MODEL,memorySimilarity,memoryVector} from '../src/semantic/embeddings.js';
+import {normalizeLabel, validLabel} from '../src/semantic/assessment-contract.js';
 import {deriveKnowledgeDevelopment} from '../src/brain/knowledge-development.js';
 const {createHandler}=createRequire(import.meta.url)('../src/server/learning.cjs');
 const TEXT='Water freezes at zero degrees Celsius under standard atmospheric pressure.';
@@ -47,6 +48,7 @@ beforeEach(async t=>{
     }
     assert.ok(url.endsWith('/qwen/qwen3-30b-a3b-fp8'));
     h.schemas.push(body.response_format.json_schema);
+    if(h.generate)h.generate(h.schemas.length);
     let output=h.rawOutput??JSON.stringify(h.assessment);
     if(h.reasoning)output='<think>hidden model reasoning</think>\n'+output;
     return Response.json({success:true,result:{choices:[{finish_reason:h.finishReason??'stop',message:{content:output}}]}});
@@ -142,7 +144,8 @@ for(const [name,patch,code] of invalidCases)test(`rejects ${name}; state and saf
   await seedMemory();h.assessment=assessment(patch);
   await rejectedUnchanged('This submission contains a carefully explained scientific observation.');
   assert.equal(h.logs.at(-1).code,code);
-  for(const log of h.logs)assert.deepEqual(Object.keys(log).sort(),['code','event']);
+  for(const log of h.logs)assert.deepEqual(Object.keys(log).sort(),code==='MEMORY_CATEGORY_LABEL'?['code','event','reason']:['code','event']);
+  assert.equal(h.schemas.length,1,'semantic rejection must not retry');
   assert.ok(!JSON.stringify(h.logs).includes('scientific observation'));
   assert.ok(!JSON.stringify(h.logs).includes('test-cloudflare-token'));
 });
@@ -155,7 +158,8 @@ test('prompt injection text stays untrusted and rejection changes nothing',async
   assert.match(request.body.messages[0].content,/untrusted data/);
 });
 for(const [name,rawOutput,finishReason] of [['invalid JSON','private malformed', 'stop'],['truncated JSON','{"meaningful":', 'length'],['empty output','', 'stop'],['unclosed reasoning','<think>private reasoning','stop']])test(name,async()=>{
-  h.rawOutput=rawOutput;h.finishReason=finishReason;await rejectedUnchanged();assert.equal(h.logs.length,1);
+  h.rawOutput=rawOutput;h.finishReason=finishReason;await rejectedUnchanged();assert.equal(h.logs.length,name==='empty output'?1:2);
+  assert.equal(h.requests.filter(r=>r.body.operation==='embed').length,1);
   assert.ok(!JSON.stringify(h.logs).includes('private'));
 });
 test('complete leading reasoning is safely excluded before strict validation',async()=>{h.reasoning=true;assert.equal((await submit()).accepted,true);});
@@ -164,6 +168,7 @@ for(const stage of ['embedding','generation'])for(const fault of ['http','envelo
   if(fault==='timeout')t.mock.method(AbortSignal,'timeout',()=>AbortSignal.abort(new DOMException('timeout','TimeoutError')));
   await rejectedUnchanged();assert.match(h.logs.at(-1).code,new RegExp(`^${stage==='embedding'?'EMB':'GEN'}_`));
   if(fault==='timeout')assert.match(h.logs.at(-1).code,/TIMEOUT$/);
+  assert.equal(h.requests.length,stage==='embedding'?1:2,'upstream failures must not retry');
 });
 for(const fault of ['rows','vector'])test(`rejects invalid embedding ${fault}`,async()=>{h.embeddingFault=fault;await rejectedUnchanged();assert.equal(h.logs.at(-1).code,'EMB_RESPONSE_INVALID');});
 
@@ -229,7 +234,7 @@ test('schema and real handler agree across all relationship/kind combinations',a
 });
 
 for(const patch of [
-  {category:'Science '},{topic:' Phase transitions'},{concept:'a  '},{memory:'xy'},
+  {memory:'xy'},
   {area:'a'.repeat(101)},{concept:'a'.repeat(101)},{memory:'a'.repeat(1001)},
   {quality:1.1},{meaningful:'true'},{evidence:'x'.repeat(501)},
   {categoryId:'CAT-SCIENCE'},{relatedMemoryId:'SAVED-MEMORY',relationship:'related'}
@@ -248,4 +253,85 @@ test('empty contexts prohibit invented references and referenced relationships',
 test('incomplete assessment fails without modifying saved data',async()=>{
   delete h.assessment.memory;await rejectedUnchanged();
   assert.equal(ajv.compile(h.schemas[0])(h.assessment),false);
+});
+
+for(const [raw,expected] of [
+  [' Science ','Science'], ['Natural\u00a0 sciences','Natural sciences'],
+  ['  Natural\t  sciences  ','Natural sciences'], ['Cafe\u0301 studies','Café studies'],
+  ['हिन्दी भाषा','हिन्दी भाषा'], ['Earth–Moon systems','Earth–Moon systems'],
+  ['Computer Science','Computer Science'], ['Physique','Physique']
+])test(`label formatting preserves meaning: ${JSON.stringify(raw)}`,async()=>{
+  h.assessment=assessment({category:raw,topic:raw});
+  assert.equal((await submit()).accepted,true);
+  const m=(await saved()).mind;
+  assert.equal(m.categories[0].name,expected);assert.equal(m.memories[0].topic,expected);
+  assert.equal(h.schemas.length,1);assert.equal(h.logs.length,0);
+  assert.equal(normalizeLabel(expected),expected);assert.equal(validLabel(expected),true);
+  assert.ok(!JSON.stringify(h.schemas[0]).includes('pattern'),'no provider-specific regex flags');
+});
+for(const [raw,reason] of [
+  [null,'TYPE'],[{},'TYPE'],[[], 'TYPE'],['','LENGTH'],['x'.repeat(61),'LENGTH'],
+  ['Science\nInstructions','FORMAT'],['Science\u200b','FORMAT'],['Science\u202e','FORMAT'],
+  ['**Science**','FORMAT'],['"Science"','FORMAT'],['Science 🧠','FORMAT']
+])test(`invalid category remains rejected: ${JSON.stringify(raw)}`,async()=>{
+  h.assessment=assessment({category:raw});await rejectedUnchanged();
+  assert.deepEqual(h.logs,[{event:'learning_failure',code:'MEMORY_CATEGORY_LABEL',reason}]);
+  assert.equal(h.schemas.length,1);
+});
+test('invalid topic gets a safe field-specific diagnostic',async()=>{
+  h.assessment=assessment({topic:42});await rejectedUnchanged();
+  assert.deepEqual(h.logs,[{event:'learning_failure',code:'MEMORY_TOPIC_LABEL',reason:'TYPE'}]);
+});
+test('base text validation remains strict without provider regex',async()=>{
+  h.assessment=assessment({concept:'a  '});await rejectedUnchanged();
+  assert.equal(h.logs[0].code,'ASSESSMENT_INVALID');assert.equal(h.schemas.length,1);
+});
+for(const field of ['categoryId','relatedMemoryId'])test(`format normalization never edits ${field}`,async()=>{
+  await seedMemory();h.assessment=assessment({category:' Science ',[field]:field==='categoryId'?' cat-science ':' saved-memory ',...(field==='relatedMemoryId'?{relationship:'related'}:{})});
+  await rejectedUnchanged('A distinct scientific observation requires exact references to existing knowledge.');
+  assert.equal(h.logs[0].code,field==='categoryId'?'MEMORY_CATEGORY_UNKNOWN':'MEMORY_REFERENCE_UNKNOWN');
+  assert.equal(h.schemas.length,1);
+});
+for(const activity of ['TEACH','DEEP_TRAINING'])test(`${activity} retries malformed output once with fresh signature and commits once`,async()=>{
+  h.generate=n=>{h.rawOutput=n===1?'malformed':undefined;};
+  const result=await app.submitInput(TEXT,activity,crypto.randomUUID());assert.equal(result.accepted,true);
+  assert.deepEqual(h.requests.map(r=>r.body.operation),['embed','assess','assess']);
+  assert.equal(new Set(h.requests.map(r=>r.body.nonce)).size,3);
+  assert.equal(h.upstream.filter(r=>r.url===env.UPSTASH_REDIS_REST_URL).length,3);
+  const m=(await saved()).mind;assert.equal(m.memories.length,1);assert.equal(m.lifetimeXP,50);
+  assert.equal(m.energy.remaining,activity==='TEACH'?8:7);assert.equal((await db.getAll('energyJournal')).length,1);
+});
+test('truncated response gets at most one fresh assessment',async()=>{
+  h.generate=n=>{h.finishReason=n===1?'length':'stop';};assert.equal((await submit()).accepted,true);
+  assert.equal(h.schemas.length,2);
+});
+test('retry consumes normal rate budget and cannot commit when limited',async()=>{
+  h.rawOutput='malformed';h.afterRequest=req=>{if(req.body.operation==='assess')h.redis=0;};
+  await rejectedUnchanged();assert.equal(h.schemas.length,1);assert.equal(h.requests.length,3);
+});
+test('cancellation suppresses retry',async()=>{
+  h.rawOutput='malformed';h.afterRequest=req=>{if(req.body.operation==='assess')app.requestAbort.abort();};
+  await rejectedUnchanged();assert.equal(h.requests.length,2);
+});
+test('retry failure never applies pending embedding migration',async()=>{
+  await seedMemory({embeddingModel:undefined,embedding:Array(768).fill(.1)});h.rawOutput='malformed';
+  await rejectedUnchanged('A distinct scientific observation must wait for successful assessment.');assert.equal(h.schemas.length,2);
+});
+test('Deep Training invalid assessment preserves all data and rewards',async()=>{
+  h.assessment=assessment({category:'**Science**'});const before=await protectedData();
+  assert.equal((await app.submitInput(TEXT,'DEEP_TRAINING',crypto.randomUUID())).accepted,false);
+  assert.deepEqual(await protectedData(),before);
+});
+
+for(const finishReason of ['content_filter','tool_calls','unknown'])test(`does not retry non-length finish reason ${finishReason}`,async()=>{
+  h.finishReason=finishReason;await rejectedUnchanged();assert.equal(h.schemas.length,1);
+  assert.deepEqual(h.logs,[{event:'learning_failure',code:'GEN_INCOMPLETE'}]);
+});
+test('normalized multilingual category survives subsequent retrieval and reuse',async()=>{
+  h.assessment=assessment({category:'  हिन्दी भाषा  '});assert.equal((await submit()).accepted,true);
+  const original=structuredClone((await saved()).mind.categories[0]);await nextActivity();
+  h.assessment=assessment({category:original.name,categoryId:original.id,memory:'Hindi is commonly written using the Devanagari script.'});
+  assert.equal((await submit('Hindi is commonly written using the Devanagari script.')).accepted,true);
+  const m=(await saved()).mind;assert.deepEqual(m.categories,[original]);assert.equal(m.memories[1].categoryId,original.id);
+  assert.deepEqual(h.requests.at(-1).body.context.categories,[original]);
 });
