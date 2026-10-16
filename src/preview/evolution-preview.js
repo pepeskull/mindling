@@ -1,3 +1,4 @@
+import { ExternalView } from '../network/external-view.js';
 import { PreviewTimeline, smooth } from "./evolution-model.js";
 import { EvolutionScene } from "./evolution-scene.js";
 import { SceneInteraction } from "../renderer/scene-interaction.js";
@@ -37,7 +38,7 @@ export class EvolutionPreview {
     this.host.innerHTML = `<div class="preview-layer preview-seed"></div><div class="preview-layer preview-growth"></div>`;
     this.sceneHost = this.host; this.seedHost = this.host.querySelector('.preview-seed'); this.growthHost = this.host.querySelector('.preview-growth');
     this.growthHost.style.opacity = '0';
-    this.interaction.connect(this.sceneHost);
+    this.interaction.connect(this.sceneHost,{onTap:event=>this.external?.tap(event)});
     let three = null;
     if (!this.forceCanvas) { try { three = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js'); } catch { /* Native Canvas fallback. */ } }
     if (this.disposed) return;
@@ -51,6 +52,7 @@ export class EvolutionPreview {
       this.view = new EvolutionScene({ interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming }); this.view.mount(this.growthHost);
       this.seed = new CanvasSeedScene(null, this.interaction, framing); this.seed.mount(this.seedHost, seedModel);
     }
+    this.external=new ExternalView(this);
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
     this.motion.addEventListener('change', this.motionChanged);
     this.observer = new ResizeObserver(this.resize); this.observer.observe(this.sceneHost);
@@ -73,6 +75,7 @@ export class EvolutionPreview {
     const right = mobile ? 8 : app.right - bounds('.right-panel').left + 12;
     const top = Math.max(header.bottom, hero.bottom) - app.top + 12;
     const bottom = Math.max(16, app.bottom - input.top + 12);
+    if(this.external)this.external.notice.style.bottom=`${bottom+4}px`;
     this.host.style.inset = `${top}px ${right}px ${bottom}px ${left}px`;
     const { width, height } = this.host.getBoundingClientRect();
     if (width === this.width && height === this.height) return;
@@ -96,18 +99,20 @@ export class EvolutionPreview {
     this.refreshNetwork();
   }
   refreshNetwork() {
+    if(this.external?.locked){this.external.refresh();return;}
     this.host.dataset.network = this.timeline.network.state;
     this.presentationState = presentationFor(this.timeline, this.view.morph);
     this.presentation.update(this.presentationState);
-    this.view.updateLabels(this.presentationState.peers);
+    this.view.updateLabels(this.presentationState.peers);this.external?.refresh();
   }
   schedule() { if (!this.disposed && !document.hidden && this.frame === null) this.frame = requestAnimationFrame(this.render); }
   render = now => {
     this.frame = null; if (this.disposed || document.hidden) return;
     const delta = this.lastTime === null ? 0 : Math.max(0, (now - this.lastTime) / 1000); this.lastTime = now; this.elapsed += delta;
+    this.external?.tick(delta);
     const ready = this.timeline.stage === 7 && this.transition === 1 && this.view.morph.progress === 1;
     const previous = this.timeline.stage; this.timeline.tick(delta); this.syncStage(); if (previous !== this.timeline.stage) this.refresh();
-    if (this.autoNetwork) this.countdown.update(delta, { stage: this.timeline.stage, transitionComplete: ready, network: this.timeline.network });
+    if (this.autoNetwork && !this.external?.locked && !this.deceased) this.countdown.update(delta, { stage: this.timeline.stage, transitionComplete: ready, network: this.timeline.network });
     this.interaction.update(delta); this.transition = Math.min(1, this.transition + delta / 1.6);
     const target = this.timeline.stage === 1 ? 1 : 0; this.seedWeight = this.seedFrom * (1 - smooth(this.transition)) + target * smooth(this.transition);
     this.seedHost.style.opacity = String(this.seedWeight); this.growthHost.style.opacity = String(1 - this.seedWeight);
@@ -122,6 +127,7 @@ export class EvolutionPreview {
     if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null;
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);
+    this.external?.destroy();
     this.modeLink?.remove();this.presentation?.destroy(); this.dashboard?.destroy();
     this.timeline.pause(); this.timeline.network.reset(); this.interaction.disconnect(); this.seed?.destroy(); this.view?.destroy();
     this.host?.replaceChildren(); this.host?.removeAttribute('style');

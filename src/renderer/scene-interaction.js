@@ -1,6 +1,9 @@
 export class SceneInteraction {
   rotation = { x: -0.08, y: -0.2 };
   zoom = 1;
+  locked = false;
+  capturePose(){return {rotation:{...this.rotation},zoom:this.zoom,targetZoom:this.#targetZoom};}
+  restorePose(pose){this.rotation={...pose.rotation};this.zoom=pose.zoom;this.#targetZoom=pose.targetZoom;}
   #targetZoom = 1;
   #host;
   #dragOrigin = null;
@@ -26,6 +29,7 @@ export class SceneInteraction {
   }
 
   #onPointerDown = (event) => {
+    if(this.locked || event.target.closest?.('button'))return;
     if (event.pointerType === "mouse" && (!event.isPrimary || event.button !== 0)) return;
     event.preventDefault();
     this.#pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, type: event.pointerType });
@@ -40,6 +44,7 @@ export class SceneInteraction {
   };
 
   #onPointerMove = (event) => {
+    if(this.locked)return;
     if (!this.#dragOrigin) { this.#onHover?.(event); return; }
     if (!this.#pointers.has(event.pointerId)) return;
     this.#pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, type: event.pointerType });
@@ -64,7 +69,7 @@ export class SceneInteraction {
     const pointer = this.#pointers.get(event.pointerId);
     this.#pointers.delete(event.pointerId);
     const tapThreshold = pointer.type === "touch" ? 10 : 6;
-    if (!this.#gestureWasPinch && this.#dragDistance < tapThreshold) this.#onTap?.(event);
+    if (!this.locked && !this.#gestureWasPinch && this.#dragDistance < tapThreshold) this.#onTap?.(event);
     if (this.#pointers.size) {
       const [id, remaining] = this.#pointers.entries().next().value;
       this.#pointerId = id; this.#dragOrigin = { x: remaining.x, y: remaining.y }; this.#pinchDistance = null; return;
@@ -84,12 +89,14 @@ export class SceneInteraction {
   #onPointerLeave = () => { if (!this.#dragOrigin) this.#onHover?.(null); };
 
   #onWheel = (event) => {
+    if(this.locked)return;
     event.preventDefault();
     const normalizedDelta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
     this.#targetZoom = Math.max(0.72, Math.min(1.48, this.#targetZoom - normalizedDelta * 0.0007));
   };
 
   update(delta) {
+    if(this.locked)return;
     const blend = 1 - Math.exp(-Math.min(delta, 0.1) * 14);
     this.zoom += (this.#targetZoom - this.zoom) * blend;
   }

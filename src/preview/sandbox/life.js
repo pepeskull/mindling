@@ -7,7 +7,6 @@ export const PREVIEW_LIFE = Object.freeze({
   decayPerHour: Object.freeze({ nutrition: 1.4, rest: 1.1, wellbeing: 1 }),
   stimulationDecay: 2,
   stabilityRecovery: .7,
-  activityCooldownHours: 2,
   stimulationGain: Object.freeze({ TALK: 12, TEACH: 20, DEEP_TRAINING: 28 })
 });
 
@@ -88,7 +87,6 @@ export function stimulatePreviewLife(life, type, now) {
   upgradePreviewLife(life);
   const rule = LIFE_RULES.activity[type];
   if (!rule) throw Error('Unknown activity');
-  if (life.lastActivity != null && now - life.lastActivity < PREVIEW_LIFE.activityCooldownHours * HOUR) throw Error('Activity cooldown: advance virtual time by two hours');
   life.stimulation = clamp(life.stimulation + PREVIEW_LIFE.stimulationGain[type]);
   life.attributes.wellbeing = clamp(life.attributes.wellbeing + rule.wellbeingGain);
   life.lastActivity = now;

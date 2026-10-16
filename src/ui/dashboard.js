@@ -59,7 +59,7 @@ export class Dashboard {
     this.#listen(document.querySelector("#mindling-input"), "blur", () => document.documentElement.classList.remove("input-active"));
   }
 
-  #listen(target, type, callback) { target.addEventListener(type, callback, { signal: this.#listeners.signal }); }
+  #listen(target, type, callback) { target.addEventListener(type, event=>{if(!this.locked)callback(event);}, { signal: this.#listeners.signal }); }
 
   showSnapshot(snapshot) {
     if (!this.#readOnly) throw new Error("Snapshot display requires a read-only dashboard");

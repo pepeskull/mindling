@@ -15,14 +15,14 @@ export function presentationFor(timeline, morph) {
   const stage = STAGES[timeline.stage - 1], preset = PRESETS[stage.number - 1];
   const network = timeline.network;
   const active = stage.number === 7 && network.state !== 'DISCONNECTED';
-  const connected = active ? network.peers.filter(p => ['CONNECTED', 'EXCHANGING'].includes(p.state) && p.link === 1).length : 0;
+  const connected = active && !network.stopping ? network.peers.filter(p => ['CONNECTED', 'EXCHANGING'].includes(p.state) && p.link === 1).length : 0;
   const social = !active ? 'Not Connected' : network.state === 'DISCONNECTING' ? 'Disconnecting'
     : connected ? `Connected · ${connected} Mindling${connected === 1 ? '' : 's'}${network.state === 'EXCHANGING' ? ' · Active' : ''}`
     : network.state === 'DISCOVERING' ? 'Discovering' : 'Connecting';
   const life = { attributes: preset.attributes, condition: conditionFor(preset.attributes), lifeState: 'ALIVE' };
   return { stage, transition: morph.progress, neurons: stage.count, synapses: morph.target.edges.length,
     memories: preset.memories, life, social, active, connected,
-    peers: network.peers.map((peer, index) => ({ name: PEER_NAMES[index], visibility: active && peer.state !== 'DISCONNECTED' ? peer.visibility * network.fade : 0 })) };
+    peers: network.peers.map((peer, index) => ({ id:peer.id,name:peer.name||'',demo:peer.demo===true,stage:peer.stage,connected:peer.stage===7&&active&&!network.stopping&&['CONNECTED','EXCHANGING'].includes(peer.state)&&peer.link===1, visibility: active && peer.state !== 'DISCONNECTED' ? peer.visibility * network.fade : 0 })) };
 }
 
 // Presentation only: no app events, gameplay objects, storage, or independent clock.

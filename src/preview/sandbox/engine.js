@@ -9,7 +9,7 @@ import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
 import { STAGES } from '../evolution-model.js';
 export const HOUR = 3600000, DAY = 24 * HOUR;
 export const RULES = Object.freeze([ [1,100,2], [2,300,4], [4,700,8], [7,1400,12], [10,2400,16], [14,3800,20], [0,0,0] ].map(([days,xp,concepts]) => Object.freeze({days,xp,concepts})));
-export const XP = Object.freeze({ concept:50, understanding:75, correction:60, daily:500, cooldown:60000 });
+export const XP = Object.freeze({ concept:50, understanding:75, correction:60, daily:500 });
 export class VirtualClock {
   constructor(now) { if (!Number.isSafeInteger(now) || now < 0) throw Error('Invalid virtual time'); this.now=now; }
   advance(hours) { if (![1,12,24,168].includes(hours)) throw Error('Unsupported time step'); this.now+=hours*HOUR; return this.now; }
@@ -46,7 +46,6 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH'}) {
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
   const a=analyzeNative(text,m);
   if(a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
-  if(m.lastLearning!==null && state.now-m.lastLearning<XP.cooldown)throw Error('Learning cooldown: advance virtual time');
   const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=XP[a.kind];
   if(earned+award>XP.daily)throw Error('Daily XP limit reached');
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
@@ -82,7 +81,6 @@ export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity
   if(typeof text!=='string'||text.length>2000||!key)throw Error('Invalid learning text');
   const memory=m.memories.find(v=>v.id===memoryId);
   if(!memory||memory.supersededBy)throw Error('This historical memory has been corrected. Teach the current knowledge instead.');
-  if(m.lastLearning!==null && state.now-m.lastLearning<XP.cooldown)throw Error('Learning cooldown is still active');
   if((m.activityHistory||[]).some(e=>e.key===key&&state.now-e.at<DAY))throw Error('Already learned. This input was reinforced today.');
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
   const day=Math.floor(state.now/DAY),cost=LIFE_RULES.activity[activity].energyCost,energy=m.energy.day===day?m.energy.remaining:10;
@@ -98,15 +96,16 @@ export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity
   n.nativeKnowledge=developmentStatistics(n.memories);
   return next;
 }
-export function talk(state,text) {
+export function talk(state,text,{id=crypto.randomUUID()}={}) {
   const m=state.mind,key=normalize(text);
   if(!m||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
+  if(typeof id!=='string'||!id||id.length>100||m.processed.includes(id)||m.memories.some(v=>v.id===id))throw Error('Activity event already processed or invalid');
   if(typeof text!=='string'||text.length>2000||key.length<20||new Set(key.split(' ')).size<4)throw Error('Share a meaningful thought of at least four words');
   if((m.activityHistory||[]).some(e=>e.key===key&&state.now-e.at<DAY))throw Error('Share a different thought; repeated input earns no stimulation today');
   const day=Math.floor(state.now/DAY),energy=m.energy.day===day?m.energy.remaining:10;
   if(energy<1)throw Error('Not enough Energy; next virtual day restores free Energy');
   const next=structuredClone(state),n=next.mind;
-  stimulatePreviewLife(n.life,'TALK',next.now);n.energy={day,remaining:energy-1};
+  stimulatePreviewLife(n.life,'TALK',next.now);n.processed.push(id);n.energy={day,remaining:energy-1};
   n.activityHistory=[...(n.activityHistory||[]),{at:next.now,key,type:'TALK'}].slice(-200);
   const recalled=retrieveMemories(text,n.memories);
   n.nativeRecall={at:next.now,memoryIds:recalled.map(item=>item.memory.id),method:'lexical',verification:'unverified-player-claims'};

@@ -1,3 +1,4 @@
+import { DEMO_NODES, eligible } from '../network/public-network.js';
 import { neuralSeedRecords } from "../brain/neural-seed-state.js";
 import { seededValue } from "../renderer/neural-morphology.js";
 
@@ -10,7 +11,7 @@ export const STAGES = Object.freeze([
   ["Autonomous Mind", 196, "An intricate, connected internal architecture."],
   ["Agent Mind", 240, "A developed mind. Explore simulated neural exchange."]
 ].map(([name, count, description], index) => Object.freeze({ number: index + 1, name, count, description })));
-export const BUDGET = Object.freeze({ neurons: 240, edges: 960, remoteBrains: 3, remoteNeurons: 36, impulses: 30, curveSteps: 8 });
+export const BUDGET = Object.freeze({ neurons: 240, edges: 960, remoteBrains: 3, remoteNeurons: 96, impulses: 30, curveSteps: 8 });
 export const AMELIA_STATUS = "PENDING AUTHORIZATION";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
@@ -66,16 +67,23 @@ export function generateStage(stage, seed = 17) {
 export const NETWORK_STATES = Object.freeze(["DISCONNECTED", "DISCOVERING", "CONNECTING", "CONNECTED", "EXCHANGING", "DISCONNECTING"]);
 export class NetworkSimulation {
   state = "DISCONNECTED"; elapsed = 0; fade = 0; stopping = false;
-  peers = Array.from({ length: 3 }, () => ({ state: "DISCONNECTED", visibility: 0, link: 0, outgoing: -1, incoming: -1, reaction: 0 }));
-  start() { if (this.state !== "DISCONNECTED") return; this.elapsed = 0; this.fade = 1; this.state = "DISCOVERING"; }
+  ownerStage = 1;
+  peers = DEMO_NODES.map(node => ({ ...node, state: "DISCONNECTED", visibility: 0, link: 0, outgoing: -1, incoming: -1, reaction: 0 }));
+  configure(stage,nodes=DEMO_NODES) {
+    this.ownerStage=stage;this.reset();
+    this.peers=Array.from({length:BUDGET.remoteBrains},(_,i)=>({...(eligible(nodes[i])?nodes[i]:{id:null,stage:null}),state:'DISCONNECTED',visibility:0,link:0,outgoing:-1,incoming:-1,reaction:0}));
+  }
+  start() { if (this.ownerStage!==7 || !this.peers.some(eligible) || this.state !== "DISCONNECTED") return false; this.elapsed = 0; this.fade = 1; this.state = "DISCOVERING"; }
   stop() { if (this.state === "DISCONNECTED" || this.stopping) return; this.stopping = true; this.state = "DISCONNECTING"; }
   reset() { this.state = "DISCONNECTED"; this.elapsed = 0; this.fade = 0; this.stopping = false; for (const p of this.peers) Object.assign(p, { state: "DISCONNECTED", visibility: 0, link: 0, outgoing: -1, incoming: -1, reaction: 0 }); }
   tick(delta) {
+    if (this.ownerStage!==7){this.reset();return;}
     if (this.state === "DISCONNECTED") return;
     if (this.stopping) { this.fade = Math.max(0, this.fade - delta / 1.2); if (!this.fade) this.reset(); return; }
     this.elapsed += delta;
     let activeState = "EXCHANGING";
     this.peers.forEach((p, index) => {
+      if(!eligible(p)){p.visibility=0;p.link=0;p.state="DISCONNECTED";return;}
       const t = this.elapsed - index * 4.5;
       p.visibility = smooth(t / 1.2); p.link = smooth((t - 3.5) / .8); p.outgoing = -1; p.incoming = -1; p.reaction = 0;
       if (t < 0) p.state = "DISCONNECTED";
@@ -91,7 +99,7 @@ export class NetworkSimulation {
 
 export class PreviewTimeline {
   stage = 1; playing = false; age = 0; network = new NetworkSimulation();
-  select(stage) { if (!Number.isInteger(stage) || stage < 1 || stage > 7) throw new RangeError("Invalid stage"); this.stage = stage; this.age = 0; this.network.reset(); if (stage === 7) this.playing = false; }
+  select(stage) { if (!Number.isInteger(stage) || stage < 1 || stage > 7) throw new RangeError("Invalid stage"); this.stage = stage; this.age = 0; this.network.configure(stage); if (stage === 7) this.playing = false; }
   previous() { this.select(Math.max(1, this.stage - 1)); }
   next() { this.select(Math.min(7, this.stage + 1)); }
   play() { this.playing = this.stage < 7; }

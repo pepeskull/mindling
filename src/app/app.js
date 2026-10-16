@@ -1,7 +1,8 @@
 import { EvolutionPreview } from '../preview/evolution-preview.js';
+import { AutomaticNetworkCountdown } from '../preview/automatic-playback.js';
 import { STAGES } from '../preview/evolution-model.js';
 import { learn, talk, visualMapping } from '../preview/sandbox/engine.js';
-import { carePreview, PREVIEW_LIFE } from '../preview/sandbox/life.js';
+import { carePreview } from '../preview/sandbox/life.js';
 import { LIFE_RULES } from '../life/life-system.js';
 import { MindlingDatabase } from '../storage/database.js';
 import { Onboarding } from '../ui/onboarding.js';
@@ -12,7 +13,7 @@ import { advanceGameplay, progressGameplay, createGameplayMindling, dashboardLif
 // Share rendering and pure gameplay rules, never preview fixtures, time or wallets.
 export class MindlingApp extends EvolutionPreview {
   constructor() {
-    super({ interactive: true, autoPlay: false, autoNetwork: false, snapshotProvider: null });
+    super({ interactive: true, autoPlay: false, autoNetwork: true, snapshotProvider: null });
     this.db = new MindlingDatabase(); this.listeners = new AbortController();
     this.dashboardOptions = {
       onInput: (text, activity, id) => this.submitInput(text, activity, id),
@@ -38,6 +39,7 @@ export class MindlingApp extends EvolutionPreview {
     this.dashboard.setStorageStatus(true);
     this.interaction.connect(this.host, {
       onTap: event => {
+        if(this.external?.tap(event))return;
         if (!this.state.mind) return;
         const hit = this.timeline.stage === 1 ? this.seed.selectAt(event) : { type: 'neuron', id: this.view.pickCanonical(event) };
         if (!hit?.id) return;
@@ -55,13 +57,16 @@ export class MindlingApp extends EvolutionPreview {
   }
 
   async change(reducer = state => state, options = {}) {
-    const state = await this.db.changeGameplay(s => progressGameplay(reducer(advanceGameplay(s))), options);
-    if (!this.disposed) { this.state = state; this.renderState(); }
-    return state;
+    this.external?.assertWritable();this.pendingMutations=(this.pendingMutations||0)+1;
+    try {
+      const state = await this.db.changeGameplay(s => {this.external?.assertWritable();return progressGameplay(reducer(advanceGameplay(s)));}, options);
+      if (!this.disposed) { this.state = state; this.renderState(); }
+      return state;
+    } finally { this.pendingMutations--; }
   }
 
   async refreshState() {
-    if (this.disposed) return;
+    if (this.disposed || this.external?.locked) return;
     try { await this.change(); } catch { if (!this.disposed) this.dashboard.setStorageStatus(false); }
   }
 
@@ -74,11 +79,10 @@ export class MindlingApp extends EvolutionPreview {
       if (!rule) throw Error('Unknown activity');
       if (m.energy.remaining < rule.energyCost) return { accepted: false, reason: 'OUT_OF_ENERGY' };
       if (typeof text !== 'string' || text.length > 2000) throw Error('Share a short, readable claim.');
-      if (m.life.lastActivity != null && this.state.now - m.life.lastActivity < PREVIEW_LIFE.activityCooldownHours * 3600000) throw Error('Activity cooldown: try again two hours after your last activity.');
       if (activity === 'TALK') {
         await this.change(s => {
           if (s.mind?.id !== m.id) throw Error('Mindling identity changed. Submit again.');
-          return talk(s, text);
+          return talk(s, text, {id});
         }, { journal: { id, type: activity } });
       } else {
         if (this.disposed) return { accepted: false, reason: 'APPLICATION_CLOSED' };
@@ -98,7 +102,7 @@ export class MindlingApp extends EvolutionPreview {
       return { accepted: true, message: memory ? `Related stored claim (unverified): ${String(memory.content).slice(0,240)}` : 'Thought shared locally. No related stored claim found.' };
     } catch (error) {
       if (!this.disposed) await this.refreshState();
-      return { accepted: false, reason: 'ACTIVITY_UNAVAILABLE', message: error.message?.replace('Activity cooldown: advance virtual time by two hours', 'Activity cooldown: try again two hours after your last activity.').replaceAll('virtual time', 'time').replaceAll('virtual day', 'UTC day').replaceAll('test Mindling', 'Mindling').replace('Sandbox memory capacity', 'Local memory capacity') || 'Activity is unavailable. No Energy or rewards changed.' };
+      return { accepted: false, reason: 'ACTIVITY_UNAVAILABLE', message: error.message?.replaceAll('virtual time', 'time').replaceAll('virtual day', 'UTC day').replaceAll('test Mindling', 'Mindling').replace('Sandbox memory capacity', 'Local memory capacity') || 'Activity is unavailable. No Energy or rewards changed.' };
     }
   }
 
@@ -108,6 +112,7 @@ export class MindlingApp extends EvolutionPreview {
   }
 
   showOnboarding() {
+    this.external?.assertWritable();
     this.dashboard.hide();
     this.onboarding = new Onboarding(document.querySelector('#onboarding'), async draft => {
       const identity = await createLocalIdentity();
@@ -125,10 +130,10 @@ export class MindlingApp extends EvolutionPreview {
   }
 
   renderState() {
-    if (!this.view || !this.dashboard || !this.state.mind) return;
+    if (this.external?.locked || !this.view || !this.dashboard || !this.state.mind) return;
     const m = this.state.mind;
     this.deceased = m.life.lifeState === 'DECEASED';
-    if (this.identityId !== m.id) { this.identityId = m.id; this.timeline.network.reset(); this.view.selectedCanonical = null; }
+    if (this.identityId !== m.id) { this.identityId = m.id; this.countdown = new AutomaticNetworkCountdown(); this.timeline.network.reset(); this.view.selectedCanonical = null; }
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);
     this.seed.update({ nodes: m.nodes.slice(0, 5), synapses: m.synapses.slice(0, 4) });
@@ -153,7 +158,11 @@ export class MindlingApp extends EvolutionPreview {
     document.querySelector('.life-panel').title = 'Life System 2.0';
   }
 
-  refreshNetwork() { if (this.host) this.host.dataset.network = 'DISCONNECTED'; }
+  refreshNetwork() {
+    if(this.deceased)this.timeline.network.reset();
+    this.external?.refresh();
+    if(!this.external?.locked){const n=this.timeline.network;document.querySelector('.social-status em').textContent=n.state==='DISCONNECTED'?'Not Connected':'Demo network · '+n.state.toLowerCase();}
+  }
 
   destroy() {
     if (this.disposed) return;
