@@ -5,7 +5,7 @@ import { NetworkSimulation, PreviewTimeline } from '../src/preview/evolution-mod
 import { readDashboardSnapshot } from '../src/preview/dashboard-snapshot.js';
 
 test('countdown waits for the actual final morph, then starts once after five seconds', () => {
-  const c = new AutomaticNetworkCountdown(), n = new NetworkSimulation();
+  const c = new AutomaticNetworkCountdown(), n = new NetworkSimulation(); n.configure(7);
   c.update(99,{stage:6,transitionComplete:true,network:n});assert.equal(c.remaining,5);
   c.update(99,{stage:7,transitionComplete:false,network:n});assert.equal(c.remaining,5);
   c.update(4.99,{stage:7,transitionComplete:true,network:n});assert.equal(n.state,'DISCONNECTED');

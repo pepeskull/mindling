@@ -4,8 +4,9 @@ import { BUDGET, generateStage, Morphology, smooth } from "./evolution-model.js"
 import { previewFraming, morphologyRadius } from '../renderer/scene-framing.js';
 
 const COLORS = [0x9bd5c5, 0x7daebe, 0xb7c9de, 0x9abfcb, 0xc0b3d2, 0x9bd1ba];
-const REMOTE_CENTERS = [[-3.05, .45, 0], [2.85, 1.15, -.4], [2.65, -1.4, .2]];
-const MAX_SEGMENTS = BUDGET.edges * BUDGET.curveSteps + BUDGET.neurons * 18 + 2048;
+export const REMOTE_SCALE = .32;
+export const REMOTE_CENTERS = [[-3.05, .45, 0], [2.85, 1.15, -.4], [2.65, -1.4, .2]];
+const MAX_SEGMENTS = BUDGET.edges * BUDGET.curveSteps + BUDGET.neurons * 18 + BUDGET.remoteBrains * 4096;
 const MAX_NODES = BUDGET.neurons + BUDGET.remoteBrains * BUDGET.remoteNeurons;
 
 function curve(out, offset, ax, ay, az, bx, by, bz, t, bend) {
@@ -16,7 +17,7 @@ function curve(out, offset, ax, ay, az, bx, by, bz, t, bend) {
 }
 
 // Bounded shared render buffers: both backends display the same morphology and protocol.
-class RenderBuffers {
+export class RenderBuffers {
   positions = new Float32Array(MAX_NODES * 3);
   radii = new Float32Array(MAX_NODES);
   regions = new Uint8Array(MAX_NODES);
@@ -24,7 +25,13 @@ class RenderBuffers {
   networkLines = new Float32Array(3 * 32 * 6);
   pulses = new Float32Array(BUDGET.impulses * 3);
   pulseCount = 0; segmentCount = 0; networkCount = 0;
-  remote = REMOTE_CENTERS.map((center, i) => ({ center, shape: generateStage(7, 107 + i * 83) }));
+  // One Agent Mind template shared by all peers and both renderers.
+  agent = generateStage(7);
+  remote = REMOTE_CENTERS.map(center => ({center,shape:this.agent,
+    contours:this.agent.contours.map(contour=>contour.map(position=>position.map((v,axis)=>center[axis]+v*REMOTE_SCALE)))
+  }));
+  remoteIndices = Array.from({length:BUDGET.remoteNeurons},(_,i)=>Math.floor(i*this.agent.nodes.length/BUDGET.remoteNeurons));
+  remoteLookup = new Map(this.remoteIndices.map((source,index)=>[source,index]));
   scratch = new Float32Array(6);
 
   rebuild(morph) {
@@ -59,6 +66,7 @@ class RenderBuffers {
     }
   }
   segment(ax, ay, az, bx, by, bz) {
+    if(this.segmentCount>=MAX_SEGMENTS)return;
     const k = this.segmentCount++ * 6;
     this.lines[k] = ax; this.lines[k + 1] = ay; this.lines[k + 2] = az; this.lines[k + 3] = bx; this.lines[k + 4] = by; this.lines[k + 5] = bz;
   }
@@ -77,20 +85,32 @@ class RenderBuffers {
       const k = a * 3, j = b * 3;
       curve(this.pulses, this.pulseCount++ * 3, this.positions[k], this.positions[k + 1], this.positions[k + 2], this.positions[j], this.positions[j + 1], this.positions[j + 2], (elapsed / 3 + i / 7) % 1, .13 + (a % 4) * .055);
     }
-    this.remote.forEach(({ center, shape }, index) => {
-      const peer = network.peers[index], visibility = peer.visibility * network.fade;
+    this.remote.forEach(({ center, shape, contours }, index) => {
+      const peer = network.peers[index], visibility = morph.stage===7&&peer.stage===7 ? peer.visibility * network.fade : 0;
       const start = BUDGET.neurons + index * BUDGET.remoteNeurons;
       for (let i = 0; i < BUDGET.remoteNeurons; i++) {
-        const node = shape.nodes[Math.floor(i / 2) * 12 + i % 2], k = (start + i) * 3;
-        for (let a = 0; a < 3; a++) this.positions[k + a] = center[a] + node.position[a] * .32;
+        const node = shape.nodes[this.remoteIndices[i]], k = (start + i) * 3;
+        for (let a = 0; a < 3; a++) this.positions[k + a] = center[a] + node.position[a] * REMOTE_SCALE;
         const activity = reduced ? 1 : 1 + .12 * Math.sin(elapsed * 2 + i * .4) + peer.reaction * .35;
-        this.radii[start + i] = .025 * visibility * activity; this.regions[start + i] = (index * 2 + 1) % 6;
+        this.radii[start + i] = node.radius * REMOTE_SCALE * visibility * activity; this.regions[start + i] = node.region;
       }
       if (!visibility) return;
-      // All remote circuits are bounded, deterministic, and entirely temporary.
-      for (let i = 1; i < BUDGET.remoteNeurons; i++) {
-        const a = (start + i) * 3, b = (start + Math.floor((i - 1) / 2)) * 3;
-        this.path(this.positions[a], this.positions[a + 1], this.positions[a + 2], this.positions[b], this.positions[b + 1], this.positions[b + 2], .02, visibility);
+      // Same cortex contours, regional somas and original neural edges at bounded LOD.
+      const point = position => position.map((value,axis)=>center[axis]+value*REMOTE_SCALE);
+      for(const contour of contours)for(let i=1;i<contour.length;i++){
+        const a=contour[i-1],b=contour[i];this.segment(...a,a[0]+(b[0]-a[0])*visibility,a[1]+(b[1]-a[1])*visibility,a[2]+(b[2]-a[2])*visibility);
+      }
+      for(const [source,target] of shape.edges){
+        const a=this.remoteLookup.get(source),b=this.remoteLookup.get(target);if(a===undefined||b===undefined)continue;
+        const k=(start+a)*3,j=(start+b)*3;
+        this.path(...this.positions.subarray(k,k+3),...this.positions.subarray(j,j+3),(.13+(source%4)*.055)*REMOTE_SCALE,visibility);
+      }
+      for(let i=0;i<BUDGET.remoteNeurons;i++){
+        const node=shape.nodes[this.remoteIndices[i]],a=point(node.position),length=node.radius*REMOTE_SCALE*4.19*visibility;
+        for(let branch=0;branch<3;branch++){
+          const angle=branch/3*Math.PI*2+seededValue(this.remoteIndices[i]*31+branch);
+          this.segment(...a,a[0]+Math.cos(angle)*length,a[1]+Math.sin(angle)*length,a[2]+length*.2);
+        }
       }
       const length = peer.link * network.fade;
       for (let s = 0; s < 32 && length > 0; s++) {
@@ -105,6 +125,7 @@ class RenderBuffers {
 
 export class EvolutionScene {
   constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage, fitDashboard = false, originalFraming = false } = {}) {
+    this.focus=[0,0,0];this.focusScale=1;
     this.fitDashboard = fitDashboard; this.three = three; this.interaction = interaction; this.reduced = reduced;
     this.useSharedFraming = fitDashboard && !originalFraming;
     this.morph = new Morphology(17, provider); this.buffers = new RenderBuffers(); this.centralSegments = 0;
@@ -161,7 +182,8 @@ export class EvolutionScene {
     const b = this.buffers;
     this.root.rotation.set(this.interaction.rotation.x, this.interaction.rotation.y, 0);
     const framing = this.width < this.height ? Math.min(1, this.width / this.height * 1.3) : 1;
-    this.root.scale.setScalar((this.useSharedFraming?this.framing.zoom:this.interaction.zoom*framing) * (this.reduced ? 1 : 1 + .008 * Math.sin(elapsed)));
+    this.root.scale.setScalar(this.focusScale*(this.useSharedFraming?this.framing.zoom:this.interaction.zoom*framing) * (this.reduced ? 1 : 1 + .008 * Math.sin(elapsed)));
+    const shift=new this.three.Vector3(...this.focus).applyEuler(this.root.rotation).multiplyScalar(-this.root.scale.x);this.root.position.copy(shift);
     for (let i = 0; i < MAX_NODES; i++) {
       this.matrix.position.fromArray(b.positions, i * 3); this.matrix.scale.setScalar(b.radii[i]); this.matrix.updateMatrix(); this.soma.setMatrixAt(i, this.matrix.matrix);
       this.color.setHex(this.selectedCanonical && this.canonicalMapping?.[i] === this.selectedCanonical ? 0xffffff : COLORS[b.regions[i]]); this.soma.setColorAt(i, this.color);
@@ -174,9 +196,10 @@ export class EvolutionScene {
   }
   project(array, k, out, offset = 0) {
     const ry = this.interaction.rotation.y, rx = this.interaction.rotation.x;
-    const x = array[k] * Math.cos(ry) + array[k + 2] * Math.sin(ry), z = -array[k] * Math.sin(ry) + array[k + 2] * Math.cos(ry);
-    const y = array[k + 1] * Math.cos(rx) - z * Math.sin(rx);
-    const scale = this.useSharedFraming ? this.framing.unit * this.framing.zoom : Math.min(this.width / 7.8, this.height / 5.3) * this.interaction.zoom;
+    const ax=array[k]-this.focus[0],ay=array[k+1]-this.focus[1],az=array[k+2]-this.focus[2];
+    const x = ax * Math.cos(ry) + az * Math.sin(ry), z = -ax * Math.sin(ry) + az * Math.cos(ry);
+    const y = ay * Math.cos(rx) - z * Math.sin(rx);
+    const scale = this.focusScale*(this.useSharedFraming ? this.framing.unit * this.framing.zoom : Math.min(this.width / 7.8, this.height / 5.3) * this.interaction.zoom);
     out[offset] = this.width / 2 + x * scale; out[offset + 1] = this.height / 2 - y * scale;
     return scale;
   }
@@ -229,26 +252,34 @@ export class EvolutionScene {
       const k = (BUDGET.neurons + index * BUDGET.remoteNeurons + i) * 3;
       top = Math.min(top, project(this.buffers.positions.subarray(k, k + 3)).y);
     }
-    return { x: center.x, y: top - 9, visible: center.visible };
+    return { x: center.x, y: top - 9,centerY:center.y,radius:Math.max(18,center.y-top), visible: center.visible };
+  }
+  pickPeer(event) {
+    const rect=this.canvas.getBoundingClientRect(),x=(event.clientX-rect.left)*this.width/rect.width,y=(event.clientY-rect.top)*this.height/rect.height;
+    return this.labelPeers?.find((peer,index)=>{
+      if(!peer.connected||peer.visibility<.99)return false;
+      const p=this.projectRemote(index);return p.visible&&Math.hypot(x-p.x,y-p.centerY)<=p.radius;
+    })?.id || null;
   }
   updateLabels(peers) {
-    if (!this.labels) this.labels = peers.map(peer => {
-      const label = document.createElement('span'); label.className = 'preview-peer-label'; label.textContent = peer.name;
-      label.hidden = true; this.host.append(label); return label;
+    this.labelPeers=peers;
+    if (!this.labels) this.labels = Array.from({length:BUDGET.remoteBrains},(_,index) => {
+      const label=document.createElement('button');label.type='button';label.className='preview-peer-label';
+      label.addEventListener('click',event=>{event.stopPropagation();const peer=this.labelPeers[index];if(peer?.connected)this.onVisit?.(peer.id);});
+      label.hidden=true;this.host.append(label);return label;
     });
-    const placed = [];
-    peers.forEach((peer, index) => {
-      const label = this.labels[index];
-      if (peer.visibility <= .01) { label.hidden = true; return; }
-      const anchor = this.projectRemote(index);
-      label.hidden = !anchor.visible || anchor.x < 0 || anchor.x > this.width || anchor.y < 0 || anchor.y > this.height;
-      if (label.hidden) return;
-      const half = label.offsetWidth / 2;
-      const x = Math.max(half, Math.min(this.width - half, anchor.x));
-      let y = Math.max(20, anchor.y);
-      for (const other of placed) if (Math.abs(x - other.x) < half + other.half + 4 && Math.abs(y - other.y) < 22) y = other.y - 22;
-      placed.push({ x, y, half });
-      label.style.left = `${x}px`; label.style.top = `${y}px`; label.style.opacity = String(peer.visibility);
+    const placed=[];
+    this.labels.forEach((label,index)=>{
+      const peer=peers[index];
+      label.textContent=peer?.name||'';label.disabled=!peer?.connected||Boolean(this.interaction.locked);
+      label.setAttribute('aria-label',`Visit ${peer?.name||'Mindling'} — Agent Mind${peer?.demo?', demo network':''}`);
+      if(!peer||peer.visibility<=.01){label.hidden=true;return;}
+      const anchor=this.projectRemote(index);
+      label.hidden=!anchor.visible||anchor.x<0||anchor.x>this.width||anchor.y<0||anchor.y>this.height;
+      if(label.hidden)return;
+      const half=label.offsetWidth/2,x=Math.max(half,Math.min(this.width-half,anchor.x));let y=Math.max(20,anchor.y);
+      for(const other of placed)if(Math.abs(x-other.x)<half+other.half+4&&Math.abs(y-other.y)<22)y=other.y-22;
+      placed.push({x,y,half});label.style.left=`${x}px`;label.style.top=`${y}px`;label.style.opacity=String(peer.visibility);
     });
   }
   destroy() {

@@ -22,7 +22,8 @@ test('Life 2.0 stability recovers hourly, neither care nor activities instantly 
   for(const type of ['NOURISH','REST','CARE'])s=carePreview(s,type);
   s=talk(s,'I have been thinking about how living systems recover.');
   assert.equal(s.mind.life.attributes.neuralStability,old);assert.throws(()=>carePreview(s,'NOURISH'),/cooldown/);
-  assert.throws(()=>talk(s,'Another interesting thought about living systems.'),/cooldown/);
+  const immediate=talk(s,'Another interesting thought about living systems.');
+  assert.equal(immediate.mind.energy.remaining,s.mind.energy.remaining-1);assert.equal(immediate.mind.life.attributes.neuralStability,old);
   for(let i=0;i<3;i++){s=advanceTime(advanceTime(s,1),1);s=talk(s,`I have a different meaningful thought about recovery number ${i}.`);}
   const before=s.mind.life.attributes.neuralStability;const next=advanceTime(s,1);assert.ok(next.mind.life.attributes.neuralStability>before);assert.ok(next.mind.life.attributes.neuralStability<100);
 });

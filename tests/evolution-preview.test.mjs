@@ -59,7 +59,7 @@ test('previous, next, play, pause, restart, direct selection and five-second pla
   assert.throws(() => p.select(NaN),RangeError);
 });
 test('network discovery, outgoing handshake, acknowledgement, connection and bidirectional exchange', () => {
-  const n = new NetworkSimulation(), states = new Set([n.state]); n.start(); states.add(n.state);
+  const n = new NetworkSimulation(), states = new Set([n.state]); n.configure(7); n.start(); states.add(n.state);
   n.tick(1.6); states.add(n.state); assert.equal(n.peers[0].state,'CONNECTING'); assert.ok(n.peers[0].outgoing>0); assert.equal(n.peers[0].incoming,-1); assert.equal(n.peers[0].link,0);
   n.tick(1); assert.ok(n.peers[0].incoming>0); assert.equal(n.peers[0].outgoing,-1); assert.ok(n.peers[0].reaction>0); assert.equal(n.peers[0].link,0);
   n.tick(1); states.add(n.state); assert.equal(n.peers[0].state,'CONNECTED'); assert.ok(n.peers[0].link>0);
@@ -74,12 +74,12 @@ test('leaving Agent Mind removes all temporary peers and links', () => {
   const p = new PreviewTimeline(); p.select(7); p.network.start(); p.tick(15); p.previous();
   assert.equal(p.network.state,'DISCONNECTED'); assert.ok(p.network.peers.every(x => x.visibility===0));
 });
-test('both render backends share bounded buffers and deterministic distinct remote brains', () => {
+test('both render backends share bounded buffers and one shared Agent Mind morphology for remote brains', () => {
   const view = new EvolutionScene(); const { buffers:b, morph:m } = view;
   m.select(7,true); b.rebuild(m); const central = b.segmentCount;
-  const n = new NetworkSimulation(); n.start(); n.tick(15);
+  const n = new NetworkSimulation(); n.configure(7); n.start(); n.tick(15);
   for (let i=0;i<100;i++) { b.segmentCount=central; b.animate(m,n,i/10,false); assert.ok(b.segmentCount*6 <= b.lines.length); assert.ok(b.networkCount*6<=b.networkLines.length); assert.ok(b.pulseCount<=BUDGET.impulses); }
-  assert.equal(b.remote.length,3); assert.notDeepEqual(b.remote[0].shape.nodes,b.remote[1].shape.nodes);
+  assert.equal(b.remote.length,3); assert.equal(b.remote[0].shape,b.remote[1].shape); assert.deepEqual(b.remote[0].shape.nodes,generateStage(7).nodes);
   b.segmentCount=central; b.animate(m,n,1,true); assert.equal(b.pulseCount,0);
   n.reset(); b.segmentCount=central; b.animate(m,n,1,false); assert.equal(b.networkCount,0); assert.ok(b.radii.slice(BUDGET.neurons).every(r=>r===0));
 });
