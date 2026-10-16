@@ -1,6 +1,8 @@
-import { EMBEDDING_MODEL, validEmbedding, memorySimilarity } from '../../semantic/embeddings.js';
-import { normalize, exactMemory, INTELLIGENCE_FIELDS, validateMemoryAssessment, assignCategory } from '../../semantic/memory-intelligence.js';
-export { normalize } from '../../semantic/memory-intelligence.js';
+import { analyzeNative } from '../../learning/native-learning.js';
+import { normalize } from '../../learning/text.js';
+import { assignCategory } from '../../semantic/memory-intelligence.js';
+import { developmentStatistics, retrieveMemories } from '../../learning/knowledge.js';
+export { normalize } from '../../learning/text.js';
 import { advancePreviewLife, stimulatePreviewLife, upgradePreviewLife } from './life.js';
 import { LIFE_RULES } from '../../life/life-system.js';
 import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
@@ -37,35 +39,14 @@ export function evolve(state) {
   m.stage++;m.enteredAt=next.now;m.stageXP=0;m.milestones=[];return next;
 }
 export function cosine(a,b) { if(!a?.length||!b?.length||a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return x&&y?dot/Math.sqrt(x*y):-1; }
-export function validateAssessment(a, { embeddingRequired = true } = {}) {
-  const keys=['meaningful','duplicate','quality','concept','memory','area','kind','embedding'];
-  if(!embeddingRequired)keys.splice(keys.indexOf('embedding'),1);
-  if(a?.embeddingModel !== undefined){keys.push('embeddingModel');if(a.embeddingModel!==EMBEDDING_MODEL)throw Error('Invalid embedding model');}
-  if(a && INTELLIGENCE_FIELDS.some(key => key in a)){keys.push(...INTELLIGENCE_FIELDS);validateMemoryAssessment(a);}
-  if(!a || Object.keys(a).sort().join()!==keys.sort().join() || typeof a.meaningful!=='boolean' || typeof a.duplicate!=='boolean' || !Number.isFinite(a.quality) || a.quality<0 || a.quality>1 || !['concept','understanding','correction'].includes(a.kind)) throw Error('Invalid learning assessment');
-  for(const key of ['concept','memory','area'])if(typeof a[key]!=='string'||a[key].trim().length<3||a[key].length>(key==='memory'?1000:100))throw Error('Invalid learning text');
-  if(embeddingRequired && (a.embeddingModel ? !validEmbedding(a.embedding) : !Array.isArray(a.embedding)||a.embedding.length<8||a.embedding.length>768||a.embedding.some(v=>!Number.isFinite(v)||Math.abs(v)>100)||!a.embedding.some(v=>v!==0)))throw Error('Invalid semantic vector');
-  return a;
-}
-export function learn(state,{id,text,assessment,source='fixture',mindId=state.mind?.id,activity='TEACH',context}) {
-  validateAssessment(assessment);
-  const m=state.mind,a=assessment,key=normalize(text);
-  if(a.relationship){
-    validateMemoryAssessment(a,context,text);
-    if(a.relatedMemoryId && !m?.memories.some(v=>v.id===a.relatedMemoryId && !v.supersededBy))throw Error('Memory changed. Submit again.');
-    if(['repeated','corrective'].includes(a.relationship) && context?.memories.find(v=>v.id===a.relatedMemoryId)?.content!==m?.memories.find(v=>v.id===a.relatedMemoryId)?.content)throw Error('A full memory is required for this comparison. Existing knowledge is unchanged.');
-    if(a.categoryId && !m?.categories?.some(c=>c.id===a.categoryId))throw Error('Category changed. Submit again.');
-    if(a.relationship==='uncertain')throw Error('The correction could not be verified. Existing knowledge is unchanged.');
-    if(a.meaningful && a.quality>=.75 && a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity,assessment:a});
-  }
+// Native analysis runs synchronously inside the caller's existing IndexedDB transaction.
+export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH'}) {
+  const m=state.mind,key=normalize(text);
   if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
-  if(typeof text!=='string'||text.length>2000||key.length<20||new Set(key.split(' ')).size<4||!a.meaningful||a.duplicate||a.quality<.75)throw Error('Meaningful new learning is required');
+  const a=analyzeNative(text,m);
+  if(a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
   if(m.lastLearning!==null && state.now-m.lastLearning<XP.cooldown)throw Error('Learning cooldown: advance virtual time');
-  const exact=exactMemory(m.memories,text);
-  if(exact)return reinforce(state,{id,text,memoryId:exact.id,mindId,activity});
-  // Similarity retrieves related concepts; it is not proof of factual equivalence.
-  if(!a.relationship && m.memories.some(v=>memorySimilarity(v,a)>=.88))throw Error('Known or semantically duplicate knowledge');
   const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=XP[a.kind];
   if(earned+award>XP.daily)throw Error('Daily XP limit reached');
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
@@ -73,7 +54,7 @@ export function learn(state,{id,text,assessment,source='fixture',mindId=state.mi
   const energy=m.energy.day===day?m.energy.remaining:10;if(energy<cost)throw Error('Not enough Energy; next virtual day restores free Energy');
   if(m.memories.length>=1000)throw Error('Sandbox memory capacity reached');
   const next=structuredClone(state),n=next.mind;stimulatePreviewLife(n.life,activity,next.now);n.energy={day,remaining:energy-cost};n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);n.milestones.push(a.concept);
-  n.history.push({id,day,at:next.now,xp:award,kind:a.kind,source,concept:a.concept});
+  n.history.push({id,day,at:next.now,xp:award,kind:a.kind,source:'NATIVE',concept:a.concept});
   // Canonical growth is bounded and independent of the stage's representation count.
   const foundation=n.synapses[n.memories.length%4];foundation.strength=Math.min(1,foundation.strength+.05);foundation.activations++;
   let nodeId=foundation.to, synapseId=foundation.id;
@@ -84,23 +65,17 @@ export function learn(state,{id,text,assessment,source='fixture',mindId=state.mi
     const edge=n.synapses.find(e=>e.to===nodeId);synapseId=edge?.id||`origin-${nodeId}`;
     if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}else n.synapses.push({id:synapseId,from:'origin',to:nodeId,strength:.28,activations:1});
   }
-  const related=n.memories.filter(v=>!v.supersededBy && ((memorySimilarity(v,a)>=.62)||v.id===a.relatedMemoryId)).map(v=>v.id);
-  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,embedding:[...a.embedding],createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source,areaSuggestion:a.area});
+  const related=a.relatedMemoryIds.filter(id=>n.memories.some(memory=>memory.id===id&&!memory.supersededBy));
+  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source:'NATIVE',areaSuggestion:a.area});
   const memory=n.memories.at(-1);
-  if(a.embeddingModel)memory.embeddingModel=a.embeddingModel;
-  if(a.relationship){
-    assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);memory.assessmentConfidence=a.confidence;
-    if(a.relationship==='corrective'){
-      const previous=n.memories.find(v=>v.id===a.relatedMemoryId);
-      previous.supersededBy=id;previous.supersededAt=new Date(next.now).toISOString();
-      memory.correctsMemoryId=previous.id;memory.correctionEvidence=a.evidence;
-    }
-  }
+  assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
+  memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
+  n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];
   return next;
 }
 // Repetitions spend the existing activity cost, with no XP or milestone reward.
-export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity='TEACH',assessment}) {
+export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity='TEACH'}) {
   const m=state.mind,key=normalize(text);
   if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching Mindling');
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
@@ -114,13 +89,13 @@ export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity
   if(energy<cost)throw Error('Not enough Energy');
   const next=structuredClone(state),n=next.mind,target=n.memories.find(v=>v.id===memoryId);
   stimulatePreviewLife(n.life,activity,next.now);n.energy={day,remaining:energy-cost};n.lastLearning=next.now;n.processed.push(id);
-  if(assessment && !target.categoryId)assignCategory(n,target,assessment);
   target.strength=Math.min(1,(target.strength||0)+.05);target.activations=(target.activations||0)+1;
   target.reinforcementCount=(target.reinforcementCount||0)+1;target.lastReinforcedAt=new Date(next.now).toISOString();
   target.matchedVariants=[...new Set([...(target.matchedVariants||[]),text])].slice(-5);
   for(const edge of n.synapses.filter(e=>target.synapseIds?.includes(e.id))){edge.strength=Math.min(1,edge.strength+.05);edge.activations++;}
   n.activityHistory=[...(n.activityHistory||[]),{at:next.now,key,type:activity}].slice(-200);
   n.history.push({id,day,at:next.now,xp:0,kind:'reinforcement',memoryId,concept:target.concept});
+  n.nativeKnowledge=developmentStatistics(n.memories);
   return next;
 }
 export function talk(state,text) {
@@ -133,6 +108,8 @@ export function talk(state,text) {
   const next=structuredClone(state),n=next.mind;
   stimulatePreviewLife(n.life,'TALK',next.now);n.energy={day,remaining:energy-1};
   n.activityHistory=[...(n.activityHistory||[]),{at:next.now,key,type:'TALK'}].slice(-200);
+  const recalled=retrieveMemories(text,n.memories);
+  n.nativeRecall={at:next.now,memoryIds:recalled.map(item=>item.memory.id),method:'lexical',verification:'unverified-player-claims'};
   return next;
 }
 export function upgradeSandbox(input) {

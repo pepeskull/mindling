@@ -1,5 +1,7 @@
 # Milestone 4 — preview-first gameplay
 
+> Historical delivery record. External learning and model configuration described below have been superseded by [native browser learning](../semantic-models.md). Recorded test results apply to that historical revision, not the native migration.
+
 Base: `5b7b017` (PR #49 merged). This milestone does **not** activate production progression, Gemini learning, new life/death rules, or payments.
 
 The sandbox survival calibration and camera framing described below are the historical M4 baseline. They are superseded by [sandbox Life System 2.0](../life-system-2-preview.md); production Life 1.0 remains unchanged.

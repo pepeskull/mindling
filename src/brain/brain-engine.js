@@ -1,7 +1,7 @@
 import { EVENTS } from "../app/events.js";
 import { createNeuralSeedState } from "./neural-seed-state.js";
 import { evaluateMemory, MEMORY_RULES, reinforcedStrength } from "./memory-evaluator.js";
-import { SEMANTIC_RULES } from "../semantic/semantic-engine.js";
+const SEMANTIC_RULES = Object.freeze({maximumVariants:5,maximumRelations:5});
 import { deriveKnowledgeDevelopment } from "./knowledge-development.js";
 
 function semanticRoute(state, content, embedding, fallback) {

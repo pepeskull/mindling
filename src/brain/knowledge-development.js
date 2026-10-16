@@ -1,23 +1,10 @@
-import { memoryVector, memorySimilarity } from '../semantic/embeddings.js';
+import { memorySimilarity, developmentStatistics } from '../learning/knowledge.js';
 const CLUSTER_SIMILARITY = 0.62;
 export const KNOWLEDGE_RULES = Object.freeze({ clusterSimilarity: CLUSTER_SIMILARITY, maximumRepresentatives: 3, displayedAreas: 8,
   maximumAreaMemories: 12, strengthWeight: .45, activationWeight: .25, densityWeight: .2, cohesionWeight: .1,
   activationSaturation: 5, memoryDensitySaturation: 5, specializationMinimumMemories: 3, specializationMinimumShare: .6,
   labelMinimumMemories: 2, labelMinimumCohesion: .75, labelMaximumWords: 5 });
 
-const cosine = (left, right) => {
-  if (!left?.length || left.length !== right?.length) return -1;
-  let dot = 0; let a = 0; let b = 0;
-  for (let index = 0; index < left.length; index += 1) { dot += left[index] * right[index]; a += left[index] ** 2; b += right[index] ** 2; }
-  return dot / (Math.sqrt(a) * Math.sqrt(b) || 1);
-};
-const averageVector = memories => {
-  const vectors = memories.map(memoryVector).filter(Boolean).map(vector => vector.values);
-  if (!vectors.length) return null;
-  const centroid = new Float32Array(vectors[0].length);
-  for (const vector of vectors) for (let index = 0; index < centroid.length; index += 1) centroid[index] += vector[index] / vectors.length;
-  return centroid;
-};
 const bounded = value => Math.max(0, Math.min(1, value));
 const stableHash = values => values.reduce((hash, value) => [...value].reduce((current, character) => (current * 31 + character.codePointAt(0)) >>> 0, hash), 2166136261).toString(16).padStart(8, "0");
 const pairKey = (left, right) => [String(left), String(right)].sort().join("\u0000");
@@ -84,33 +71,35 @@ export function deriveKnowledgeDevelopment(memories) {
     if (!categorized.has(memory.categoryId)) categorized.set(memory.categoryId, []);
     categorized.get(memory.categoryId).push(memory);
   }
-  clusters = [...clusters.filter(cluster => !cluster.some(memory => categorized.has(memory.categoryId))), ...categorized.values()];
+  clusters = [...clusters.map(cluster=>cluster.filter(memory=>!categorized.has(memory.categoryId))).filter(cluster=>cluster.length), ...categorized.values()];
   clusters.sort((left, right) => String(left[0]?.id).localeCompare(String(right[0]?.id)));
 
   const assignments = [];
   const areas = clusters.map((cluster, index) => {
-    const centroid = averageVector(cluster); const count = cluster.length;
+    const count = cluster.length;
     const pairwise = cluster.flatMap((memory, memoryIndex) => cluster.slice(memoryIndex + 1).map(other => similarityFor(memory, other)));
-    const cohesion = centroid ? cluster.reduce((sum, memory) => sum + Math.max(0, cosine(memoryVector(memory)?.values, centroid)), 0) / count : 0;
+    const minimumSimilarity=pairwise.reduce((minimum,score)=>Math.min(minimum,score),1);
+    const medianSimilarity=pairwise.length?median(pairwise):1;
+    const cohesion = pairwise.length ? pairwise.reduce((sum,score)=>sum+Math.max(0,score),0)/pairwise.length : 0;
     const representatives = representativesFor(cluster, similarityFor);
     const averageStrength = cluster.reduce((sum, memory) => sum + bounded(memory.strength || 0), 0) / count;
     const activation = cluster.reduce((sum, memory) => sum + Math.min(memory.activations || 0, KNOWLEDGE_RULES.activationSaturation) / KNOWLEDGE_RULES.activationSaturation, 0) / count;
     const progress = bounded(averageStrength * KNOWLEDGE_RULES.strengthWeight + activation * KNOWLEDGE_RULES.activationWeight +
       Math.min(count / KNOWLEDGE_RULES.memoryDensitySaturation, 1) * KNOWLEDGE_RULES.densityWeight + cohesion * KNOWLEDGE_RULES.cohesionWeight);
     const memoryIds = cluster.map(memory => memory.id).sort(); const id = cluster[0].categoryId || `area-${stableHash(memoryIds)}`;
-    const identity = cluster[0].categoryId && cluster[0].category ? { label: cluster[0].category, source: 'SAVED_CATEGORY', confidence: 'ASSESSED', reason: 'PERSISTENT_CATEGORY' } : displayIdentity(cluster, cohesion, similarityFor, index);
+    const identity = cluster[0].categoryId && cluster[0].category ? { label: cluster[0].category, source: 'SAVED_CATEGORY', confidence: 'LEXICAL', reason: 'PERSISTENT_CATEGORY' } : displayIdentity(cluster, cohesion, similarityFor, index);
     for (const memory of cluster) assignments.push({ memoryId: memory.id, content: String(memory.content || "").slice(0, 72), areaId: id,
-      centroidSimilarity: cosine(memoryVector(memory)?.values, centroid), representativeSimilarities: representatives.map(item => ({ memoryId: item.id, similarity: similarityFor(memory, item) })),
-      clusterMinimumSimilarity: pairwise.length ? Math.min(...pairwise) : 1, clusterMedianSimilarity: pairwise.length ? median(pairwise) : 1,
-      assignmentReason: count === 1 ? "SINGLETON_NO_COHERENT_MERGE" : "COMPLETE_LINK_COHERENT" });
+      centroidSimilarity: cluster.length>1 ? cluster.filter(item=>item!==memory).reduce((sum,item)=>sum+similarityFor(memory,item),0)/(cluster.length-1) : 0, representativeSimilarities: representatives.map(item => ({ memoryId: item.id, similarity: similarityFor(memory, item) })),
+      clusterMinimumSimilarity: minimumSimilarity, clusterMedianSimilarity: medianSimilarity,
+      assignmentReason: memory.categoryId ? "SAVED_CATEGORY" : count === 1 ? "SINGLETON_NO_COHERENT_MERGE" : "COMPLETE_LINK_LEXICAL" });
     return { id, label: identity.label, labelSource: identity.source, labelConfidence: identity.confidence, labelReason: identity.reason, progress, cohesion,
-      clusterMinimumSimilarity: pairwise.length ? Math.min(...pairwise) : 1, clusterMedianSimilarity: pairwise.length ? median(pairwise) : 1,
-      centroid: centroid ? { dimensions: centroid.length, norm: Math.sqrt([...centroid].reduce((sum, value) => sum + value ** 2, 0)) } : { dimensions: 0, norm: 0 },
+      clusterMinimumSimilarity: minimumSimilarity, clusterMedianSimilarity: medianSimilarity,
+      centroid: { dimensions: 0, norm: 0 }, similarityMethod:'lexical-co-occurrence',
       memoryIds, memoryCount: count, representativeMemoryIds: representatives.map(memory => memory.id).sort(),
       neuronIds: [...new Set(cluster.flatMap(memory => memory.neuronIds || []))].sort(), synapseIds: [...new Set(cluster.flatMap(memory => memory.synapseIds || []))].sort() };
   });
   const total = memories.length; const overall = total ? areas.reduce((sum, area) => sum + area.progress * area.memoryCount, 0) / total : 0;
-  return { overall, areas, assignments: assignments.sort((left, right) => String(left.memoryId).localeCompare(String(right.memoryId))), canonicalMemoryCount: total };
+  return { overall, areas, assignments: assignments.sort((left, right) => String(left.memoryId).localeCompare(String(right.memoryId))), canonicalMemoryCount: total, native:developmentStatistics(memories) };
 }
 
 export function deriveNeuronParticipation(state, neuronId, development = deriveKnowledgeDevelopment(state.memories)) {
