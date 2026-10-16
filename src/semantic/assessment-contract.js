@@ -1,8 +1,20 @@
-// Shared generation constraints; semantic/evidence checks still run after decoding.
-export const LABEL_PATTERN = "^[\\p{L}\\p{N}][\\p{L}\\p{N} &()+.,'’/:-]*[\\p{L}\\p{N}&()+.,'’/:-]$";
-export const validLabel = value => typeof value === 'string' && value.trim() === value && value.length >= 2 && value.length <= 60 && new RegExp(LABEL_PATTERN, 'u').test(value);
-const text = maxLength => ({type:'string',minLength:3,maxLength,pattern:'\\S[\\s\\S]+\\S'});
-const label = {type:'string',minLength:2,maxLength:60,pattern:LABEL_PATTERN};
+// Provider schemas are guidance; local Unicode and semantic validation is authoritative.
+// Do not send JavaScript Unicode property escapes to an unspecified regex engine.
+const LABEL_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\p{M} &()+.,'’/:\p{Pd}]*$/u;
+export function normalizeLabel(value) {
+  // Canonical Unicode composition and spacing only. No truncation, translation,
+  // case folding, punctuation stripping, markdown removal or ID normalization.
+  return typeof value === 'string' ? value.normalize('NFC').replace(/[\p{Zs}\t]+/gu, ' ').trim() : value;
+}
+export function labelFailureReason(value) {
+  if (typeof value !== 'string') return 'TYPE';
+  if (value.length < 2 || value.length > 60) return 'LENGTH';
+  if (value.trim() !== value || !LABEL_PATTERN.test(value)) return 'FORMAT';
+  return null;
+}
+export const validLabel = value => labelFailureReason(value) === null;
+const text = maxLength => ({type:'string',minLength:3,maxLength});
+const label = {type:'string',minLength:2,maxLength:60};
 export function assessmentSchema(context) {
   const memories=context.memories.map(m=>m.id),categories=context.categories.map(c=>c.id);
   const properties={
