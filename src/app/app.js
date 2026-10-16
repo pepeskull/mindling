@@ -1,14 +1,11 @@
 import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { STAGES } from '../preview/evolution-model.js';
-import { learn, reinforce, talk, visualMapping, normalize } from '../preview/sandbox/engine.js';
+import { learn, talk, visualMapping } from '../preview/sandbox/engine.js';
 import { carePreview, PREVIEW_LIFE } from '../preview/sandbox/life.js';
-import { prepareLearning } from '../preview/sandbox/learning.js';
-import { applyMemoryEmbeddings } from '../semantic/embeddings.js';
 import { LIFE_RULES } from '../life/life-system.js';
 import { MindlingDatabase } from '../storage/database.js';
 import { Onboarding } from '../ui/onboarding.js';
 import { createLocalIdentity } from '../identity/identity.js';
-import { exactMemory } from '../semantic/memory-intelligence.js';
 import { EVENTS } from './events.js';
 import { advanceGameplay, progressGameplay, createGameplayMindling, dashboardLife, dashboardState } from './gameplay-state.js';
 
@@ -76,9 +73,7 @@ export class MindlingApp extends EvolutionPreview {
       const rule = LIFE_RULES.activity[activity];
       if (!rule) throw Error('Unknown activity');
       if (m.energy.remaining < rule.energyCost) return { accepted: false, reason: 'OUT_OF_ENERGY' };
-      const key = normalize(text);
-      const exact = activity === 'TALK' ? null : exactMemory(m.memories, text);
-      if (text.length > 2000 || (!exact && (key.length < 20 || new Set(key.split(' ')).size < 4))) throw Error('Share meaningful input of at least four words.');
+      if (typeof text !== 'string' || text.length > 2000) throw Error('Share a short, readable claim.');
       if (m.life.lastActivity != null && this.state.now - m.life.lastActivity < PREVIEW_LIFE.activityCooldownHours * 3600000) throw Error('Activity cooldown: try again two hours after your last activity.');
       if (activity === 'TALK') {
         await this.change(s => {
@@ -86,35 +81,21 @@ export class MindlingApp extends EvolutionPreview {
           return talk(s, text);
         }, { journal: { id, type: activity } });
       } else {
-        const snapshot = JSON.stringify([m.memories, m.categories]);
-        const commit = (reducer, journal = true) => this.change(s => {
-          if (s.mind?.id !== m.id || JSON.stringify([s.mind.memories, s.mind.categories]) !== snapshot) throw Error('Memories changed. Submit again.');
-          return reducer(s);
-        }, journal ? { journal: { id, type: activity } } : {});
-        if (exact) {
-          await commit(s => reinforce(s, { id, text, memoryId: exact.id, mindId: m.id, activity }));
-          return { accepted: true, message: 'Already learned. Memory reinforced.' };
-        }
-        const identity = await this.db.get('identity', `mindling:${m.id}`) || await this.db.get('identity', 'local-identity');
-        if (!identity || identity.mindlingId !== m.id || !identity.privateKey) throw Error('Learning authentication is unavailable. Your identity and memories are preserved.');
-        this.requestAbort = new AbortController();
-        const prepared = await prepareLearning({ text, mind:m, pathway: m.pathways[0] || 'Researcher', identity, signal: this.requestAbort.signal });
         if (this.disposed) return { accepted: false, reason: 'APPLICATION_CLOSED' };
-        if (prepared.remaining) {
-          await commit(s => {
-            if(s.mind.life.lifeState!=='ALIVE')throw Error('This Mindling is deceased.');
-            applyMemoryEmbeddings(s.mind,prepared.updates);return s;
-          },false);
-          return {accepted:false,message:`Memory preparation saved. ${prepared.remaining} memories remain; submit again to continue. No Energy or rewards changed.`};
-        }
-        const {assessment,context,updates}=prepared;
-        await commit(s => {applyMemoryEmbeddings(s.mind,updates);return learn(s, { id, text, assessment, context, source: 'CLOUDFLARE', mindId: m.id, activity });});
-        if (assessment.relationship === 'repeated') return { accepted: true, message: 'Already learned. Memory reinforced.' };
-        const memory = this.state.mind.memories.find(item => item.id === id);
-        const edge = this.state.mind.synapses.find(item => item.id === memory?.synapseIds[0]);
-        if (edge) this.seed.signal({ source: edge.from, destination: edge.to, synapse: edge.id, outcome: 'MEMORY_FORMATION' });
+        await this.change(s => {
+          if (s.mind?.id !== m.id) throw Error('Mindling identity changed. Submit again.');
+          return learn(s, {id, text, mindId:m.id, activity});
+        }, {journal:{id,type:activity}});
+        const event = this.state.mind.history.find(item => item.id === id);
+        const memory = this.state.mind.memories.find(item => item.id === (event?.memoryId || id));
+        const edge = this.state.mind.synapses.find(item => item.id === memory?.synapseIds?.[0]);
+        if (edge) this.seed.signal({source:edge.from,destination:edge.to,synapse:edge.id,outcome:event?.kind==='reinforcement'?'REINFORCEMENT':'MEMORY_FORMATION'});
+        return {accepted:true,message:event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Claim learned locally. It has not been fact-checked.'};
       }
-      return { accepted: true };
+      const recalled = this.state.mind.nativeRecall?.memoryIds || [];
+      const memory = this.state.mind.memories.find(item => item.id === recalled[0]);
+      if (memory) this.seed.highlightRoute({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});
+      return { accepted: true, message: memory ? `Related stored claim (unverified): ${String(memory.content).slice(0,240)}` : 'Thought shared locally. No related stored claim found.' };
     } catch (error) {
       if (!this.disposed) await this.refreshState();
       return { accepted: false, reason: 'ACTIVITY_UNAVAILABLE', message: error.message?.replace('Activity cooldown: advance virtual time by two hours', 'Activity cooldown: try again two hours after your last activity.').replaceAll('virtual time', 'time').replaceAll('virtual day', 'UTC day').replaceAll('test Mindling', 'Mindling').replace('Sandbox memory capacity', 'Local memory capacity') || 'Activity is unavailable. No Energy or rewards changed.' };
@@ -176,7 +157,7 @@ export class MindlingApp extends EvolutionPreview {
 
   destroy() {
     if (this.disposed) return;
-    clearInterval(this.lifeTimer); this.requestAbort?.abort(); this.listeners.abort(); this.stabilityRow?.remove();
+    clearInterval(this.lifeTimer); this.listeners.abort(); this.stabilityRow?.remove();
     this.onboarding?.hide(); this.db.close(); document.querySelector('#app')?.classList.remove('gameplay-mode');
     super.destroy();
     if (this.subtitle) document.querySelector('.hero-copy').append(this.subtitle);

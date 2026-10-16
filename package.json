@@ -1,6 +1,0 @@
-{
-  "name": "mindling",
-  "private": true,
-  "scripts": { "test:learning": "node --test tests/learning-pipeline.test.mjs" },
-  "devDependencies": { "ajv": "8.17.1", "fake-indexeddb": "6.2.4" }
-}

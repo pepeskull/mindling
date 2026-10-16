@@ -3,12 +3,9 @@ import { AutomaticNetworkCountdown } from '../automatic-playback.js';
 import { STAGES } from '../evolution-model.js';
 import { presentationFor } from '../dashboard-presentation.js';
 import { condition, carePreview, previewWarning } from './life.js';
-import { reinforce, createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,talk,upgradeSandbox,DAY,visualMapping } from './engine.js';
+import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,talk,upgradeSandbox,DAY,visualMapping } from './engine.js';
 import { LIFE_RULES } from '../../life/life-system.js';
 import { TestWalletUI } from './wallet-ui.js';
-import { prepareLearning } from './learning.js';
-import { applyMemoryEmbeddings } from '../../semantic/embeddings.js';
-import { exactMemory } from '../../semantic/memory-intelligence.js';
 import { PreviewStore } from './storage.js';
 
 export class SandboxPreview extends EvolutionPreview {
@@ -26,7 +23,7 @@ export class SandboxPreview extends EvolutionPreview {
     await super.start();if(this.disposed)return;
     this.timeline.pause();
     this.panel=document.createElement('details');this.panel.className='sandbox-controls glass-panel';this.panel.open=true;
-    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Submitted learning and up to three saved test memories are sent for analysis or memory preparation. Saved production data is never sent.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><label>Preview API access token <input data-api-token type="password" autocomplete="off" placeholder="Kept only in this page"></label><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
+    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Learning runs locally. Submitted claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
     document.querySelector('#app').append(this.panel);
     this.listen(this.panel,'click',e=>{const button=e.target.closest('button');if(!button)return;this.action(async()=>{
       if(button.dataset.hours)return this.change(s=>advanceTime(s,Number(button.dataset.hours)));
@@ -67,21 +64,13 @@ export class SandboxPreview extends EvolutionPreview {
     const text=document.querySelector('#mindling-input').value;
     const activity=this.activity;
     if(this.activity==='TALK'){await this.change(s=>talk(s,text));document.querySelector('#mindling-input').value='';this.status('Thought shared locally. Stimulation improves; stability recovers over virtual time.');return;}
-    const snapshot=JSON.stringify([m.memories,m.categories]);
-    const commit=reducer=>this.change(s=>{
-      if(s.mind?.id!==m.id||s.mind.life.lifeState!=='ALIVE'||JSON.stringify([s.mind.memories,s.mind.categories])!==snapshot)throw Error('Memories changed. Submit again.');
-      return reducer(s);
+    const id=crypto.randomUUID();
+    await this.change(s=>{
+      if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
+      return learn(s,{id,text,mindId:m.id,activity});
     });
-    const id=crypto.randomUUID(),exact=exactMemory(m.memories,text);
-    if(exact){await commit(s=>reinforce(s,{id,text,memoryId:exact.id,mindId:m.id,activity}));this.status('Already learned. Memory reinforced.');return;}
-    this.requestAbort=new AbortController();
-    const prepared=await prepareLearning({text,mind:m,pathway:m.pathways[0],token:this.panel.querySelector('[data-api-token]').value,signal:this.requestAbort.signal});
-    if(this.disposed)return;
-    if(prepared.remaining){
-      await commit(s=>{applyMemoryEmbeddings(s.mind,prepared.updates);return s;});
-      this.status(`Memory preparation saved. ${prepared.remaining} memories remain; submit again to continue. No Energy or rewards changed.`);return;
-    }
-    await commit(s=>{applyMemoryEmbeddings(s.mind,prepared.updates);return learn(s,{id,text,assessment:prepared.assessment,context:prepared.context,source:'CLOUDFLARE',mindId:m.id,activity});});
+    const event=this.state.mind.history.find(item=>item.id===id);
+    this.status(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Claim learned locally. It has not been fact-checked.');
     document.querySelector('#mindling-input').value='';
   }
   async care(type){await this.change(s=>carePreview(s,type));}
@@ -93,8 +82,7 @@ export class SandboxPreview extends EvolutionPreview {
   }
   async runFixture(){
     const text='Photosynthesis converts light energy into chemical energy stored in glucose.';
-    const assessment={meaningful:true,duplicate:false,quality:1,concept:'photosynthesis energy conversion',memory:text,area:'Biology',kind:'concept',embedding:[1,0,0,0,0,0,0,0]};
-    await this.change(s=>learn(s,{id:crypto.randomUUID(),text,assessment,source:'DETERMINISTIC FIXTURE'}));
+    await this.change(s=>learn(s,{id:crypto.randomUUID(),text}));
     this.status('Deterministic fixture — no learning service request. Repeating it earns no XP.');
   }
   renderState(){
@@ -128,7 +116,7 @@ export class SandboxPreview extends EvolutionPreview {
     if(!this.panel)return;
     const gate=eligibility(this.state);
     this.panel.querySelector('[data-diagnostics]').textContent=`${STAGES[stage-1].name}\nStage XP: ${m.stageXP} / ${gate.required.xp} · Lifetime: ${m.lifetimeXP}\nStage entered: ${new Date(m.enteredAt).toISOString()}\nStage days: ${(gate.elapsed/DAY).toFixed(2)} / ${gate.required.days}\nLearning milestones: ${gate.concepts} / ${gate.required.concepts}\nEligible: ${gate.eligible}\nVirtual time: ${new Date(this.state.now).toISOString()}\nOffset: ${((this.state.now-this.state.origin)/DAY).toFixed(2)} days\n${m.nodes.length} canonical neurons → ${STAGES[stage-1].count} visual representations`;
-    this.panel.querySelector('[data-history]').textContent=JSON.stringify(m.history.slice(-12).map(event=>({...event,source:['GEMINI','CLOUDFLARE'].includes(event.source)?'Learning service':event.source})),null,2);
+    this.panel.querySelector('[data-history]').textContent=JSON.stringify(m.history.slice(-12).map(event=>({...event,source:event.source==='NATIVE'?'Local learning':event.source?'Historical record':undefined})),null,2);
     const select=this.panel.querySelector('[data-node-selection]');const previous=select.value;select.replaceChildren(...m.nodes.map(n=>{const o=document.createElement('option');o.value=n.id;o.textContent=n.id;return o;}));if(m.nodes.some(n=>n.id===previous))select.value=previous;this.inspectNode(select.value);
     this.view.canonicalMapping=visualMapping(m,STAGES[stage-1].count);
     // Strength influences existing soma radii; no fake canonical neurons are created.
@@ -147,5 +135,5 @@ export class SandboxPreview extends EvolutionPreview {
     if(m.life.lifeState==='DECEASED'){this.view.reduced=true;this.seed.setReducedMotion(true);}
     this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;
   }
-  destroy(){this.walletUI?.destroy();this.requestAbort?.abort();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
+  destroy(){this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }

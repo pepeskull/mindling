@@ -1,5 +1,7 @@
 # Branding and repository cleanup
 
+> Historical delivery record. External learning and model configuration described below have been superseded by [native browser learning](semantic-models.md). Recorded test results apply to that historical revision, not the native migration.
+
 This cleanup removes the public benchmark and annotation applications, abandoned semantic experiments, and unused placeholders. Normal gameplay, the M4 sandbox, its protected Gemini boundary, the simulated Solana wallet, and browser/Node test infrastructure remain active.
 
 ## Removed paths
