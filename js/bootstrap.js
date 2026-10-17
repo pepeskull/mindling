@@ -1,5 +1,5 @@
 import { renderFooterLinks } from '../src/ui/footer-links.js';
-import { MindlingApp } from "../src/app/app.js";
+import { checkDesktop, showCompatibility } from '../src/platform/desktop.js';
 
 renderFooterLinks();
 
@@ -7,6 +7,8 @@ let active = null;
 let stopped = false;
 async function startProduction() {
   if (stopped) return;
+  const {MindlingApp}=await import('../src/app/app.js');
+  if(stopped)return;
   active = new MindlingApp();
   await active.start();
 }
@@ -27,5 +29,6 @@ function showStartupError(error) {
     scene.append(message);
   }
 }
-start().catch(showStartupError);
+const compatibility=checkDesktop();
+if(compatibility.allowed)start().catch(showStartupError);else showCompatibility(compatibility);
 window.addEventListener('pagehide', () => { stopped = true; active?.destroy(); }, { once: true });

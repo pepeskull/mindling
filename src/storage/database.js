@@ -1,3 +1,4 @@
+import { energyAt } from '../economy/energy.js';
 import { migrateGameplay, dashboardLife } from '../app/gameplay-state.js';
 
 const DB_NAME = "mindling-db";
@@ -63,7 +64,7 @@ export class MindlingDatabase {
             }
             if (journal && next.mind) {
               if (data.energyJournal.some(item => item.id === journal.id)) throw Error('Activity already processed');
-              const cost = initial.mind?.energy.day === next.mind.energy.day ? initial.mind.energy.remaining - next.mind.energy.remaining : 10 - next.mind.energy.remaining;
+              const cost = energyAt(initial.mind.energy,next.now).remaining - next.mind.energy.remaining;
               tx.objectStore('energyJournal').put({ ...journal, mindlingId: next.mind.id, at: new Date(next.now).toISOString(), energyCost: cost, balanceAfter: next.mind.energy.remaining });
             }
           } catch (caught) { error = caught; tx.abort(); }

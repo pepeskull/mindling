@@ -1,3 +1,4 @@
+import { analyzeNative } from '../learning/native-learning.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../preview/automatic-playback.js';
 import { STAGES } from '../preview/evolution-model.js';
@@ -53,13 +54,18 @@ export class MindlingApp extends EvolutionPreview {
     this.renderState();
     if (this.state.mind) this.dashboard.show(); else this.showOnboarding();
     this.lifeTimer = setInterval(() => this.refreshState(), 60_000);
+    this.energyTimer=setInterval(()=>{if(!this.external?.locked&&this.state?.mind){
+      this.dashboard.renderEnergy(this.state.mind.energy,Date.now());
+      const e=this.state.mind.energy;
+      if(e.version===2&&e.remaining-e.bonus<10&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
+    }},1000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.refreshState(); }, { signal: this.listeners.signal });
   }
 
   async change(reducer = state => state, options = {}) {
     this.external?.assertWritable();this.pendingMutations=(this.pendingMutations||0)+1;
     try {
-      const state = await this.db.changeGameplay(s => {this.external?.assertWritable();return progressGameplay(reducer(advanceGameplay(s)));}, options);
+      const state = await this.db.changeGameplay(s => {this.external?.assertWritable();return options.preserveGameplay?reducer(s):progressGameplay(reducer(advanceGameplay(s)));}, options);
       if (!this.disposed) { this.state = state; this.renderState(); }
       return state;
     } finally { this.pendingMutations--; }
@@ -85,16 +91,18 @@ export class MindlingApp extends EvolutionPreview {
           return talk(s, text, {id});
         }, { journal: { id, type: activity } });
       } else {
+        const preflight=analyzeNative(text,m,{allowQuestion:Boolean(this.intelligence?.ready)});
+        const analysis=preflight.relationship==='repeated'?null:await this.intelligence?.prepare(text,structuredClone(m));
         if (this.disposed) return { accepted: false, reason: 'APPLICATION_CLOSED' };
         await this.change(s => {
           if (s.mind?.id !== m.id) throw Error('Mindling identity changed. Submit again.');
-          return learn(s, {id, text, mindId:m.id, activity});
+          return learn(s, {id, text, mindId:m.id, activity,analysis});
         }, {journal:{id,type:activity}});
         const event = this.state.mind.history.find(item => item.id === id);
         const memory = this.state.mind.memories.find(item => item.id === (event?.memoryId || id));
         const edge = this.state.mind.synapses.find(item => item.id === memory?.synapseIds?.[0]);
         if (edge) this.seed.signal({source:edge.from,destination:edge.to,synapse:edge.id,outcome:event?.kind==='reinforcement'?'REINFORCEMENT':'MEMORY_FORMATION'});
-        return {accepted:true,message:event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Claim learned locally. It has not been fact-checked.'};
+        return {accepted:true,message:event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':analysis?'Input learned with experimental local AI organization; not fact-checked.':'Input learned with native lexical fallback; no semantic AI analysis or fact-checking.'};
       }
       const recalled = this.state.mind.nativeRecall?.memoryIds || [];
       const memory = this.state.mind.memories.find(item => item.id === recalled[0]);
@@ -166,7 +174,7 @@ export class MindlingApp extends EvolutionPreview {
 
   destroy() {
     if (this.disposed) return;
-    clearInterval(this.lifeTimer); this.listeners.abort(); this.stabilityRow?.remove();
+    clearInterval(this.lifeTimer);clearInterval(this.energyTimer); this.listeners.abort(); this.stabilityRow?.remove();
     this.onboarding?.hide(); this.db.close(); document.querySelector('#app')?.classList.remove('gameplay-mode');
     super.destroy();
     if (this.subtitle) document.querySelector('.hero-copy').append(this.subtitle);

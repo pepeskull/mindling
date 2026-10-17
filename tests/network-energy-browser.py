@@ -41,14 +41,17 @@ with sync_playwright() as p:
         page.evaluate('()=>{const a=testApp;a.timeline.network.start();a.timeline.network.tick(20);a.refreshNetwork();}')
         assert page.evaluate("""async()=>{const a=testApp,pending=a.change(s=>s);const entered=a.external.enter('demo:nova');await pending;return !entered;}""")
         snapshot=page.evaluate(SNAPSHOT)
+        original_geometry=page.evaluate("()=>JSON.stringify({positions:Array.from(testApp.view.morph.positions),target:testApp.view.morph.target})")
         # Each peer is visitable with actual rendered labels/buttons; its graph is independent.
         for name,connections in [('Nova','Echo'),('Echo','Nova, Atlas'),('Atlas','No known connections')]:
+            page.evaluate("(id)=>{window.visitedIdentity=testApp.view.buffers.identities.get(id);window.visitedGeometry=JSON.stringify(visitedIdentity);}",'demo:'+name.lower())
             if name=='Nova':
                 page.locator('[data-mobile-view="memories"]' if mobile else '[data-view="memories"]').click()
             page.locator('.network-visits button',has_text=name).click()
             page.wait_for_function('testApp.external.locked && !testApp.external.visit.transitioning')
             page.wait_for_function('getComputedStyle(document.querySelector("#scene")).visibility==="visible"')
             assert page.locator('.external-view h2').inner_text()==name+' · Agent Mind'
+            assert page.evaluate('()=>testApp.view.buffers.identities.get(testApp.view.buffers.focusedId)===visitedIdentity && JSON.stringify(visitedIdentity)===visitedGeometry')
             assert connections in page.locator('[data-connections]').inner_text()
             assert 'Demo' in page.locator('[data-source]').inner_text()
             if name=='Echo':assert 'Unavailable' in page.locator('.external-view dl').inner_text()
@@ -103,16 +106,20 @@ with sync_playwright() as p:
         page.emulate_media(reduced_motion='no-preference')
         page.evaluate("()=>{testApp.external.enter('demo:nova');testApp.external.tick(.1);testApp.external.returnHome();}")
         page.wait_for_function('!testApp.external.locked');assert page.evaluate(SNAPSHOT)==snapshot
+        page.evaluate("()=>testApp.external.enter('demo:nova')");page.wait_for_function('!testApp.external.visit.transitioning')
+        page.evaluate("()=>{testApp.timeline.network.tick(20);testApp.refreshNetwork();testApp.external.enter('demo:echo');testApp.external.tick(.1);const pose=JSON.stringify(testApp.external.pose());testApp.external.returnHome();if(JSON.stringify(testApp.external.pose())!==pose)throw Error('interrupted hop jumped');}")
+        page.wait_for_function('!testApp.external.locked');assert page.evaluate(SNAPSHOT)==snapshot
         page.emulate_media(reduced_motion='reduce')
         page.evaluate("()=>{testApp.external.enter('demo:echo');testApp.external.visit.graph.nodes.delete('demo:echo');}")
         page.wait_for_function('!testApp.external.locked');assert page.evaluate(SNAPSHOT)==snapshot
+        assert page.evaluate("()=>JSON.stringify({positions:Array.from(testApp.view.morph.positions),target:testApp.view.morph.target})")==original_geometry
         # Direct real handlers permit immediate learning after returning; other DB stays unchanged.
         page.locator('[data-input-mode="TEACH"]').click()
         page.locator('#mindling-input').fill('Volcanoes release molten rock from deep beneath the crust.')
         page.locator('#interaction-form button[type=submit]').click()
         page.wait_for_function('testApp.state.mind.energy.remaining===8')
         assert not errors,errors
-        print('PASS view/handlers/isolation:', 'Sandbox' if sandbox else 'Main','Canvas' if canvas else 'Three','mobile' if mobile else 'desktop')
+        print('PASS view/handlers/isolation:', 'Sandbox' if sandbox else 'Main','Canvas' if canvas else 'Three','narrow desktop' if mobile else 'desktop')
         context.close()
     # Actual IndexedDB transactions serialized across two independent database connections.
     context=browser.new_context();page=context.new_page();page.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'));page.goto(BASE)

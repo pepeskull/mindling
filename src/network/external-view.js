@@ -39,7 +39,7 @@ export class ExternalView {
     const a=this.app,n=a.timeline.network,index=n.peers.findIndex(peer=>peer.id===id);
     const peers=presentationFor(a.timeline,a.view.morph).peers;
     const first=!this.locked, source=this.visit.selected;
-    if(!this.visit.enter(id,{owner:this.owner(),connectedIds:peers.filter(p=>p.connected).map(p=>p.id),busy:Boolean(a.busy||a.pendingMutations||document.querySelector('dialog[open]'))}))return false;
+    if(!this.visit.enter(id,{owner:this.owner(),connectedIds:peers.filter(p=>p.connected).map(p=>p.id),busy:Boolean(a.busy||a.pendingMutations||a.intelligence?.loading||document.querySelector('dialog[open]'))}))return false;
     this.source=source;
     if(first){
       this.savedNetwork=structuredClone({ownerStage:n.ownerStage,state:n.state,elapsed:n.elapsed,fade:n.fade,stopping:n.stopping,peers:n.peers});
@@ -62,9 +62,13 @@ export class ExternalView {
     this.panel.querySelector('[data-connections]').textContent=connections.length?`Known connections: ${connections.map(n=>n.name).join(', ')}`:'No known connections';
   }
   returnHome(immediate=false){
-    if(!this.locked||this.returning)return;
+    if(!this.locked||this.returning||this.cancelHop)return;
+    if(this.externalGraph&&this.trip&&!this.trip.done){
+      this.cancelHop=true;this.visit.selected=this.source;this.source=null;this.showNode();
+      this.trip=new CameraTrip(this.pose(),{focus:[0,0,0],scale:1},{reduced:immediate||this.app.motion.matches});return;
+    }
     const a=this.app;this.returning=true;this.visit.transitioning=true;a.interaction.locked=true;
-    if(this.externalGraph){Object.assign(a.timeline.network,structuredClone(this.savedNetwork));a.view.focus=[...this.entryCenter];a.view.focusScale=1/REMOTE_SCALE;this.externalGraph=false;}
+    if(this.externalGraph){const index=this.savedNetwork.peers.findIndex(peer=>peer.id===this.visit.selected);a.view.focusBrain(null);Object.assign(a.timeline.network,structuredClone(this.savedNetwork));a.view.focus=[...(REMOTE_CENTERS[index]||this.entryCenter)];a.view.focusScale=1/REMOTE_SCALE;this.externalGraph=false;}
     this.trip=new CameraTrip(this.pose(),{focus:[0,0,0],scale:1},{reduced:immediate||a.motion.matches});
     this.returnFromPose=a.interaction.capturePose();
   }
@@ -80,14 +84,17 @@ export class ExternalView {
     }
     if(!this.trip.done)return;
     this.trip=null;
+    if(this.cancelHop){this.cancelHop=false;this.visit.settled();this.returnHome();return;}
     if(this.returning){this.restore();return;}
     // Rebase the visited Agent Mind to the origin using the same morphology.
+    a.view.focusBrain(this.visit.selected);
     a.view.focus=[0,0,0];a.view.focusScale=1;
     a.timeline.network.configure(7,this.visit.graph.connections(this.visit.selected));a.timeline.network.start();
     this.externalGraph=true;this.visit.settled();a.interaction.locked=false;
   }
   restore(){
     const a=this.app;Object.assign(a.timeline.network,structuredClone(this.savedNetwork));
+    a.view.focusBrain(null);
     a.view.focus=[0,0,0];a.view.focusScale=1;a.view.selectedCanonical=this.savedSelection;a.interaction.restorePose(this.savedPose);a.interaction.locked=false;
     this.root.classList.toggle('memory-mode',this.memoryMode);
     for(const [node,hidden] of this.overlays)node.hidden=hidden;

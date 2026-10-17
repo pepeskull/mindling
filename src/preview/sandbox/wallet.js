@@ -1,3 +1,4 @@
+import { creditEnergy } from '../../economy/energy.js';
 export const MARKET=Object.freeze({priceMicroUSD:100000n,decimals:6,liquidityMicroUSD:1000000000000n,feeLamports:5000n,source:'FIXED TEST FIXTURE'});
 export function quote(state,market=MARKET){
   if(!state.mind||state.mind.life.lifeState!=='ALIVE')throw Error('Purchases cannot revive a deceased Mindling');
@@ -15,5 +16,5 @@ export function simulatePurchase(input,q,{confirmed=false,market=MARKET}={}){
   if(wallet.receipts.some(r=>r.quoteId===q.id))throw Error('Purchase already credited');
   if(BigInt(wallet.balance)<BigInt(q.units)||BigInt(wallet.feeLamports||'10000000')<BigInt(q.feeLamports))throw Error('Insufficient test tokens or test SOL fees');
   const s=structuredClone(input),w=s.player.wallet;w.balance=String(BigInt(w.balance)-BigInt(q.units));w.feeLamports=String(BigInt(w.feeLamports||'10000000')-BigInt(q.feeLamports));
-  w.receipts.push({quoteId:q.id,mode:'SIMULATED',units:q.units,at:s.now,mindId:s.mind.id,energy:10,chainSignature:null});s.mind.energy.remaining+=10;return s;
+  w.receipts.push({quoteId:q.id,mode:'SIMULATED',units:q.units,at:s.now,mindId:s.mind.id,energy:10,chainSignature:null});s.mind.energy=creditEnergy(s.mind.energy,10,s.now);return s;
 }

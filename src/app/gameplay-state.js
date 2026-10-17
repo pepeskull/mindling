@@ -1,3 +1,4 @@
+import { energyAt } from '../economy/energy.js';
 import { neuralSeedRecords } from '../brain/neural-seed-state.js';
 import { STAGES } from '../preview/evolution-model.js';
 import { DAY, normalize, newMindling, eligibility, evolve } from '../preview/sandbox/engine.js';
@@ -50,7 +51,6 @@ export function migrateGameplay(data, now) {
   const memories = records(saved.memories, data.memories).map(memory => ({ ...memory,
     normalized: memory.normalized || memory.normalizedContent || normalize(memory.content),
     concept: memory.concept || memory.content, neuronIds: memory.neuronIds || [], synapseIds: memory.synapseIds || [] }));
-  const oldDay = Number.isInteger(legacy.energy?.day) ? legacy.energy.day : Math.floor(time(legacy.energy?.utcDay, now) / DAY);
   state.mind = { ...structuredClone(saved), id: saved.mindlingId, createdAt: born, legacyStage: saved.stage,
     pathways: saved.pathways || data.pathways.filter(item => item.selected).map(item => item.name),
     stage, enteredAt: time(saved.enteredAt, born), stageXP: saved.stageXP ?? saved.xp ?? 0,
@@ -58,7 +58,7 @@ export function migrateGameplay(data, now) {
     history: saved.history || [], processed: saved.processed || [], lastLearning: time(saved.lastLearning, null),
     nodes: ordered(nodes.length ? nodes : seed.neurons, seed.neurons),
     synapses: ordered(synapses.length ? synapses : seed.synapses, seed.synapses), memories,
-    areas: saved.areas || [], life, energy: { day: oldDay, remaining: legacy.energy?.remaining ?? 10 },
+    areas: saved.areas || [], life, energy: energyAt(legacy.energy,now),
     activityHistory: saved.activityHistory || [], stageHistory: saved.stageHistory || [] };
   if (deceased) state.tombstones.push({ id: state.mind.id, at: life.deathAt, reason: 'PRESERVED_DEATH' });
   return state;
@@ -77,7 +77,7 @@ export function advanceGameplay(input, now = Date.now()) {
     m.life.lifeState = 'DECEASED'; m.life.deathAt = state.now;
     state.tombstones.push({ id: m.id, at: state.now, reason: m.life.attributes.health <= 0 ? 'PHYSIOLOGICAL_FAILURE' : 'NEURAL_COLLAPSE' });
   }
-  if (m.energy.day !== Math.floor(state.now / DAY)) m.energy = { day: Math.floor(state.now / DAY), remaining: 10 };
+  m.energy=energyAt(m.energy,state.now);
   return advancePreviewLife(state);
 }
 
@@ -101,6 +101,6 @@ export function dashboardLife(state) {
   return { ...life, id: 'primary', schemaVersion: 2, stage: m.stage, condition: condition(life),
     birthTimestamp: life.birthTimestamp || new Date(m.createdAt).toISOString(), lastSimulationAt: new Date(life.lastAt).toISOString(),
     deathTimestamp: life.deathAt == null ? null : new Date(life.deathAt).toISOString(),
-    energy: { remaining: m.energy.remaining, maximum: 10, utcDay: new Date(m.energy.day * DAY).toISOString().slice(0, 10), nextResetAt: new Date((m.energy.day + 1) * DAY).toISOString() },
+    energy: { ...m.energy, maximum:10 },
     careCooldowns: Object.fromEntries(Object.entries(life.care).map(([key, value]) => [key, value == null ? null : new Date(value).toISOString()])) };
 }

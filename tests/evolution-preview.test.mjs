@@ -74,12 +74,12 @@ test('leaving Agent Mind removes all temporary peers and links', () => {
   const p = new PreviewTimeline(); p.select(7); p.network.start(); p.tick(15); p.previous();
   assert.equal(p.network.state,'DISCONNECTED'); assert.ok(p.network.peers.every(x => x.visibility===0));
 });
-test('both render backends share bounded buffers and one shared Agent Mind morphology for remote brains', () => {
+test('both render backends share bounded buffers and stable per-identity morphology for remote brains', () => {
   const view = new EvolutionScene(); const { buffers:b, morph:m } = view;
   m.select(7,true); b.rebuild(m); const central = b.segmentCount;
   const n = new NetworkSimulation(); n.configure(7); n.start(); n.tick(15);
   for (let i=0;i<100;i++) { b.segmentCount=central; b.animate(m,n,i/10,false); assert.ok(b.segmentCount*6 <= b.lines.length); assert.ok(b.networkCount*6<=b.networkLines.length); assert.ok(b.pulseCount<=BUDGET.impulses); }
-  assert.equal(b.remote.length,3); assert.equal(b.remote[0].shape,b.remote[1].shape); assert.deepEqual(b.remote[0].shape.nodes,generateStage(7).nodes);
+  assert.equal(b.remote.length,3); const identities=n.peers.map(p=>b.identities.get(p.id)); assert.notDeepEqual(identities[0].positions,identities[1].positions); assert.equal(b.identities.get(n.peers[0].id),identities[0]);
   b.segmentCount=central; b.animate(m,n,1,true); assert.equal(b.pulseCount,0);
   n.reset(); b.segmentCount=central; b.animate(m,n,1,false); assert.equal(b.networkCount,0); assert.ok(b.radii.slice(BUDGET.neurons).every(r=>r===0));
 });
