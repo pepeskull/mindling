@@ -1,5 +1,5 @@
 // Evaluation candidates, not a claim of measured model quality on this deployment.
-export const FRAMEWORK='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.web.min.js';
+export const FRAMEWORK='https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/transformers.min.js';
 export const EMBEDDING=Object.freeze({id:'Xenova/paraphrase-multilingual-MiniLM-L12-v2',revision:'2c4055b12046f11709e9df2c122e59ffbdc2f900',dtype:'q8',dimensions:384,weightBytes:118308126});
 export const CLASSIFIER=Object.freeze({id:'onnx-community/Qwen2.5-0.5B-Instruct',revision:'22942cb7d7ba4cc81bb4673549ca4d4614469b5e',dtype:'q8',weightBytes:512096557});
 export const CLASSIFIER_KEY=`${CLASSIFIER.id}@${CLASSIFIER.revision}:${CLASSIFIER.dtype}`;
@@ -7,3 +7,17 @@ export const MODEL_KEY=`${EMBEDDING.id}@${EMBEDDING.revision}:${EMBEDDING.dtype}
 export const ANALYSIS_VERSION=2;
 export const INFORMATION_TYPES=Object.freeze(['FACT_CLAIM','AMBITION','GOAL','INSTRUCTION','ADVICE','OPINION','QUESTION','EXPERIENCE','UNCERTAIN']);
 export const RELATIONSHIP_TYPES=Object.freeze(['SAME_TOPIC','RELATED_TOPIC','SUPPORTS','CONTRADICTS','ELABORATES','GOAL_RELATED_TO']);
+
+// Fail closed: set both fields only after recording real hardware/model qualification
+// in a reviewed PR. A model/framework change invalidates that qualification.
+export const MODEL_PACK=`${FRAMEWORK}|${MODEL_KEY}|${CLASSIFIER_KEY}`;
+export const INSTALLATION_POLICY=Object.freeze({automatic:false,qualifiedPack:null});
+export const automaticInstallation=()=>INSTALLATION_POLICY.automatic&&INSTALLATION_POLICY.qualifiedPack===MODEL_PACK;
+// Pinned Hugging Face repository metadata; runtime/WASM assets are additional.
+export const MODEL_ASSETS=Object.freeze([
+  ...Object.entries({'onnx/model_quantized.onnx':EMBEDDING.weightBytes,'tokenizer.json':17082913,'config.json':673,'tokenizer_config.json':496,'special_tokens_map.json':280}).map(([file,bytes])=>({url:`https://huggingface.co/${EMBEDDING.id}/resolve/${EMBEDDING.revision}/${file}`,bytes})),
+  ...Object.entries({'onnx/model_quantized.onnx':CLASSIFIER.weightBytes,'tokenizer.json':7031673,'config.json':678,'tokenizer_config.json':7849,'generation_config.json':242,'special_tokens_map.json':613}).map(([file,bytes])=>({url:`https://huggingface.co/${CLASSIFIER.id}/resolve/${CLASSIFIER.revision}/${file}`,bytes}))
+]);
+export const MODEL_ASSET_BYTES=MODEL_ASSETS.reduce((sum,asset)=>sum+asset.bytes,0);
+export const modelDownloadNotice=()=>`approximately ${Math.ceil(MODEL_ASSET_BYTES/1e6)} MB of model files, plus runtime dependencies`;
+export const MODEL_CACHE='mindling-local-model-assets-v1';
