@@ -12,9 +12,12 @@ export class LocalIntelligence {
     this.panel.querySelector('[data-ai-off]').addEventListener('click',()=>{if(!app.external?.locked)this.disable();});
     this.panel.querySelector('[data-ai-index]').addEventListener('click',()=>this.reindex());
   }
+  diagnose(code,action,backend=null){
+    if(/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname))console.warn('local-ai-diagnostic',{code,action,backend});
+  }
   status(text){this.panel.querySelector('[data-ai-status]').textContent=text;}
   request(action,payload,timeout=120000){
-    return new Promise((resolve,reject)=>{const id=++this.sequence,timer=setTimeout(()=>{this.pending.delete(id);reject(Error('LOCAL_MODEL_TIMEOUT'));this.stopWorker();},timeout);this.pending.set(id,{resolve,reject,timer});this.worker.postMessage({id,action,payload});});
+    return new Promise((resolve,reject)=>{const id=++this.sequence,timer=setTimeout(()=>{this.pending.delete(id);this.diagnose('TIMEOUT',action);reject(Error('LOCAL_MODEL_TIMEOUT'));this.stopWorker();},timeout);this.pending.set(id,{resolve,reject,timer,action});this.worker.postMessage({id,action,payload});});
   }
   listeners=new Set();epoch=0;
   report(stage,detail=''){
@@ -65,9 +68,9 @@ export class LocalIntelligence {
         if(epoch!==this.epoch)return;
         if(data.stage){this.report(data.stage);return;}
         const item=this.pending.get(data.id);if(!item)return;this.pending.delete(data.id);clearTimeout(item.timer);
-        if(data.error){this.repairModel=data.repairModel;this.repairRuntime=data.repairRuntime;item.reject(Error(data.error));}else item.resolve(data.result);
+        if(data.error){this.repairModel=data.repairModel;this.repairRuntime=data.repairRuntime;this.diagnose(data.diagnostic||'RUNTIME_ERROR',item.action,data.backend||null);const error=Error(data.error);error.diagnostic=data.diagnostic;item.reject(error);}else item.resolve(data.result);
       };
-      this.worker.onerror=()=>this.stopWorker();
+      this.worker.onerror=()=>{this.diagnose('WORKER_RUNTIME','worker');this.stopWorker();};
       this.report('initializing');const result=await this.request('init',{pack:MODEL_PACK},600000);current();
       if(result?.pack!==MODEL_PACK)throw Error('LOCAL_MODEL_PACK_CHANGED');
       this.report('verifying');const health=await this.request('health',null,120000);current();
