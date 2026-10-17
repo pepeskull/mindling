@@ -1,3 +1,5 @@
+import { automaticInstallation, MODEL_PACK } from '../learning/model-config.js';
+import { pendingAwakening } from '../learning/install-progress.js';
 import { analyzeNative } from '../learning/native-learning.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../preview/automatic-playback.js';
@@ -52,7 +54,11 @@ export class MindlingApp extends EvolutionPreview {
     this.events.on(EVENTS.MEMORY_SELECTED, route => { this.seed.highlightRoute(route); this.view.selectedCanonical = route?.neuronIds?.[0] || null; });
     for (const button of document.querySelectorAll('[data-care]')) button.querySelector('small').textContent = `Free · ${LIFE_RULES.care[button.dataset.care].cooldownHours}h`;
     this.renderState();
-    if (this.state.mind) this.dashboard.show(); else this.showOnboarding();
+    if (this.state.mind) {
+      const pending=await this.db.get('settings','local-ai-awakening');
+      if(pendingAwakening(pending,this.state.mind,MODEL_PACK,automaticInstallation()))await this.resumeAwakening();
+      else this.dashboard.show();
+    } else this.showOnboarding();
     this.lifeTimer = setInterval(() => this.refreshState(), 60_000);
     this.energyTimer=setInterval(()=>{if(!this.external?.locked&&this.state?.mind){
       this.dashboard.renderEnergy(this.state.mind.energy,Date.now());
@@ -123,13 +129,42 @@ export class MindlingApp extends EvolutionPreview {
     this.external?.assertWritable();
     this.dashboard.hide();
     this.onboarding = new Onboarding(document.querySelector('#onboarding'), async draft => {
-      const identity = await createLocalIdentity();
-      await this.change(s => createGameplayMindling(s, draft, identity), { identity });
-      await this.onboarding.birth(draft.name);
+      await this.onboarding.birth(draft.name,{
+        create:async()=>{
+          const identity=await createLocalIdentity();
+          await this.change(s=>createGameplayMindling(s,draft,identity),{identity});
+        },
+        ...this.awakeningInstallation()
+      });
       if (this.disposed) return;
       this.onboarding.hide(); this.dashboard.show(); this.renderState();
     });
     this.onboarding.show();
+  }
+
+  awakeningInstallation(){
+    if(!automaticInstallation())return {};
+    let cancelled=false;
+    return {
+      cancel:()=>{cancelled=true;this.intelligence.cancel();void this.saveAwakening('native');},
+      install:async(onProgress,retry)=>{
+        if(cancelled)return false;
+        await this.saveAwakening('pending');
+        if(cancelled)return false;
+        const ready=await this.intelligence.enable({onProgress,retry});
+        if(ready)await this.saveAwakening('complete');
+        return ready;
+      }
+    };
+  }
+  async saveAwakening(status){
+    // Installation metadata is separate from canonical gameplay and reward records.
+    try{await this.db.put('settings',{id:'local-ai-awakening',mindlingId:this.state.mind.id,pack:MODEL_PACK,status});}catch{if(status==='pending')throw Error('Installation consent could not be saved');}
+  }
+  async resumeAwakening(){
+    this.dashboard.hide();this.onboarding=new Onboarding(document.querySelector('#onboarding'),()=>{});
+    await this.onboarding.birth(this.state.mind.name,this.awakeningInstallation());
+    if(!this.disposed){this.onboarding.hide();this.dashboard.show();}
   }
 
   async beginNewMindling() {

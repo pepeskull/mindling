@@ -25,7 +25,7 @@ with sync_playwright() as p:
  print('PASS model-loading failure leaves the explicitly labelled native fallback active')
  # Exercise an actual dedicated worker and service-worker cache using a tiny fixture.
  result=page.evaluate('''async()=>{
-  await navigator.serviceWorker.register('/local-ai-cache.js');await navigator.serviceWorker.ready;
+  await navigator.serviceWorker.register('/local-ai-cache.js',{type:'module'});await navigator.serviceWorker.ready;
   if(!navigator.serviceWorker.controller)await new Promise(r=>navigator.serviceWorker.addEventListener('controllerchange',r,{once:true}));
   const {FRAMEWORK}=await import('/src/learning/model-config.js');const cache=await caches.open('mindling-local-model-assets-v1');
   const fixture=`export const env={backends:{onnx:{wasm:{}}}};export async function pipeline(task,id,options){if(options.device==='webgpu')throw Error('fixture GPU unavailable');if(task==='feature-extraction')return async()=>({data:Float32Array.from({length:384},(_,i)=>i===0?1:0)});return async messages=>[{generated_text:JSON.stringify({type:'FACT_CLAIM',domain:'Astronomy',topic:'Earth rotation',confidence:.9,evidence:messages[1].content})}];}`;
@@ -36,7 +36,7 @@ with sync_playwright() as p:
  assert result['init']['result']['backend']=='wasm',result
  assert result['good']['result']['classification']['evidence']=='Jorden roterar kring sin axel.'
  assert result['bad']['error']=='LOCAL_MODEL_FAILED'
- context.set_offline(True);assert page.evaluate('runFixture()')['good']['result']['embedding'][0]==1;context.set_offline(False)
+ context.set_offline(True);assert page.evaluate('runFixture()')['good']['result']['embedding'][0]==1;assert page.evaluate('''async()=>{const {LocalIntelligence}=await import('/src/learning/local-ai-client.js');const client=new LocalIntelligence({state:{mind:null}});try{return await client.enable()&&client.ready}finally{client.destroy()}}''');context.set_offline(False)
  print('PASS dedicated worker protocol, safe malformed-input rejection and cached fixture execution offline (not real model qualification)')
  # Real IndexedDB transactions: concurrent regen/spend, rollback and derived-index isolation.
  result=page.evaluate('''async()=>{

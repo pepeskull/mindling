@@ -1,18 +1,22 @@
-import { FRAMEWORK, EMBEDDING, CLASSIFIER, MODEL_KEY, CLASSIFIER_KEY, ANALYSIS_VERSION, INFORMATION_TYPES } from './model-config.js';
-import { validateClassification } from './intelligence-index.js';
+import { FRAMEWORK, MODEL_PACK, EMBEDDING, CLASSIFIER, MODEL_KEY, CLASSIFIER_KEY, ANALYSIS_VERSION, INFORMATION_TYPES } from './model-config.js';
+import { validateClassification, validEmbedding } from './intelligence-index.js';
 let encoder,generator,backend,queue=Promise.resolve();
-async function initialize(){
-  const {pipeline,env}=await import(FRAMEWORK);env.allowLocalModels=false;env.useBrowserCache=true;
+async function initialize({pack}={}){
+  if(pack&&pack!==MODEL_PACK)throw Error('LOCAL_MODEL_PACK_CHANGED');
+  let runtime;try{runtime=await import(FRAMEWORK);}catch{throw Object.assign(Error('LOCAL_MODEL_FAILED'),{repairRuntime:true});}
+  const {pipeline,env}=runtime;env.allowLocalModels=false;env.useBrowserCache=false;
   env.backends.onnx.wasm.numThreads=1;
-  const progress_callback=progress=>{if(progress.status==='progress')postMessage({progress:Math.round(progress.progress||0)});};
+  const progress_callback=progress=>{if(progress.status==='done')postMessage({stage:'initializing'});};
   const load=async device=>{
-    encoder=await pipeline('feature-extraction',EMBEDDING.id,{revision:EMBEDDING.revision,dtype:EMBEDDING.dtype,device,progress_callback});
-    generator=await pipeline('text-generation',CLASSIFIER.id,{revision:CLASSIFIER.revision,dtype:CLASSIFIER.dtype,device,progress_callback});backend=device;
+    for(const [task,model] of [['feature-extraction',EMBEDDING],['text-generation',CLASSIFIER]]){
+      try{const loaded=await pipeline(task,model.id,{revision:model.revision,dtype:model.dtype,device,progress_callback});if(task==='feature-extraction')encoder=loaded;else generator=loaded;}
+      catch(error){throw Object.assign(Error('LOCAL_MODEL_FAILED'),{repairRuntime:/wasm.*(compile|magic|invalid)|compileerror|failed to.*wasm/i.test(String(error.message)),repairModel:/protobuf|deserialize|invalid.*model|invalid.*tensor|unexpected token/i.test(String(error.message))?model.id:null});}
+    }backend=device;
   };
   let gpu=false;try{gpu=Boolean(await navigator.gpu?.requestAdapter());}catch{}
   if(gpu){try{await load('webgpu');}catch{await encoder?.dispose();await generator?.dispose();encoder=null;generator=null;await load('wasm');}}
   else await load('wasm');
-  return {backend,embedding:MODEL_KEY,classifier:CLASSIFIER_KEY};
+  return {pack:MODEL_PACK,backend,embedding:MODEL_KEY,classifier:CLASSIFIER_KEY};
 }
 async function analyze({text,labels,basis}){
   if(!encoder||!generator)throw Error('Not initialized');
@@ -26,4 +30,14 @@ async function analyze({text,labels,basis}){
   const parsed=JSON.parse(raw);validateClassification(parsed,text);
   return {mode:'ai',version:ANALYSIS_VERSION,model:MODEL_KEY,classifier:CLASSIFIER_KEY,text,basis,embedding,classification:parsed};
 }
-onmessage=({data})=>{queue=queue.then(async()=>{try{const result=data.action==='init'?await initialize():await analyze(data.payload);postMessage({id:data.id,result});}catch{postMessage({id:data.id,error:'LOCAL_MODEL_FAILED'});}});};
+onmessage=({data})=>{queue=queue.then(async()=>{try{
+  let result;
+  if(data.action==='init')result=await initialize(data.payload||{});
+  else if(data.action==='health'){
+    const check=await analyze({text:'The Earth rotates around its own axis.',labels:[],basis:'installation-health-check'});
+    if(!validEmbedding(check.embedding))throw Error('LOCAL_HEALTH_FAILED');
+    result={healthy:true,backend};
+  }else if(data.action==='analyze')result=await analyze(data.payload);
+  else throw Error('LOCAL_ACTION_INVALID');
+  postMessage({id:data.id,result});
+}catch(error){postMessage({id:data.id,error:'LOCAL_MODEL_FAILED',repairModel:error.repairModel||null,repairRuntime:error.repairRuntime===true});}});};
