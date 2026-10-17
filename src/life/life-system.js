@@ -1,3 +1,4 @@
+import { energyAt, spendEnergy, ENERGY_MAX, ENERGY_INTERVAL } from '../economy/energy.js';
 export const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
@@ -19,12 +20,12 @@ export const LIFE_RULES = Object.freeze({
   social: Object.freeze({ playerEnergyCost: 0, minimumWellbeingGain: 2, maximumWellbeingGain: 5, dailyGainCap: 10 })
 });
 
-export const ENERGY_RULES = Object.freeze({ dailyAllowance: 10, resetStandard: "UTC_MIDNIGHT" });
+export const ENERGY_RULES = Object.freeze({ maximum:ENERGY_MAX, interval:ENERGY_INTERVAL });
 
 const clamp = value => Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
 const validTime = (value, fallback) => { const time = Date.parse(value); return Number.isFinite(time) ? time : fallback; };
 export const utcDayKey = now => new Date(now).toISOString().slice(0, 10);
-export const nextUtcReset = now => { const date = new Date(now); return Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() + 1); };
+
 
 export function neuralCycles(createdAt, now = Date.now(), deathAt = null) {
   const birth = validTime(createdAt, now); const end = deathAt ? validTime(deathAt, now) : now;
@@ -52,14 +53,9 @@ export function createLifeState({ createdAt, now = Date.now() }) {
     attributes: Object.freeze({ health: 100, nutrition: 100, rest: 100, wellbeing: 100 }),
     lifeState: "ALIVE", condition: "STABLE", lastSimulationAt: new Date(now).toISOString(), lastPlayerAttentionAt: new Date(now).toISOString(),
     criticalSince: null, deathTimestamp: null, ageAtDeath: null,
-    energy: Object.freeze({ remaining: ENERGY_RULES.dailyAllowance, maximum: ENERGY_RULES.dailyAllowance,
-      utcDay: utcDayKey(now), nextResetAt: new Date(nextUtcReset(now)).toISOString() }),
+    energy: Object.freeze(energyAt(null,now)),
     careCooldowns: Object.freeze({ NOURISH: null, REST: null, CARE: null }), history: Object.freeze([]) });
 }
-
-const refreshEnergy = (energy, now) => energy?.utcDay === utcDayKey(now)
-  ? { ...energy, maximum: ENERGY_RULES.dailyAllowance, nextResetAt: new Date(nextUtcReset(now)).toISOString() }
-  : { remaining: ENERGY_RULES.dailyAllowance, maximum: ENERGY_RULES.dailyAllowance, utcDay: utcDayKey(now), nextResetAt: new Date(nextUtcReset(now)).toISOString() };
 
 const appendHistory = (history, item) => [...(history || []), item].slice(-200);
 
@@ -68,7 +64,7 @@ export function advanceLife(input, now = Date.now()) {
   const state = structuredClone(input); const parsedLast = validTime(state.lastSimulationAt, now);
   const last = parsedLast > now + 300_000 ? now : parsedLast;
   const elapsed = Math.max(0, Math.min(now - last, LIFE_RULES.maximumOfflineStepHours * HOUR_MS));
-  state.energy = refreshEnergy(state.energy, now);
+  state.energy = energyAt(state.energy, now);
   if (state.lifeState === "DECEASED") return Object.freeze({ ...state, energy: Object.freeze(state.energy) });
   const hours = elapsed / HOUR_MS; const attributes = { ...state.attributes };
   attributes.nutrition = clamp(attributes.nutrition - hours * LIFE_RULES.decayPerHour.nutrition);
@@ -97,7 +93,7 @@ export function applyActivity(input, activity, { now = Date.now(), activityId } 
   if (!rule) return { accepted: false, reason: "UNKNOWN_ACTIVITY", state: input };
   if (state.lifeState === "DECEASED") return { accepted: false, reason: "MINDLING_DECEASED", state: input };
   if (state.energy.remaining < rule.energyCost) return { accepted: false, reason: "OUT_OF_ENERGY", state };
-  state.energy.remaining -= rule.energyCost; state.attributes.wellbeing = clamp(state.attributes.wellbeing + rule.wellbeingGain);
+  state.energy=spendEnergy(state.energy,rule.energyCost,now); state.attributes.wellbeing = clamp(state.attributes.wellbeing + rule.wellbeingGain);
   state.lastPlayerAttentionAt = new Date(now).toISOString(); state.condition = conditionFor(state.attributes); if (state.condition !== "CRITICAL") state.criticalSince = null;
   const journal = Object.freeze({ id: String(activityId || crypto.randomUUID()), type: activity, label: rule.label, at: new Date(now).toISOString(),
     energyCost: rule.energyCost, wellbeingGain: rule.wellbeingGain, balanceAfter: state.energy.remaining });

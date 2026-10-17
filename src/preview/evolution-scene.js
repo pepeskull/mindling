@@ -1,3 +1,4 @@
+import { BrainIdentities } from '../network/brain-identity.js';
 import { SceneInteraction } from "../renderer/scene-interaction.js";
 import { NEURAL_SEED_MORPHOLOGY, seededValue } from "../renderer/neural-morphology.js";
 import { BUDGET, generateStage, Morphology, smooth } from "./evolution-model.js";
@@ -25,13 +26,9 @@ export class RenderBuffers {
   networkLines = new Float32Array(3 * 32 * 6);
   pulses = new Float32Array(BUDGET.impulses * 3);
   pulseCount = 0; segmentCount = 0; networkCount = 0;
-  // One Agent Mind template shared by all peers and both renderers.
-  agent = generateStage(7);
-  remote = REMOTE_CENTERS.map(center => ({center,shape:this.agent,
-    contours:this.agent.contours.map(contour=>contour.map(position=>position.map((v,axis)=>center[axis]+v*REMOTE_SCALE)))
-  }));
-  remoteIndices = Array.from({length:BUDGET.remoteNeurons},(_,i)=>Math.floor(i*this.agent.nodes.length/BUDGET.remoteNeurons));
-  remoteLookup = new Map(this.remoteIndices.map((source,index)=>[source,index]));
+  identities=new BrainIdentities();
+  remote=REMOTE_CENTERS.map(center=>({center}));
+  focusedId=null;
   scratch = new Float32Array(6);
 
   rebuild(morph) {
@@ -77,50 +74,37 @@ export class RenderBuffers {
       this.segment(...this.scratch);
     }
   }
-  animate(morph, network, elapsed, reduced) {
-    this.pulseCount = 0; this.networkCount = 0;
-    const edges = morph.target.edges;
-    if (!reduced) for (let i = 0; i < Math.min(24, morph.stage * 3); i++) {
-      const [a, b] = edges[(Math.floor(elapsed / 3) * 13 + i * 17) % edges.length];
-      const k = a * 3, j = b * 3;
-      curve(this.pulses, this.pulseCount++ * 3, this.positions[k], this.positions[k + 1], this.positions[k + 2], this.positions[j], this.positions[j + 1], this.positions[j + 2], (elapsed / 3 + i / 7) % 1, .13 + (a % 4) * .055);
+  writeBrain(brain,start,center,scale,visibility,elapsed,reduced){
+    for(let i=0;i<brain.radii.length;i++){
+      const k=(start+i)*3,j=i*3;
+      for(let axis=0;axis<3;axis++)this.positions[k+axis]=center[axis]+brain.positions[j+axis]*scale;
+      const breath=reduced?1:1+.04*Math.sin(elapsed+i+brain.seed%100);
+      this.radii[start+i]=brain.radii[i]*scale*visibility*breath;this.regions[start+i]=brain.regions[i];
     }
-    this.remote.forEach(({ center, shape, contours }, index) => {
-      const peer = network.peers[index], visibility = morph.stage===7&&peer.stage===7 ? peer.visibility * network.fade : 0;
-      const start = BUDGET.neurons + index * BUDGET.remoteNeurons;
-      for (let i = 0; i < BUDGET.remoteNeurons; i++) {
-        const node = shape.nodes[this.remoteIndices[i]], k = (start + i) * 3;
-        for (let a = 0; a < 3; a++) this.positions[k + a] = center[a] + node.position[a] * REMOTE_SCALE;
-        const activity = reduced ? 1 : 1 + .12 * Math.sin(elapsed * 2 + i * .4) + peer.reaction * .35;
-        this.radii[start + i] = node.radius * REMOTE_SCALE * visibility * activity; this.regions[start + i] = node.region;
-      }
-      if (!visibility) return;
-      // Same cortex contours, regional somas and original neural edges at bounded LOD.
-      const point = position => position.map((value,axis)=>center[axis]+value*REMOTE_SCALE);
-      for(const contour of contours)for(let i=1;i<contour.length;i++){
-        const a=contour[i-1],b=contour[i];this.segment(...a,a[0]+(b[0]-a[0])*visibility,a[1]+(b[1]-a[1])*visibility,a[2]+(b[2]-a[2])*visibility);
-      }
-      for(const [source,target] of shape.edges){
-        const a=this.remoteLookup.get(source),b=this.remoteLookup.get(target);if(a===undefined||b===undefined)continue;
-        const k=(start+a)*3,j=(start+b)*3;
-        this.path(...this.positions.subarray(k,k+3),...this.positions.subarray(j,j+3),(.13+(source%4)*.055)*REMOTE_SCALE,visibility);
-      }
-      for(let i=0;i<BUDGET.remoteNeurons;i++){
-        const node=shape.nodes[this.remoteIndices[i]],a=point(node.position),length=node.radius*REMOTE_SCALE*4.19*visibility;
-        for(let branch=0;branch<3;branch++){
-          const angle=branch/3*Math.PI*2+seededValue(this.remoteIndices[i]*31+branch);
-          this.segment(...a,a[0]+Math.cos(angle)*length,a[1]+Math.sin(angle)*length,a[2]+length*.2);
-        }
-      }
-      const length = peer.link * network.fade;
-      for (let s = 0; s < 32 && length > 0; s++) {
-        const k = this.networkCount++ * 6;
-        curve(this.networkLines, k, 0, 0, 0, ...center, s / 32 * length, .7);
-        curve(this.networkLines, k + 3, 0, 0, 0, ...center, (s + 1) / 32 * length, .7);
-      }
-      if (!reduced) for (const progress of [peer.outgoing, peer.incoming]) if (progress >= 0 && this.pulseCount < BUDGET.impulses) curve(this.pulses, this.pulseCount++ * 3, 0, 0, 0, ...center, progress, .7);
+    if(!visibility)return;
+    const lines=brain.lines;
+    for(let k=0;k<lines.length;k+=6)this.segment(center[0]+lines[k]*scale,center[1]+lines[k+1]*scale,center[2]+lines[k+2]*scale,
+      center[0]+(lines[k]+(lines[k+3]-lines[k])*visibility)*scale,center[1]+(lines[k+1]+(lines[k+4]-lines[k+1])*visibility)*scale,center[2]+(lines[k+2]+(lines[k+5]-lines[k+2])*visibility)*scale);
+  }
+  animate(morph, network, elapsed, reduced) {
+    this.pulseCount=0;this.networkCount=0;
+    const focused=this.focusedId?this.identities.get(this.focusedId):null;
+    if(focused){this.segmentCount=0;this.radii.fill(0,0,BUDGET.neurons);this.writeBrain(focused,0,[0,0,0],1,1,elapsed,reduced);}
+    const edges=focused?focused.edges:morph.target.edges;
+    if(!focused&&!reduced&&edges.length)for(let i=0;i<Math.min(24,morph.stage*3);i++){
+      const [a,b,bend]=edges[(Math.floor(elapsed/3)*13+i*17)%edges.length],k=a*3,j=b*3;
+      curve(this.pulses,this.pulseCount++*3,this.positions[k],this.positions[k+1],this.positions[k+2],this.positions[j],this.positions[j+1],this.positions[j+2],(elapsed/3+i/7)%1,bend??(.13+(a%4)*.055));
+    }
+    this.remote.forEach(({center},index)=>{
+      const peer=network.peers[index],visibility=morph.stage===7&&peer.stage===7?peer.visibility*network.fade:0,start=BUDGET.neurons+index*BUDGET.remoteNeurons;
+      if(!peer.id||!visibility){this.radii.fill(0,start,start+BUDGET.remoteNeurons);return;}
+      this.writeBrain(this.identities.get(peer.id),start,center,REMOTE_SCALE,visibility,elapsed,reduced);
+      const length=peer.link*network.fade;
+      for(let s=0;s<32&&length>0;s++){const k=this.networkCount++*6;curve(this.networkLines,k,0,0,0,...center,s/32*length,.7);curve(this.networkLines,k+3,0,0,0,...center,(s+1)/32*length,.7);}
+      if(!reduced)for(const progress of [peer.outgoing,peer.incoming])if(progress>=0&&this.pulseCount<BUDGET.impulses)curve(this.pulses,this.pulseCount++*3,0,0,0,...center,progress,.7);
     });
   }
+
 }
 
 export class EvolutionScene {
@@ -158,6 +142,11 @@ export class EvolutionScene {
   lineObject(array, color, opacity) {
     const T = this.three, geometry = new T.BufferGeometry(); geometry.setAttribute('position', new T.BufferAttribute(array, 3).setUsage(T.DynamicDrawUsage));
     const object = new T.LineSegments(geometry, new T.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false })); object.frustumCulled = false; this.root.add(object); return object;
+  }
+  focusBrain(id){
+    if(id)this.buffers.identities.get(id);
+    this.buffers.focusedId=id;
+    if(!id){this.buffers.rebuild(this.morph);this.centralSegments=this.buffers.segmentCount;}
   }
   select(stage) { this.morph.select(stage, this.reduced); this.buffers.rebuild(this.morph); this.centralSegments = this.buffers.segmentCount; }
   resize(width, height) {
@@ -219,7 +208,7 @@ export class EvolutionScene {
     }
     for (let i = 0; i < MAX_NODES; i++) if (b.radii[i] > .001) {
       const scale = this.project(b.positions, i * 3, p); c.fillStyle = this.selectedCanonical && this.canonicalMapping?.[i] === this.selectedCanonical ? "#ffffff" : `#${COLORS[b.regions[i]].toString(16)}`;
-      const breath = this.reduced ? 1 : 1 + .04 * Math.sin(elapsed + i);
+      const breath = this.reduced || b.focusedId || i>=BUDGET.neurons ? 1 : 1 + .04 * Math.sin(elapsed + i);
       c.beginPath(); c.arc(p[0], p[1], Math.max(.5, b.radii[i] * scale * breath), 0, Math.PI * 2); c.fill();
       c.strokeStyle = 'rgba(170,225,210,.15)'; c.beginPath(); c.arc(p[0], p[1], b.radii[i] * scale * 1.7, 0, Math.PI * 2); c.stroke();
     }
@@ -284,6 +273,7 @@ export class EvolutionScene {
   }
   destroy() {
     if (this.scene) { this.scene.traverse(object => { object.geometry?.dispose(); if (object.material) object.material.dispose(); }); this.renderer?.dispose(); this.renderer?.forceContextLoss(); }
+    this.buffers.identities.clear();
     this.labels?.forEach(label => label.remove()); this.labels = null;
     this.canvas?.remove();
   }

@@ -1,3 +1,4 @@
+import { LocalIntelligence } from '../learning/local-ai-client.js';
 import { ExternalView } from '../network/external-view.js';
 import { PreviewTimeline, smooth } from "./evolution-model.js";
 import { EvolutionScene } from "./evolution-scene.js";
@@ -53,6 +54,7 @@ export class EvolutionPreview {
       this.seed = new CanvasSeedScene(null, this.interaction, framing); this.seed.mount(this.seedHost, seedModel);
     }
     this.external=new ExternalView(this);
+    if(this.state)this.intelligence=new LocalIntelligence(this);
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
     this.motion.addEventListener('change', this.motionChanged);
     this.observer = new ResizeObserver(this.resize); this.observer.observe(this.sceneHost);
@@ -127,7 +129,7 @@ export class EvolutionPreview {
     if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null;
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);
-    this.external?.destroy();
+    this.external?.destroy();this.intelligence?.destroy();
     this.modeLink?.remove();this.presentation?.destroy(); this.dashboard?.destroy();
     this.timeline.pause(); this.timeline.network.reset(); this.interaction.disconnect(); this.seed?.destroy(); this.view?.destroy();
     this.host?.replaceChildren(); this.host?.removeAttribute('style');

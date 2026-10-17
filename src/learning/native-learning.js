@@ -33,7 +33,7 @@ function categoryFor(text,mind,index,related) {
   const existing=categories.find(category=>normalize(category.name)===normalize(name));
   return {id:existing?.id||'',name:existing?.name||name,confidence:.35};
 }
-export function analyzeNative(text,mind) {
+export function analyzeNative(text,mind,{allowQuestion=false}={}) {
   if(typeof text!=='string'||text.length>2000||!normalize(text))throw Error('Share a short, readable claim. No Energy or XP changed.');
   // Full text and original saved variants are compared before new-claim heuristics,
   // so short legacy memories can still be reinforced without being rewritten.
@@ -43,7 +43,7 @@ export function analyzeNative(text,mind) {
   // It is evidence of a possible repeat, never authority to merge different facts.
   const legacyKey=text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
   if(mind.memories.some(memory=>!memory.native&&[memory.normalized,memory.normalizedContent].includes(legacyKey)))throw Error('This may repeat a historical input. Existing memories are unchanged. No Energy or XP changed.');
-  const input=validateText(text),index=knowledgeIndex(mind.memories),related=retrieveMemories(text,mind.memories,{index});
+  const input=validateText(text,{allowQuestion}),index=knowledgeIndex(mind.memories),related=retrieveMemories(text,mind.memories,{index});
   for(const memory of index.active){
     for(const old of sentences(memory.content))for(const fresh of input.sentences){
       const relation=compare(fresh,old);

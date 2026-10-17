@@ -27,12 +27,12 @@ export function overlap(left,right) {
   let common=0;for(const item of a)if(b.has(item))common++;
   return common/(a.size+b.size-common);
 }
-export function validateText(text) {
+export function validateText(text,{allowQuestion=false}={}) {
   if(typeof text!=='string'||text.length>2000||text.trim().length<8||/[\p{Cc}\p{Cf}]/u.test(text.replace(/[\n\r\t]/g,'')))throw Error('Share a short, readable claim. No Energy or XP changed.');
   if(/^https?:\/\/\S+$/iu.test(text.trim()))throw Error('Teach a claim rather than a link. No Energy or XP changed.');
   const f=features(text);
   if(f.tokens.length<3||new Set(f.tokens).size<3||f.terms.length<2||!/[\p{L}]/u.test(text)||/(.)\1{5,}/u.test(text)||new Set(f.tokens).size/f.tokens.length<.25)throw Error('Share a clear claim with several different words. No Energy or XP changed.');
-  if(/[?？]\s*$/u.test(text))throw Error('Teach a claim rather than a question. No Energy or XP changed.');
+  if(!allowQuestion&&/[?？]\s*$/u.test(text))throw Error('Teach a claim rather than a question. No Energy or XP changed.');
   const parts=sentences(text);
   if(parts.length>8)throw Error('Teach at most eight short sentences at a time. No Energy or XP changed.');
   return {features:f,sentences:parts};

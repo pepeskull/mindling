@@ -1,3 +1,5 @@
+import { renderKnowledge } from '../learning/knowledge-view.js';
+import { energyLabel } from '../economy/energy.js';
 import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
 import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
@@ -126,13 +128,7 @@ export class Dashboard {
     const overall = document.querySelector(".memory-overall"); const list = document.querySelector(".knowledge-area-list");
     const percent = Math.round(this.#knowledgeDevelopment.overall * 100);
     overall.innerHTML = `<div><span>Overall Development</span><strong>${percent}%</strong></div><progress max="100" value="${percent}">${percent}%</progress><small>Bounded internal development · ${this.#state.memories.length} canonical ${this.#state.memories.length === 1 ? "memory" : "memories"}</small>`;
-    if (!this.#knowledgeDevelopment.areas.length) { list.innerHTML = `<p class="memory-empty">No canonical memories yet. Teach your Mindling to begin forming knowledge.</p>`; return; }
-    const memoriesById = new Map(this.#state.memories.map(memory => [memory.id, memory]));
-    list.innerHTML = this.#knowledgeDevelopment.areas.map(area => {
-      const value = Math.round(area.progress * 100);
-      const memories = area.memoryIds.map(id => memoriesById.get(id)).filter(Boolean);
-      return `<details class="knowledge-area" open><summary><span><b>${this.#escape(area.label)}</b><small>${area.memoryCount} canonical ${area.memoryCount === 1 ? "memory" : "memories"} · ${Math.round(area.cohesion * 100)}% cohesion</small></span><strong>${value}%</strong></summary><progress max="100" value="${value}">${value}%</progress><div class="area-memory-list">${memories.map(memory => `<details class="memory-record"><summary>${memory.supersededBy ? "Superseded · " : ""}${this.#escape(memory.content)}</summary><dl><div><dt>Status</dt><dd>${memory.supersededBy ? `Superseded by ${this.#escape(memory.supersededBy)}` : "Current"}</dd></div>${memory.topic ? `<div><dt>Topic</dt><dd>${this.#escape(memory.topic)}</dd></div>` : ""}<div><dt>Memory ID</dt><dd>${this.#escape(memory.id)}</dd></div><div><dt>Strength</dt><dd>${Math.round((memory.strength || 0) * 100)}%</dd></div><div><dt>Activations</dt><dd>${memory.activations ?? 0}</dd></div><div><dt>Participating neurons</dt><dd>${(memory.neuronIds || []).length || "—"}</dd></div><div><dt>Relationships</dt><dd>${(memory.relatedMemoryIds || []).length || "—"}</dd></div></dl></details>`).join("")}</div></details>`;
-    }).join("");
+    renderKnowledge(this.#state,list);
   }
 
   #setPrimaryView(view) {
@@ -193,9 +189,7 @@ export class Dashboard {
       if (!row) continue;
       row.querySelector("strong").textContent = formatLifePercentage(value); row.querySelector("progress").value = value; row.querySelector('progress').textContent = formatLifePercentage(value); row.classList.toggle("critical", rounded <= 14);
     }
-    document.querySelector("[data-energy-value]").textContent = `${life.energy.remaining} / ${life.energy.maximum}`;
-    document.querySelector("[data-energy-progress]").value = life.energy.remaining;
-    document.querySelector("[data-energy-reset]").textContent = `Resets ${new Date(life.energy.nextResetAt).toLocaleString([], { dateStyle: "short", timeStyle: "short", timeZone: "UTC" })} UTC`;
+    this.renderEnergy(life.energy,now);
     const warning = life.version === 2 ? { message: previewWarning(life).replace('Create a new test identity.', 'Raise a new Mindling when you are ready.') } : warningFor(life);
     document.querySelector("[data-life-warning] span").textContent = warning.message;
     document.querySelectorAll("[data-activity-mode]").forEach(button => { const rule = LIFE_RULES.activity[button.dataset.activityMode]; button.disabled = life.lifeState === "DECEASED" || life.energy.remaining < rule.energyCost; });
@@ -210,6 +204,14 @@ export class Dashboard {
     }
     if (life.energy.remaining === 0) document.querySelector("[data-energy-message]").hidden = false;
     else document.querySelector("[data-energy-message]").hidden = true;
+  }
+
+  renderEnergy(energy,now){
+    const label=energyLabel(energy,now);
+    document.querySelector('[data-energy-value]').textContent=label.value;
+    document.querySelector('[data-energy-progress]').value=label.bar;
+    document.querySelector('[data-energy-progress]').textContent=label.value;
+    document.querySelector('[data-energy-reset]').textContent=label.text;
   }
 
   async #care(type) {

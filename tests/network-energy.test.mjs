@@ -42,11 +42,11 @@ test('ten unique consecutive Talk actions and mixed activities preserve exact co
   let s=start();for(let i=0;i<10;i++)s=talk(s,`I am considering an interesting observation with index ${i}.`,{id:`talk-${i}`});assert.equal(s.mind.energy.remaining,0);assert.equal(s.mind.lifetimeXP,0);
   s=start();s=talk(s,'I am ready to explore these interesting ideas.');s=learn(s,event(0));s=learn(s,event(1,'DEEP_TRAINING'));assert.equal(s.mind.energy.remaining,4);
 });
-test('replays and duplicate XP farming remain rejected; UTC reset and care cooldowns remain',()=>{
+test('replays and duplicate XP farming remain rejected; continuous regeneration and care cooldowns remain',()=>{
   let s=learn(start(),event(0));assert.throws(()=>learn(s,event(0)),/processed/);s=learn(s,{...event(0),id:'reinforce'});assert.equal(s.mind.lifetimeXP,50);assert.equal(s.mind.memories.length,1);
   assert.throws(()=>learn(s,{...event(0),id:'again'}),/reinforced/);
   s=talk(s,'Some meaningful observations deserve further discussion.',{id:'talk'});assert.throws(()=>talk(s,'A completely different thought uses the same transaction.',{id:'talk'}),/processed/);
   assert.throws(()=>talk(s,'Some meaningful observations deserve further discussion.'),/repeated/);
-  s=advanceTime(s,24);assert.equal(s.mind.energy.remaining,10);assert.equal(s.mind.energy.day,Math.floor(s.now/DAY));
+  s=advanceTime(s,24);assert.equal(s.mind.energy.remaining,10);assert.equal(s.mind.energy.version,2);
   for(const type of ['NOURISH','REST','CARE']){s=carePreview(s,type);assert.throws(()=>carePreview(s,type),/cooldown/);}
 });

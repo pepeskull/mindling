@@ -40,5 +40,5 @@ test('Life 2.0 Talk pays Energy, prevents repeated input farming, and never awar
   const initial=start(),text='I am thinking about the relationship between care and learning.';
   const s=talk(initial,text);assert.equal(s.mind.energy.remaining,9);assert.equal(s.mind.lifetimeXP,0);assert.equal(s.mind.memories.length,0);assert.equal(initial.mind.energy.remaining,10);
   const later=advanceTime(advanceTime(s,1),1);assert.throws(()=>talk(later,text),/repeated/);
-  assert.throws(()=>talk(later,'hello'),/meaningful/);assert.equal(later.mind.energy.remaining,9);
+  assert.throws(()=>talk(later,'hello'),/meaningful/);assert.equal(later.mind.energy.remaining,10);
 });

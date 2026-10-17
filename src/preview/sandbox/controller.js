@@ -1,9 +1,10 @@
+import { analyzeNative } from '../../learning/native-learning.js';
 import { EvolutionPreview } from '../evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../automatic-playback.js';
 import { STAGES } from '../evolution-model.js';
 import { presentationFor } from '../dashboard-presentation.js';
 import { condition, carePreview, previewWarning } from './life.js';
-import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,talk,upgradeSandbox,DAY,visualMapping } from './engine.js';
+import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,talk,upgradeSandbox,advanceSandbox,DAY,visualMapping } from './engine.js';
 import { LIFE_RULES } from '../../life/life-system.js';
 import { TestWalletUI } from './wallet-ui.js';
 import { PreviewStore } from './storage.js';
@@ -14,7 +15,7 @@ export class SandboxPreview extends EvolutionPreview {
     if(new URLSearchParams(location.search).get('stage-preview')!=='1')throw Error('Sandbox requires explicit preview URL');
     const store=await new PreviewStore().open();
     if(this.disposed){store.close();return;}
-    this.store=store;this.state=await this.store.change(s=>s?upgradeSandbox(s):createSandbox());
+    this.store=store;this.state=await this.store.change(s=>s?advanceSandbox(s):createSandbox());
     if(this.disposed){store.close();return;}
     this.stabilityRow=document.createElement('div');this.stabilityRow.className='life-attribute';this.stabilityRow.dataset.lifeAttribute='neuralStability';
     this.stabilityRow.innerHTML='<svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><label>Neural Stability</label><strong>—</strong><progress aria-label="Neural Stability" max="100" value="100">100%</progress>';
@@ -55,16 +56,23 @@ export class SandboxPreview extends EvolutionPreview {
     }});
     this.walletUI=new TestWalletUI(this);
     this.renderState();
+    this.energyTimer=setInterval(()=>{
+      if(this.external?.locked||this.busy||this.pendingMutations||!this.state.mind)return;
+      const now=this.state.now+Math.max(0,Date.now()-this.state.wallAt),energy=this.state.mind.energy;
+      this.dashboard.renderEnergy(energy,now);
+      if(now>=energy.updatedAt+720000&&energy.remaining-energy.bonus<10)this.change(s=>s).catch(error=>this.status(error.message));
+    },1000);
+    this.listen(document,'visibilitychange',()=>{if(!document.hidden&&!this.busy)this.change(s=>s).catch(error=>this.status(error.message));});
   }
   listen(node,type,fn){node.addEventListener(type,event=>{if(!this.external?.locked)fn(event);},{signal:this.listeners.signal});}
   async action(fn){if(this.busy||this.external?.locked)return;this.busy=true;this.status('Working…');try{await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;}}
   status(text){if(this.disposed)return;const el=this.panel?.querySelector('[data-sandbox-status]');if(el)el.textContent=text;const inline=document.querySelector('#interaction-form .interaction-status');if(inline){inline.textContent=text;inline.classList.add('visible');}}
-  async change(reducer) {
+  async change(reducer,{preserveGameplay=false}={}) {
     this.external?.assertWritable();
     this.pendingMutations=(this.pendingMutations||0)+1;
     try {
       const memories=this.state.mind?.memories.length||0;
-      this.state=await this.store.change(s=>{this.external?.assertWritable();return reducer(s);});
+      this.state=await this.store.change(s=>{this.external?.assertWritable();return reducer(preserveGameplay?s:advanceSandbox(s));});
       if(!this.disposed){
         this.renderState();
         if(this.state.mind?.memories.length>memories){
@@ -76,17 +84,20 @@ export class SandboxPreview extends EvolutionPreview {
   }
   async submitLearning(){
     this.external?.assertWritable();
+    await this.change(s=>s);
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
     const text=document.querySelector('#mindling-input').value;
     const activity=this.activity;
     if(this.activity==='TALK'){await this.change(s=>talk(s,text));document.querySelector('#mindling-input').value='';this.status('Thought shared locally. Stimulation improves; stability recovers over virtual time.');return;}
-    const id=crypto.randomUUID();
+    const preflight=analyzeNative(text,m,{allowQuestion:Boolean(this.intelligence?.ready)});
+    if(m.energy.remaining<LIFE_RULES.activity[activity].energyCost)throw Error('Not enough Energy; wait for regeneration');
+    const id=crypto.randomUUID(),analysis=preflight.relationship==='repeated'?null:await this.intelligence?.prepare(text,structuredClone(m));
     await this.change(s=>{
       if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
-      return learn(s,{id,text,mindId:m.id,activity});
+      return learn(s,{id,text,mindId:m.id,activity,analysis});
     });
     const event=this.state.mind.history.find(item=>item.id===id);
-    this.status(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Claim learned locally. It has not been fact-checked.');
+    this.status(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':analysis?'Input learned with experimental local AI organization; not fact-checked.':'Input learned with native lexical fallback; no semantic AI analysis or fact-checking.');
     document.querySelector('#mindling-input').value='';
   }
   async care(type){await this.change(s=>carePreview(s,type));}
@@ -125,9 +136,8 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelector('[data-download-profile]').disabled=true;
     document.querySelectorAll('[data-care]').forEach(b=>{b.disabled=!alive;b.title=`Free preventive care; ${LIFE_RULES.care[b.dataset.care].cooldownHours}-hour virtual cooldown`;});
     document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{b.disabled=!alive||m.energy.remaining<LIFE_RULES.activity[b.dataset.inputMode||b.dataset.activityMode].energyCost;b.title='Uses available Energy; no activity cooldown';});
-    document.querySelector('[data-energy-value]').textContent=`${m.energy.remaining} / 10`;
-    const bar=document.querySelector('[data-energy-progress]');bar.hidden=false;bar.value=m.energy.remaining;
-    document.querySelector('[data-energy-reset]').textContent='Free Energy resets on the next virtual UTC day';
+    this.dashboard.renderEnergy(m.energy,this.state.now);
+    document.querySelector('[data-energy-progress]').hidden=false;
     document.querySelector('[data-neural-cycle]').textContent=`NC ${String(1+Math.floor((this.state.now-m.createdAt)/DAY)).padStart(4,'0')}`;
     document.querySelector('[data-neural-cycles]').textContent=`${1+Math.floor((this.state.now-m.createdAt)/DAY)} Neural Cycles`;
     document.querySelector('.hero-copy h1').textContent=`${m.name} ${alive?'is learning.':'— Neural Collapse'}`;
@@ -154,5 +164,5 @@ export class SandboxPreview extends EvolutionPreview {
     if(m.life.lifeState==='DECEASED'){this.view.reduced=true;this.seed.setReducedMotion(true);}
     this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;this.external?.refresh();
   }
-  destroy(){this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
+  destroy(){clearInterval(this.energyTimer);this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }
