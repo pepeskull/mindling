@@ -1,8 +1,10 @@
 import { MODEL_CATALOG, TRANSFORMERS_RUNTIME } from './model-catalog.js';
+import { MEMORY_MODELS } from './memory-intelligence-config.js';
 
 const CACHE_NAME = 'mindling-ai-lab-assets-v1';
 const MODEL_PREFIXES = MODEL_CATALOG.flatMap(model => (model.components || [model]).map(part =>
-  `https://huggingface.co/${part.repo}/resolve/${part.revision}/`));
+  `https://huggingface.co/${part.repo}/resolve/${part.revision}/`)).concat(
+  [MEMORY_MODELS.embedding, MEMORY_MODELS.analysis].map(model => `https://huggingface.co/${model.repo}/resolve/${model.revision}/`));
 const RUNTIME_PREFIXES = [
   TRANSFORMERS_RUNTIME.url,
   'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1/dist/',

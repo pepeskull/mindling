@@ -89,7 +89,9 @@ with sync_playwright() as playwright:
       globalThis.Worker = OrchestrationWorker;
     })();""")
     page.reload(wait_until="networkidle")
-    assert page.evaluate("globalThis.__labDatabaseOpens") == []
+    opened_databases = page.evaluate("globalThis.__labDatabaseOpens")
+    assert set(opened_databases) == {"mindling-ai-memory-lab-v1"}, opened_databases
+    assert "mindling-db" not in opened_databases
 
     page.locator("[data-select-all]").click()
     assert page.locator("[data-model-card] input:checked").count() == 10

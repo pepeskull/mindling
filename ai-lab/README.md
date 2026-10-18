@@ -16,6 +16,14 @@ See [EMBEDDING_INVESTIGATION.md](./EMBEDDING_INVESTIGATION.md) for the root caus
 
 The multilingual NLI candidate is diagnostic only. Its config-provided label mapping and Transformers.js score calculation are correct, but real q8 WASM and independent ONNX Runtime evaluation found severe candidate bias and only 13.89% held-out accuracy across the nine information types. The lab exposes raw mapped logits, hypotheses, margins, entropy, and the `NLI_INFORMATION_TYPE_UNQUALIFIED` status rather than accepting the top label as a memory classification. See [NLI_INVESTIGATION.md](./NLI_INVESTIGATION.md) for the benchmark, confusion matrices, template experiments, alternative-model check, and reproduction commands.
 
+## Memory Intelligence Lab
+
+The **Memory Intelligence Lab** connects the qualified MiniLM q8/WASM retrieval path to a pinned Qwen3 0.6B q8/WASM analysis candidate. Model download is an explicit action and is about 762 MB. Qwen3 proposes a domain, topic, information type, category action, and memory relationship; the lab validates exact evidence quotes and category or memory IDs before showing the result. Every semantic proposal remains unqualified and is forced to `NEEDS_REVIEW`. A reviewer must explicitly choose the final action, labels, category, and type before an atomic write.
+
+Accepted inputs are stored in the separate `mindling-ai-memory-lab-v1` IndexedDB database as immutable observations linked to stable canonical memories. Linking retains both original observations. Related and contradictory statements create separate memory nodes and reversible relations. Category rename and reconciliation preserve linked memories. The reset control deletes only this lab database. The export includes the complete isolated state, pinned model identities, acceptance thresholds, and all evaluation cases.
+
+The reproducible evaluation contains 100 topic cases, 108 information-type cases, and 120 relationship pairs across English and Swedish, with development and held-out splits. The generation model did not meet qualification criteria in real browser inference, so this work does not claim autonomous semantic decisions. See [MEMORY_INTELLIGENCE_REPORT.md](./MEMORY_INTELLIGENCE_REPORT.md) for architecture, raw examples, measurements, commands, results, and limitations.
+
 ## Candidate notes
 
 The catalog is pinned as follows. Download figures are approximate required model and tokenizer artifacts and exclude the shared runtime.
@@ -32,7 +40,8 @@ The catalog is pinned as follows. Download figures are approximate required mode
 | Multilingual DistilBERT Sentiment | `Xenova/distilbert-base-multilingual-cased-sentiments-student@9d9ac661fd7b0b48535a1fc99b20ae6947629e65` | q8 | 139 MB | Apache-2.0 |
 | TinyLlama 1.1B Chat | `onnx-community/TinyLlama-1.1B-Chat-v1.0-ONNX@cb463df0db21d713728366575b5a71f80de7adb2` | q4 | 912 MB | Apache-2.0 |
 | MiniLM + NLI hybrid | The exact MiniLM and NLI revisions above | q8 | 260 MB, shared | Apache-2.0 + MIT |
+| Qwen3 0.6B (Memory Intelligence Lab) | `onnx-community/Qwen3-0.6B-ONNX@58ca03a5e7b354b480b1a82b34bde8dc7b854cc0` | q8 | 627 MB | Apache-2.0 |
 
-All ten have Transformers.js ONNX artifacts and a WASM path. WebGPU remains available for candidates where it has not produced a known-invalid result. q8 WebGPU is disabled for the embedding candidates and the MiniLM hybrid; BGE-M3 is also restricted to WASM until separately qualified. Runtime support does not establish semantic quality. LaMini Flan-T5 has a CC-BY-NC-4.0 license and must not be treated as a production candidate without a licensing review. Swedish is only claimed where the upstream model documentation lists it. BGE-M3 and TinyLlama are intentionally retained as resource-heavy comparison points and may fail on constrained browsers.
+All ten original catalog candidates, plus the separate Qwen3 memory-analysis candidate, have Transformers.js ONNX artifacts and a WASM path. WebGPU remains available for candidates where it has not produced a known-invalid result. q8 WebGPU is disabled for the embedding candidates and the MiniLM hybrid; BGE-M3 is also restricted to WASM until separately qualified. Runtime support does not establish semantic quality. LaMini Flan-T5 has a CC-BY-NC-4.0 license and must not be treated as a production candidate without a licensing review. Swedish is only claimed where the upstream model documentation lists it. BGE-M3 and TinyLlama are intentionally retained as resource-heavy comparison points and may fail on constrained browsers.
 
 Generated classifications are model observations, not factual verification. The NLI and hybrid candidates are explicitly unqualified for the nine-type task. Embedding candidates return vector diagnostics and relationship measurements rather than invented domain or type labels. The hybrid candidate identifies its deterministic domain/topic placeholders separately from model output.
