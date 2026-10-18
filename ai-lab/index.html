@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>Mindling — AI Model Lab</title>
+  <link rel="icon" href="../favicon.png">
+  <link rel="stylesheet" href="./lab.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="../" aria-label="Back to Play Mindling"><img src="../logo.png" alt=""><span>MINDLING <i>—</i> AI MODEL LAB</span></a>
+    <div class="run-state"><span class="pulse" data-pulse></span><strong data-current-model>No model running</strong><span data-run-progress>Idle</span></div>
+  </header>
+  <main>
+    <section class="hero">
+      <div><p class="eyebrow">Development environment · browser local</p><h1>Semantic Intelligence<br><em>Evaluation Environment</em></h1><p>Compare observable behavior across real local models. Inputs remain in this browser and are never written to Mindling player data.</p></div>
+      <div class="capability-panel" aria-label="Browser capabilities">
+        <div><span>WebGPU</span><strong data-webgpu>Checking</strong></div><div><span>WASM</span><strong data-wasm>Checking</strong></div><div><span>Runtime</span><strong>Transformers.js 3.8.1</strong></div><div><span>Lab cache</span><strong data-cache>Checking</strong></div>
+      </div>
+    </section>
+
+    <section class="workbench panel">
+      <div class="section-heading"><div><span>01</span><h2>Test input</h2></div><label>Example library<select data-examples></select></label></div>
+      <textarea data-input maxlength="4000" spellcheck="true">Become a trader in finance about stocks</textarea>
+      <p class="privacy-note">Inference runs locally. No analytics, server inference, gameplay import, or player IndexedDB access.</p>
+    </section>
+
+    <section class="models-section">
+      <div class="section-heading"><div><span>02</span><h2>Candidate catalog</h2></div><div class="compact-actions"><button type="button" class="text-button" data-select-all>Select all</button><button type="button" class="text-button" data-deselect-all>Deselect all</button></div></div>
+      <div class="model-grid" data-model-grid></div>
+      <div class="run-controls panel">
+        <div><strong data-selected-count>0 models selected</strong><span>Models run sequentially in isolated workers.</span></div>
+        <div><label>Backend<select data-backend><option value="auto">Auto · WebGPU → WASM</option><option value="wasm">WASM</option><option value="webgpu">WebGPU only</option></select></label><button type="button" class="secondary" data-stop disabled>Stop testing</button><button type="button" class="primary" data-run>Run selected models</button></div>
+      </div>
+    </section>
+
+    <section class="results-section" data-results-section hidden>
+      <div class="section-heading"><div><span>03</span><h2>Observed results</h2></div><button type="button" class="text-button" data-export disabled>Export results</button></div>
+      <div class="results" data-results></div>
+      <div class="comparison panel"><h3>Comparison</h3><div class="benchmark-summary" data-benchmark-summary></div><div class="table-scroll"><table><thead><tr><th>Model</th><th>Task</th><th>Validity</th><th>Observed semantic result</th><th>Latency</th><th>Download</th><th>Backend</th><th>Error</th></tr></thead><tbody data-comparison></tbody></table></div></div>
+    </section>
+
+    <section class="relationship panel">
+      <div class="section-heading"><div><span>04</span><h2>Memory Relationship Test</h2></div><span class="tag">Embedding candidates only</span></div>
+      <p>One synthetic memory per line. Similarity may reveal a shared domain; it does not prove identical meaning or intent.</p>
+      <textarea data-relationship-input>Become a trader in finance about stocks
+learn trading and stocks
+learn finance and crypto
+The Earth rotates around its axis</textarea>
+      <div class="relationship-actions"><label>Embedding candidate<select data-relationship-model></select></label><button type="button" class="primary" data-run-relationships>Analyze relationships</button></div>
+      <div data-relationship-output class="relationship-output" hidden></div>
+    </section>
+
+    <section class="method panel">
+      <div><span>Isolation contract</span><h2>Evaluation stays outside the brain.</h2></div>
+      <ul><li>No gameplay modules are imported.</li><li>No player databases are opened.</li><li>Downloads use exact repositories and pinned revisions.</li><li>Raw model output stays visible, including invalid output.</li></ul>
+    </section>
+  </main>
+  <footer><span>PLAY MINDLING · DEVELOPMENT TOOL</span><a href="./README.md">Method &amp; model notes</a></footer>
+  <script type="module" src="./lab.js"></script>
+</body>
+</html>
