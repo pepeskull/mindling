@@ -58,7 +58,8 @@ export const MODEL_CATALOG = Object.freeze([
     task: 'Zero-shot information-type classification', repo: 'onnx-community/multilingual-MiniLMv2-L6-mnli-xnli-ONNX',
     revision: 'ca5daf3d11b6c4b3143b1f4602a2edfb64c3ad7e', dtype: 'q8', bytes: 124_500_283,
     license: 'MIT', languages: '15 listed languages; Swedish is not listed', runtime: { webgpu: true, wasm: true },
-    notes: 'Scores supplied candidate labels. Scores are not calibrated probabilities.',
+    qualification: { informationType: false, reason: 'NLI_INFORMATION_TYPE_UNQUALIFIED' },
+    notes: 'Diagnostic only. Held-out information-type accuracy is unqualified; scores are not calibrated probabilities.',
   }),
   candidate({
     key: 'multilingual-sentiment', name: 'Multilingual DistilBERT Sentiment', family: 'DistilBERT', kind: 'classification',
@@ -80,6 +81,7 @@ export const MODEL_CATALOG = Object.freeze([
     task: 'Similarity + zero-shot type + deterministic schema', bytes: 259_892_771,
     license: 'Apache-2.0 + MIT', languages: 'MiniLM supports Swedish; NLI does not list Swedish',
     runtime: { webgpu: false, wasm: true },
+    qualification: { informationType: false, reason: 'NLI_INFORMATION_TYPE_UNQUALIFIED' },
     components: Object.freeze([
       { repo: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2', revision: '2c4055b12046f11709e9df2c122e59ffbdc2f900', dtype: 'q8', task: 'feature-extraction' },
       { repo: 'onnx-community/multilingual-MiniLMv2-L6-mnli-xnli-ONNX', revision: 'ca5daf3d11b6c4b3143b1f4602a2edfb64c3ad7e', dtype: 'q8', task: 'zero-shot-classification' },

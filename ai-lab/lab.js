@@ -85,6 +85,9 @@ function observedRows(row) {
   const items = [
     ['Domain', value.domain], ['Topic', value.topic], ['Information type', value.type || value.typeLabel],
     ['Confidence / score', Number.isFinite(value.confidence) ? value.confidence.toFixed(3) : Number.isFinite(value.score) ? value.score.toFixed(3) : null],
+    ['Top-two score margin', Number.isFinite(value.scoreMargin) ? value.scoreMargin.toFixed(6) : null],
+    ['Normalized entropy', Number.isFinite(value.normalizedEntropy) ? value.normalizedEntropy.toFixed(6) : null],
+    ['Classification qualification', value.qualification],
     ['Evidence', value.evidence], ['Sentiment', value.sentiment],
     ['Vector dimensions', row.result.embedding?.dimensions], ['Vector norm', Number.isFinite(row.result.embedding?.norm) ? row.result.embedding.norm.toFixed(4) : null],
     ['Cold initialization', Number.isFinite(row.result.timings?.initializationMs) ? `${row.result.timings.initializationMs.toFixed(0)} ms` : null],
@@ -96,14 +99,15 @@ function observedRows(row) {
 function renderResult(row) {
   $('[data-results-section]').hidden = false;
   const valid = row.result.ok && row.result.validation?.valid;
-  const status = row.result.ok ? (valid ? 'Valid output' : 'Invalid output') : 'Failed';
+  const unqualified = row.result.ok && row.result.nli?.qualified === false;
+  const status = row.result.ok ? (unqualified ? 'Unqualified observation' : valid ? 'Valid output' : 'Invalid output') : 'Failed';
   const card = document.createElement('details'); card.className = 'result-card'; card.open = true;
   card.innerHTML = `<summary><h3>${escape(row.model.name)}</h3><span>${escape(row.model.task)}</span><span>${displayMetric(row.result.timings?.totalMs, ' ms')}</span><span class="status ${valid ? 'valid' : row.result.ok ? 'invalid' : 'failed'}">${status}</span></summary>
     <div class="result-body"><div><h4>Observed values</h4><div class="observed-grid">${observedRows(row)}</div><h4 style="margin-top:20px">Evaluation</h4><p class="${row.evaluation.pass === false ? 'diagnostic' : ''}">${escape(row.evaluation.label)}</p></div><div><h4>Raw model/native output</h4><pre></pre></div></div>`;
   const raw = row.result.ok ? {
     identity: row.result.identity, backend: row.result.backend, settings: { dtype: row.model.dtype, maxNewTokens: row.model.maxNewTokens || null },
     rawGeneratedText: row.result.raw ?? 'Not produced — this task does not generate text.', nativeOutput: row.result.nativeOutput ?? null,
-    parsed: row.result.parsed ?? null, validation: row.result.validation, embedding: row.result.embedding ?? null,
+    parsed: row.result.parsed ?? null, validation: row.result.validation, nliDiagnostics: row.result.nli ?? null, embedding: row.result.embedding ?? null,
     memory: row.result.memory ?? 'Unavailable', download: {
       bytesObserved: row.telemetry.downloadBytes || 'Unavailable or served from cache',
       durationMs: row.telemetry.downloadMs ?? 'Unavailable or served from cache',

@@ -7,6 +7,7 @@ Then run:
 
 The Worker replacement below tests browser orchestration only. It is not model-quality evidence.
 """
+import json
 import os
 from playwright.sync_api import sync_playwright
 
@@ -70,6 +71,15 @@ with sync_playwright() as playwright:
                 embeddings: Array.from({ length: count }, (_, index) => ({ valid: true, tokenCount: index + 2, dimensions: 2, norm: 1, minimum: 0, maximum: 1, mean: .5, standardDeviation: .5, fingerprint: `fixture${index}`, finite: true })),
                 relationships: { matrix: Array.from({ length: count }, (_, row) => Array.from({ length: count }, (_, column) => row === column ? 1 : .1234567)), pairs, clusters: [], clustering: { strategy: 'disabled', threshold: null, qualified: false, explanation: 'Fixture pairwise mode.' }, caution: 'Fixture caution.' },
               };
+            } else if (message.payload.model.key === 'multilingual-nli') {
+              result = {
+                ok: true, model: message.payload.model.key, identity: 'nli-orchestration-fixture', backend: 'wasm',
+                nativeOutput: { sequence: message.payload.text, labels: ['a question'], scores: [.2] },
+                observed: { typeLabel: 'a question', score: .2, scoreMargin: .01, normalizedEntropy: .99, qualification: 'NLI_INFORMATION_TYPE_UNQUALIFIED' },
+                nli: { qualified: false, qualificationReason: 'NLI_INFORMATION_TYPE_UNQUALIFIED', labelMapping: { entailment: 0, neutral: 1, contradiction: 2 }, candidateLabels: ['a question'], hypothesisTemplate: 'This text is {}.' },
+                validation: { valid: false, structuralValid: true, errors: ['NLI_INFORMATION_TYPE_UNQUALIFIED'] },
+                timings: { initializationMs: 1, inferenceMs: 1, totalMs: 2 },
+              };
             } else result = { ok: true, model: message.payload.model.key, identity: 'orchestration-fixture', backend: 'wasm', raw: '{"fixture":true}', parsed: null, observed: null, validation: { valid: false, errors: ['ORCHESTRATION_FIXTURE'] }, timings: { initializationMs: 1, inferenceMs: 1, totalMs: 2 } };
             for (const callback of this.listeners.message) callback({ data: { id: message.id, result } });
           });
@@ -91,6 +101,14 @@ with sync_playwright() as playwright:
     assert page.locator(".result-card").count() == 2
     assert page.locator(".result-card").nth(0).inner_text().find("Invalid output") >= 0
     assert page.locator("[data-comparison] tr").count() == 2
+
+    page.locator("[data-deselect-all]").click()
+    page.locator('[data-model-card="multilingual-nli"] input').check()
+    page.locator("[data-input]").fill("I want to become a professional stock trader.")
+    page.locator("[data-run]").click()
+    page.locator(".result-card .status").filter(has_text="Unqualified observation").wait_for(timeout=5000)
+    nli_raw = json.loads(page.locator(".result-card pre").inner_text())
+    assert nli_raw["nliDiagnostics"]["labelMapping"] == {"entailment": 0, "neutral": 1, "contradiction": 2}
 
     page.locator("[data-developer-diagnostics]").check()
     page.locator("[data-run-relationships]").click()

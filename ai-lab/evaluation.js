@@ -188,7 +188,7 @@ export function typeFromZeroShot(output) {
   return normalized ? { type: normalized[0], confidence: output.scores[0] } : null;
 }
 
-export function deterministicHybridResult(text, zeroShot, embedding) {
+export function deterministicHybridResult(text, zeroShot, embedding, options = {}) {
   const observed = typeFromZeroShot(zeroShot);
   const diagnostics = embeddingDiagnostics(embedding);
   if (!observed || !diagnostics.valid) return { value: null, valid: false, errors: ['HYBRID_INPUT_INVALID'] };
@@ -196,7 +196,14 @@ export function deterministicHybridResult(text, zeroShot, embedding) {
   const topic = words.slice(0, 8).join(' ').slice(0, 100) || 'Uncertain topic';
   const value = { domain: 'Uncertain — model does not predict domain', topic, type: observed.type, confidence: observed.confidence, evidence: text };
   const validation = validateStructuredAnalysis(value, text);
-  return { value, ...validation, postprocessing: 'Domain and topic are deterministic placeholders; only type score and embedding are model observations.' };
+  const qualified = options.informationTypeQualified !== false;
+  return {
+    value,
+    valid: validation.valid && qualified,
+    structuralValid: validation.valid,
+    errors: [...validation.errors, ...(qualified ? [] : ['NLI_INFORMATION_TYPE_UNQUALIFIED'])],
+    postprocessing: 'Domain and topic are deterministic placeholders; only the unqualified NLI type score and embedding are model observations.',
+  };
 }
 
 export function evaluateResultForExample(result, text, kind) {
@@ -209,5 +216,8 @@ export function evaluateResultForExample(result, text, kind) {
   if (!actual && result.observed?.typeLabel) actual = Object.entries(TYPE_LABELS).find(([, label]) => label === result.observed.typeLabel)?.[0];
   if (!actual) return { label: 'No comparable type produced', pass: false, scored: true };
   const pass = expected.includes(actual);
+  if (result.nli?.qualified === false) {
+    return { label: pass ? `Unqualified NLI observation matched ${actual}` : `Unqualified NLI observation: expected ${expected.join(' / ')}, got ${actual}`, pass, scored: true };
+  }
   return { label: pass ? `Accepted: ${actual}` : `Expected ${expected.join(' / ')}, got ${actual}`, pass, scored: true };
 }

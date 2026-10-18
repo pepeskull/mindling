@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MODEL_CATALOG, assertCatalog } from '../ai-lab/model-catalog.js';
+import { readFile } from 'node:fs/promises';
 import {
   extractJson, validateStructuredAnalysis, embeddingDiagnostics, vectorPairDiagnostics, completeLinkClusters, relationshipReport,
   deterministicHybridResult, TYPE_LABELS,
 } from '../ai-lab/evaluation.js';
 import { EMBEDDING_BENCHMARK, embeddingBenchmarkMetrics } from '../ai-lab/embedding-benchmark.js';
+import { NLI_PROFILE, resolveNliLabelMapping, scoreNliCandidates, nliClassificationMetrics } from '../ai-lab/nli-evaluation.js';
 import { ModelSequenceController } from '../ai-lab/model-runner.js';
 
 test('catalog contains ten real pinned candidates with explicit metadata', () => {
@@ -16,6 +18,7 @@ test('catalog contains ten real pinned candidates with explicit metadata', () =>
   assert.ok(MODEL_CATALOG.every(model => model.bytes > 0 && model.license && model.languages));
   assert.ok(MODEL_CATALOG.flatMap(model => model.components || [model]).every(model => /^[a-f0-9]{40}$/.test(model.revision)));
   assert.ok(MODEL_CATALOG.filter(model => ['embedding', 'hybrid'].includes(model.kind)).every(model => !model.runtime.webgpu));
+  assert.equal(MODEL_CATALOG.find(model => model.key === 'multilingual-nli').qualification.informationType, false);
 });
 
 test('structured validation preserves raw failures and exact evidence rules', () => {
@@ -81,7 +84,47 @@ test('hybrid schema exposes deterministic postprocessing and rejects unusable ob
   assert.equal(result.valid, true);
   assert.equal(result.value.type, 'QUESTION');
   assert.match(result.postprocessing, /deterministic/);
+  const unqualified = deterministicHybridResult('How do markets work?', output, [1, 0], { informationTypeQualified: false });
+  assert.equal(unqualified.valid, false);
+  assert.equal(unqualified.structuralValid, true);
+  assert.ok(unqualified.errors.includes('NLI_INFORMATION_TYPE_UNQUALIFIED'));
   assert.equal(deterministicHybridResult('x', null, [1]).valid, false);
+});
+
+test('NLI scoring respects the model-provided label mapping and exposes uncertainty', () => {
+  const mapping = resolveNliLabelMapping({ label2id: { entailment: 0, neutral: 1, contradiction: 2 } });
+  assert.deepEqual(mapping, { entailment: 0, neutral: 1, contradiction: 2 });
+  const rows = NLI_PROFILE.candidates.map((candidate, index) => ({
+    ...candidate, logits: [index === 3 ? 2 : 0, .5, -1], tokenCount: 8 + index,
+  }));
+  const result = scoreNliCandidates(rows, mapping);
+  assert.equal(result.top.type, NLI_PROFILE.candidates[3].type);
+  assert.equal(result.candidates.length, 9);
+  assert.equal(result.uncertainty.qualified, false);
+  assert.equal(result.scores.reduce((sum, value) => sum + value, 0).toFixed(8), '1.00000000');
+  assert.throws(() => resolveNliLabelMapping({ label2id: { entailment: 0, neutral: 0, contradiction: 2 } }), /NLI_LABEL_MAPPING_INVALID/);
+});
+
+test('NLI metrics report confusion and per-category precision and recall', () => {
+  const cases = [{ expected: 'QUESTION' }, { expected: 'QUESTION' }, { expected: 'OPINION' }];
+  const metrics = nliClassificationMetrics(cases, ['QUESTION', 'OPINION', 'OPINION']);
+  assert.equal(metrics.accuracy, 2 / 3);
+  assert.equal(metrics.perCategory.QUESTION.recall, .5);
+  assert.equal(metrics.perCategory.OPINION.precision, .5);
+});
+
+test('NLI benchmark keeps tuning and held-out cases separate and balanced', async () => {
+  const benchmark = JSON.parse(await readFile(new URL('../ai-lab/nli-benchmark.json', import.meta.url)));
+  const types = Object.keys(benchmark.labelingPolicy);
+  assert.equal(types.length, 9);
+  assert.equal(benchmark.tuning.length, 27);
+  assert.equal(benchmark.heldOut.length, 36);
+  assert.equal(new Set([...benchmark.tuning, ...benchmark.heldOut].map(item => item.text)).size, 63);
+  for (const type of types) {
+    assert.equal(benchmark.tuning.filter(item => item.expected === type).length, 3);
+    assert.equal(benchmark.heldOut.filter(item => item.expected === type).length, 4);
+  }
+  assert.deepEqual(new Set(benchmark.heldOut.map(item => item.language)), new Set(['en', 'sv']));
 });
 
 class MockWorker {
