@@ -45,11 +45,21 @@
     <section class="relationship panel">
       <div class="section-heading"><div><span>04</span><h2>Memory Relationship Test</h2></div><span class="tag">Embedding candidates only</span></div>
       <p>One synthetic memory per line. Similarity may reveal a shared domain; it does not prove identical meaning or intent.</p>
-      <textarea data-relationship-input>Become a trader in finance about stocks
-learn trading and stocks
-learn finance and crypto
-The Earth rotates around its axis</textarea>
-      <div class="relationship-actions"><label>Embedding candidate<select data-relationship-model></select></label><button type="button" class="primary" data-run-relationships>Analyze relationships</button></div>
+      <textarea data-relationship-input>I want to become a successful stock trader.
+You should learn how to invest in stocks.
+I think programming is amazing.
+How does the stock market work?
+The Earth rotates around its axis.
+Yesterday I lost money trading cryptocurrencies.
+Jag vill lära mig att programmera.
+Jag tycker att aktiehandel är svårt.</textarea>
+      <div class="relationship-options">
+        <label>Embedding candidate<select data-relationship-model></select></label>
+        <label>Clustering<select data-clustering><option value="disabled">Pairwise only</option><option value="complete-link">Exploratory complete-link</option></select></label>
+        <label>Exploratory threshold<input data-cluster-threshold type="number" min="-1" max="1" step="0.01" value="0.62" disabled></label>
+        <label class="toggle"><input data-developer-diagnostics type="checkbox"> Developer diagnostics</label>
+      </div>
+      <div class="relationship-actions"><button type="button" class="secondary" data-run-embedding-benchmark>Run broad benchmark</button><button type="button" class="primary" data-run-relationships>Analyze relationships</button></div>
       <div data-relationship-output class="relationship-output" hidden></div>
     </section>
 

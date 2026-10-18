@@ -30,7 +30,10 @@ async function loadRuntime() {
 
 async function availableBackend(preference, model) {
   if (preference === 'wasm') return 'wasm';
-  if (!model.runtime.webgpu) return 'wasm';
+  if (!model.runtime.webgpu) {
+    if (preference === 'webgpu') throw new LabError('WEBGPU_UNSUPPORTED_FOR_MODEL', null, { model: model.key, qualifiedBackend: 'wasm' });
+    return 'wasm';
+  }
   let adapter = null;
   try { adapter = await navigator.gpu?.requestAdapter(); } catch {}
   if (adapter) return 'webgpu';
@@ -92,26 +95,38 @@ async function runGeneration(pipe, model, text) {
 }
 
 async function vectorsFor(pipe, texts, prefix = '') {
-  const vectors = [];
+  const vectors = []; const metadata = [];
   for (const text of texts) {
+    const prepared = `${prefix}${text}`;
+    let tokens;
+    try { tokens = await pipe.tokenizer(prepared, { padding: true, truncation: true }); }
+    catch (error) { throw new LabError('EMBEDDING_TOKENIZATION', error); }
     let tensor;
-    try { tensor = await pipe(`${prefix}${text}`, { pooling: 'mean', normalize: true }); }
+    try { tensor = await pipe(prepared, { pooling: 'mean', normalize: true }); }
     catch (error) { throw new LabError('EMBEDDING_INFERENCE', error); }
     vectors.push(Array.from(tensor.data));
+    const mask = tokens.attention_mask?.data;
+    const tokenCount = mask ? Array.from(mask, Number).reduce((sum, value) => sum + value, 0) : tokens.input_ids?.dims?.at(-1) ?? null;
+    metadata.push({
+      tokenCount,
+      tokenShape: tokens.input_ids?.dims ? Array.from(tokens.input_ids.dims) : null,
+      outputShape: tensor.dims ? Array.from(tensor.dims) : null,
+      prefix: prefix || null,
+    });
   }
-  return vectors;
+  return { vectors, metadata };
 }
 
-async function runEmbedding(pipe, model, text, references, relationshipTexts) {
+async function runEmbedding(pipe, model, text, references, relationshipTexts, relationshipOptions) {
   emit('RUNNING');
   const texts = relationshipTexts?.length > 1 ? relationshipTexts : [text, ...references];
-  const vectors = await vectorsFor(pipe, texts, model.key === 'multilingual-e5-small' ? 'query: ' : '');
+  const { vectors, metadata } = await vectorsFor(pipe, texts, model.key === 'multilingual-e5-small' ? 'query: ' : '');
   emit('VALIDATING');
-  const diagnostics = vectors.map(embeddingDiagnostics);
+  const diagnostics = vectors.map((vector, index) => embeddingDiagnostics(vector, metadata[index]));
   return {
     raw: null, observed: null, parsed: null,
     embedding: diagnostics[0], embeddings: diagnostics,
-    relationships: relationshipReport(texts, vectors), texts,
+    relationships: relationshipReport(texts, vectors, relationshipOptions), texts,
     validation: { valid: diagnostics.every(item => item.valid), errors: diagnostics.every(item => item.valid) ? [] : ['EMBEDDING_INVALID'] },
   };
 }
@@ -145,13 +160,13 @@ async function runClassification(pipe, text) {
   };
 }
 
-async function runHybrid(runtime, model, backend, text, references, relationshipTexts) {
+async function runHybrid(runtime, model, backend, text, references, relationshipTexts, relationshipOptions) {
   const [embeddingModel, nliModel] = model.components;
   const encoder = await createPipeline(runtime, embeddingModel.task, { ...embeddingModel, key: model.key, runtime: model.runtime }, backend);
   const classifier = await createPipeline(runtime, nliModel.task, { ...nliModel, key: model.key, runtime: model.runtime }, backend);
   emit('RUNNING');
   const texts = relationshipTexts?.length > 1 ? relationshipTexts : [text, ...references];
-  const vectors = await vectorsFor(encoder, texts);
+  const { vectors, metadata } = await vectorsFor(encoder, texts);
   let zeroShot;
   try { zeroShot = await classifier(text, Object.values(TYPE_LABELS), { multi_label: false, hypothesis_template: 'This text is {}.' }); }
   catch (error) { throw new LabError('CLASSIFICATION_INFERENCE', error); }
@@ -159,16 +174,18 @@ async function runHybrid(runtime, model, backend, text, references, relationship
   const structured = deterministicHybridResult(text, zeroShot, vectors[0]);
   return {
     raw: null, nativeOutput: { zeroShot }, parsed: structured.value, observed: structured.value,
-    embedding: embeddingDiagnostics(vectors[0]), relationships: relationshipReport(texts, vectors), texts,
+    embedding: embeddingDiagnostics(vectors[0], metadata[0]),
+    embeddings: vectors.map((vector, index) => embeddingDiagnostics(vector, metadata[index])),
+    relationships: relationshipReport(texts, vectors, relationshipOptions), texts,
     validation: { valid: structured.valid, errors: structured.errors }, postprocessing: structured.postprocessing,
   };
 }
 
 async function run(payload) {
-  const { model, text, backendPreference = 'auto', references = [], relationshipTexts = [] } = payload;
+  const { model, text, backendPreference = 'auto', references = [], relationshipTexts = [], relationshipOptions = {} } = payload;
   if (!model || typeof text !== 'string' || !text.trim() || text.length > 4000) throw new LabError('INPUT_INVALID');
-  const runtime = await loadRuntime();
   const requestedBackend = await availableBackend(backendPreference, model);
+  const runtime = await loadRuntime();
   const started = performance.now();
   let backend = requestedBackend;
   let result;
@@ -176,7 +193,7 @@ async function run(payload) {
     pipelines = [];
     const initializationStarted = performance.now();
     let value;
-    if (model.kind === 'hybrid') value = await runHybrid(runtime, model, device, text, references, relationshipTexts);
+    if (model.kind === 'hybrid') value = await runHybrid(runtime, model, device, text, references, relationshipTexts, relationshipOptions);
     else {
       const task = model.kind === 'generation' ? 'text-generation'
         : model.kind === 'text2text' ? 'text2text-generation'
@@ -186,7 +203,7 @@ async function run(payload) {
       const initializationMs = performance.now() - initializationStarted;
       const inferenceStarted = performance.now();
       if (model.kind === 'generation' || model.kind === 'text2text') value = await runGeneration(pipe, model, text);
-      else if (model.kind === 'embedding') value = await runEmbedding(pipe, model, text, references, relationshipTexts);
+      else if (model.kind === 'embedding') value = await runEmbedding(pipe, model, text, references, relationshipTexts, relationshipOptions);
       else if (model.kind === 'zero-shot') value = await runZeroShot(pipe, text);
       else value = await runClassification(pipe, text);
       value.timings = { initializationMs, inferenceMs: performance.now() - inferenceStarted };

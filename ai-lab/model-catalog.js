@@ -34,21 +34,23 @@ export const MODEL_CATALOG = Object.freeze([
     task: 'Similarity, retrieval and clustering', repo: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2',
     revision: '2c4055b12046f11709e9df2c122e59ffbdc2f900', dtype: 'q8', bytes: 135_392_488,
     license: 'Apache-2.0', languages: '50 languages, including English and Swedish', dimensions: 384,
-    runtime: { webgpu: true, wasm: true }, notes: 'Produces vectors, not classifications or generated text.',
+    runtime: { webgpu: false, wasm: true },
+    notes: 'Produces vectors, not classifications or generated text. q8 WebGPU is disabled after reference comparison found collapsed embeddings; use WASM.',
   }),
   candidate({
     key: 'multilingual-e5-small', name: 'Multilingual E5 Small', family: 'E5', kind: 'embedding',
     task: 'Retrieval and semantic grouping', repo: 'Xenova/multilingual-e5-small',
     revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78', dtype: 'q8', bytes: 135_392_016,
     license: 'MIT', languages: '94 languages, including English and Swedish', dimensions: 384,
-    runtime: { webgpu: true, wasm: true }, notes: 'Uses query: prefixes for single-query retrieval comparisons.',
+    runtime: { webgpu: false, wasm: true },
+    notes: 'Uses query: prefixes for symmetric similarity. q8 WebGPU is disabled after reference comparison found collapsed embeddings; use WASM.',
   }),
   candidate({
     key: 'bge-m3', name: 'BGE-M3', family: 'BGE', kind: 'embedding',
     task: 'Multilingual semantic similarity', repo: 'Xenova/bge-m3',
     revision: '4de13258303883538bd53b696b452bf8099f0858', dtype: 'q8', bytes: 586_779_297,
     license: 'MIT', languages: 'Multilingual; Swedish is not separately qualified here', dimensions: 1024,
-    runtime: { webgpu: true, wasm: true }, notes: 'Large browser download and memory footprint.',
+    runtime: { webgpu: false, wasm: true }, notes: 'Large browser download and memory footprint. WebGPU embedding quality has not been qualified; use WASM.',
     restriction: 'Resource intensive; may exceed practical browser memory on constrained devices.',
   }),
   candidate({
@@ -77,12 +79,12 @@ export const MODEL_CATALOG = Object.freeze([
     key: 'hybrid-minilm-nli', name: 'MiniLM + NLI Hybrid', family: 'Deterministic hybrid pipeline', kind: 'hybrid',
     task: 'Similarity + zero-shot type + deterministic schema', bytes: 259_892_771,
     license: 'Apache-2.0 + MIT', languages: 'MiniLM supports Swedish; NLI does not list Swedish',
-    runtime: { webgpu: true, wasm: true },
+    runtime: { webgpu: false, wasm: true },
     components: Object.freeze([
       { repo: 'Xenova/paraphrase-multilingual-MiniLM-L12-v2', revision: '2c4055b12046f11709e9df2c122e59ffbdc2f900', dtype: 'q8', task: 'feature-extraction' },
       { repo: 'onnx-community/multilingual-MiniLMv2-L6-mnli-xnli-ONNX', revision: 'ca5daf3d11b6c4b3143b1f4602a2edfb64c3ad7e', dtype: 'q8', task: 'zero-shot-classification' },
     ]),
-    notes: 'Pipeline, not one pretrained model. Model observations and deterministic postprocessing are shown separately.',
+    notes: 'Pipeline, not one pretrained model. Its q8 embedding component uses WASM because WebGPU produced invalid semantic geometry.',
   }),
 ]);
 
