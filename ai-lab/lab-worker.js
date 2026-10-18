@@ -1,8 +1,9 @@
 import { TRANSFORMERS_RUNTIME } from './model-catalog.js';
 import {
-  TYPE_LABELS, makeAnalysisPrompt, extractJson, validateStructuredAnalysis,
+  makeAnalysisPrompt, extractJson, validateStructuredAnalysis,
   embeddingDiagnostics, relationshipReport, deterministicHybridResult,
 } from './evaluation.js';
+import { NLI_PROFILE, resolveNliLabelMapping, scoreNliCandidates } from './nli-evaluation.js';
 
 let pipelines = [];
 let queue = Promise.resolve();
@@ -131,18 +132,62 @@ async function runEmbedding(pipe, model, text, references, relationshipTexts, re
   };
 }
 
+async function assessNli(pipe, text) {
+  let mapping;
+  try { mapping = resolveNliLabelMapping(pipe.model?.config); }
+  catch (error) { throw new LabError('NLI_LABEL_MAPPING', error); }
+  let rows;
+  try {
+    const premises = NLI_PROFILE.candidates.map(() => text);
+    const hypotheses = NLI_PROFILE.candidates.map(candidate => candidate.hypothesis);
+    const tokens = pipe.tokenizer(premises, { text_pair: hypotheses, padding: true, truncation: true });
+    const output = await pipe.model(tokens);
+    const logits = Array.from(output?.logits?.data || []);
+    const classes = output?.logits?.dims?.at(-1);
+    const sequenceLength = tokens.input_ids?.dims?.at(-1);
+    if (classes !== 3 || logits.length !== NLI_PROFILE.candidates.length * classes) throw new Error('NLI_LOGITS_INVALID');
+    const mask = tokens.attention_mask?.data ? Array.from(tokens.attention_mask.data, Number) : null;
+    rows = NLI_PROFILE.candidates.map((candidate, index) => ({
+      ...candidate,
+      logits: logits.slice(index * classes, (index + 1) * classes),
+      tokenCount: mask && sequenceLength
+        ? mask.slice(index * sequenceLength, (index + 1) * sequenceLength).reduce((sum, value) => sum + value, 0)
+        : sequenceLength ?? null,
+    }));
+  } catch (error) { throw new LabError('CLASSIFICATION_INFERENCE', error); }
+  let scored;
+  try { scored = scoreNliCandidates(rows, mapping); }
+  catch (error) { throw new LabError('CLASSIFICATION_OUTPUT_INVALID', error); }
+  return {
+    output: { sequence: text, labels: scored.labels, scores: scored.scores },
+    diagnostics: {
+      profile: NLI_PROFILE.key,
+      hypothesisTemplate: NLI_PROFILE.hypothesisTemplate,
+      scoring: NLI_PROFILE.scoring,
+      labelMapping: mapping,
+      candidateLabels: NLI_PROFILE.candidates.map(candidate => candidate.label),
+      candidates: scored.candidates,
+      uncertainty: scored.uncertainty,
+      qualified: false,
+      qualificationReason: NLI_PROFILE.qualificationReason,
+    },
+  };
+}
+
 async function runZeroShot(pipe, text) {
   emit('RUNNING');
-  const labels = Object.values(TYPE_LABELS);
-  let output;
-  try { output = await pipe(text, labels, { multi_label: false, hypothesis_template: 'This text is {}.' }); }
-  catch (error) { throw new LabError('CLASSIFICATION_INFERENCE', error); }
+  const nli = await assessNli(pipe, text);
   emit('VALIDATING');
-  const valid = Array.isArray(output?.labels) && Array.isArray(output?.scores) && output.labels.length === labels.length;
   return {
-    raw: null, nativeOutput: output, parsed: null,
-    observed: valid ? { typeLabel: output.labels[0], score: output.scores[0] } : null,
-    validation: { valid, errors: valid ? [] : ['CLASSIFICATION_OUTPUT_INVALID'] },
+    raw: null, nativeOutput: nli.output, parsed: null,
+    observed: {
+      typeLabel: nli.output.labels[0], score: nli.output.scores[0],
+      scoreMargin: nli.diagnostics.uncertainty.topTwoMargin,
+      normalizedEntropy: nli.diagnostics.uncertainty.normalizedEntropy,
+      qualification: nli.diagnostics.qualificationReason,
+    },
+    nli: nli.diagnostics,
+    validation: { valid: false, structuralValid: true, errors: [NLI_PROFILE.qualificationReason] },
   };
 }
 
@@ -167,13 +212,18 @@ async function runHybrid(runtime, model, backend, text, references, relationship
   emit('RUNNING');
   const texts = relationshipTexts?.length > 1 ? relationshipTexts : [text, ...references];
   const { vectors, metadata } = await vectorsFor(encoder, texts);
-  let zeroShot;
-  try { zeroShot = await classifier(text, Object.values(TYPE_LABELS), { multi_label: false, hypothesis_template: 'This text is {}.' }); }
-  catch (error) { throw new LabError('CLASSIFICATION_INFERENCE', error); }
+  const nli = await assessNli(classifier, text);
   emit('VALIDATING');
-  const structured = deterministicHybridResult(text, zeroShot, vectors[0]);
+  const structured = deterministicHybridResult(text, nli.output, vectors[0], { informationTypeQualified: false });
   return {
-    raw: null, nativeOutput: { zeroShot }, parsed: structured.value, observed: structured.value,
+    raw: null, nativeOutput: { zeroShot: nli.output }, parsed: structured.value,
+    observed: structured.value ? {
+      ...structured.value,
+      scoreMargin: nli.diagnostics.uncertainty.topTwoMargin,
+      normalizedEntropy: nli.diagnostics.uncertainty.normalizedEntropy,
+      qualification: nli.diagnostics.qualificationReason,
+    } : null,
+    nli: nli.diagnostics,
     embedding: embeddingDiagnostics(vectors[0], metadata[0]),
     embeddings: vectors.map((vector, index) => embeddingDiagnostics(vector, metadata[index])),
     relationships: relationshipReport(texts, vectors, relationshipOptions), texts,

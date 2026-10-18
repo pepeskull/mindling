@@ -14,6 +14,8 @@ The similarity matrix is exploratory. A high cosine similarity is not a calibrat
 
 See [EMBEDDING_INVESTIGATION.md](./EMBEDDING_INVESTIGATION.md) for the root cause, trusted reference comparison, matrices, benchmark results, and reproducible commands.
 
+The multilingual NLI candidate is diagnostic only. Its config-provided label mapping and Transformers.js score calculation are correct, but real q8 WASM and independent ONNX Runtime evaluation found severe candidate bias and only 13.89% held-out accuracy across the nine information types. The lab exposes raw mapped logits, hypotheses, margins, entropy, and the `NLI_INFORMATION_TYPE_UNQUALIFIED` status rather than accepting the top label as a memory classification. See [NLI_INVESTIGATION.md](./NLI_INVESTIGATION.md) for the benchmark, confusion matrices, template experiments, alternative-model check, and reproduction commands.
+
 ## Candidate notes
 
 The catalog is pinned as follows. Download figures are approximate required model and tokenizer artifacts and exclude the shared runtime.
@@ -33,4 +35,4 @@ The catalog is pinned as follows. Download figures are approximate required mode
 
 All ten have Transformers.js ONNX artifacts and a WASM path. WebGPU remains available for candidates where it has not produced a known-invalid result. q8 WebGPU is disabled for the embedding candidates and the MiniLM hybrid; BGE-M3 is also restricted to WASM until separately qualified. Runtime support does not establish semantic quality. LaMini Flan-T5 has a CC-BY-NC-4.0 license and must not be treated as a production candidate without a licensing review. Swedish is only claimed where the upstream model documentation lists it. BGE-M3 and TinyLlama are intentionally retained as resource-heavy comparison points and may fail on constrained browsers.
 
-Generated classifications are model observations, not factual verification. Embedding candidates return vector diagnostics and relationship measurements rather than invented domain or type labels. The hybrid candidate identifies its deterministic postprocessing separately from model output.
+Generated classifications are model observations, not factual verification. The NLI and hybrid candidates are explicitly unqualified for the nine-type task. Embedding candidates return vector diagnostics and relationship measurements rather than invented domain or type labels. The hybrid candidate identifies its deterministic domain/topic placeholders separately from model output.
