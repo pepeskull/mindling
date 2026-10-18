@@ -63,6 +63,48 @@ Jag tycker att aktiehandel är svårt.</textarea>
       <div data-relationship-output class="relationship-output" hidden></div>
     </section>
 
+    <section class="memory-lab panel" data-memory-lab>
+      <div class="section-heading"><div><span>05</span><h2>Memory Intelligence Lab</h2></div><span class="tag">Isolated IndexedDB · review required</span></div>
+      <p class="memory-intro">Run the complete local proposal pipeline, review every semantic decision, and grow an isolated category and canonical-memory graph. This lab never opens Mindling player storage.</p>
+      <div class="memory-models">
+        <div><span>Retrieval</span><strong data-memory-embedding-model></strong><small>Qualified q8 WASM candidate retrieval</small></div>
+        <div><span>Analysis</span><strong data-memory-analysis-model></strong><small>Unqualified topic, type and relationship proposal</small></div>
+        <div><span>Model pack</span><strong data-memory-download></strong><small data-memory-model-state>Explicit download required</small></div>
+        <button type="button" class="primary" data-memory-enable>Download and enable pipeline</button>
+      </div>
+      <div class="memory-workbench">
+        <label>New observation<textarea data-memory-input maxlength="2000">I hope to design affordable medical devices one day.</textarea></label>
+        <div class="memory-run-row"><span data-memory-status>Pipeline disabled</span><button type="button" class="primary" data-memory-run disabled>Analyze and retrieve</button></div>
+      </div>
+      <div class="memory-proposal" data-memory-proposal hidden>
+        <div class="memory-stage-grid" data-memory-stages></div>
+        <details open><summary>Raw local pipeline evidence</summary><pre data-memory-raw></pre></details>
+        <form data-memory-review>
+          <h3>Human review</h3>
+          <p>The local analysis model is unqualified. Choose an explicit action before anything is written to the lab graph.</p>
+          <div class="review-grid">
+            <label>Decision<select data-review-action></select></label>
+            <label>Target memory<select data-review-target></select></label>
+            <label>Domain<input data-review-domain maxlength="80"></label>
+            <label>Topic<input data-review-topic maxlength="80"></label>
+            <label>Category<select data-review-category></select></label>
+            <label>New category name<input data-review-category-name maxlength="80"></label>
+            <label>Primary type<select data-review-type></select></label>
+            <label>Secondary types<input data-review-secondary placeholder="Optional, comma separated"></label>
+          </div>
+          <div class="memory-actions"><button type="button" class="secondary" data-memory-reject>Reject proposal</button><button type="submit" class="primary">Accept reviewed decision</button></div>
+        </form>
+      </div>
+      <div class="memory-state-heading"><h3>Isolated memory graph</h3><div><button type="button" class="text-button" data-memory-undo>Undo latest review</button><button type="button" class="text-button" data-memory-export>Export state + evaluation specification</button><button type="button" class="text-button" data-memory-reset>Reset lab state</button></div></div>
+      <div class="memory-stats" data-memory-stats></div>
+      <div class="memory-state-grid"><div><h4>Domain → Topic categories</h4><div data-memory-categories></div></div><div><h4>Canonical memories and observations</h4><div data-memory-memories></div></div></div>
+      <div class="category-tools">
+        <h4>Category review tools</h4>
+        <label>Category<select data-category-source></select></label><label>New name<input data-category-name maxlength="80"></label><button type="button" class="secondary" data-category-rename>Rename</button>
+        <label>Merge into<select data-category-target></select></label><button type="button" class="secondary" data-category-merge>Merge</button>
+      </div>
+    </section>
+
     <section class="method panel">
       <div><span>Isolation contract</span><h2>Evaluation stays outside the brain.</h2></div>
       <ul><li>No gameplay modules are imported.</li><li>No player databases are opened.</li><li>Downloads use exact repositories and pinned revisions.</li><li>Raw model output stays visible, including invalid output.</li></ul>
@@ -70,5 +112,6 @@ Jag tycker att aktiehandel är svårt.</textarea>
   </main>
   <footer><span>PLAY MINDLING · DEVELOPMENT TOOL</span><a href="./README.md">Method &amp; model notes</a></footer>
   <script type="module" src="./lab.js"></script>
+  <script type="module" src="./memory-intelligence-lab.js"></script>
 </body>
 </html>
