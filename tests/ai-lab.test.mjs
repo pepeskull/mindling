@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { MODEL_CATALOG, assertCatalog } from '../ai-lab/model-catalog.js';
 import {
-  extractJson, validateStructuredAnalysis, embeddingDiagnostics, relationshipReport,
+  extractJson, validateStructuredAnalysis, embeddingDiagnostics, vectorPairDiagnostics, completeLinkClusters, relationshipReport,
   deterministicHybridResult, TYPE_LABELS,
 } from '../ai-lab/evaluation.js';
+import { EMBEDDING_BENCHMARK, embeddingBenchmarkMetrics } from '../ai-lab/embedding-benchmark.js';
 import { ModelSequenceController } from '../ai-lab/model-runner.js';
 
 test('catalog contains ten real pinned candidates with explicit metadata', () => {
@@ -14,6 +15,7 @@ test('catalog contains ten real pinned candidates with explicit metadata', () =>
   assert.equal(MODEL_CATALOG.filter(model => model.kind === 'hybrid').length, 1);
   assert.ok(MODEL_CATALOG.every(model => model.bytes > 0 && model.license && model.languages));
   assert.ok(MODEL_CATALOG.flatMap(model => model.components || [model]).every(model => /^[a-f0-9]{40}$/.test(model.revision)));
+  assert.ok(MODEL_CATALOG.filter(model => ['embedding', 'hybrid'].includes(model.kind)).every(model => !model.runtime.webgpu));
 });
 
 test('structured validation preserves raw failures and exact evidence rules', () => {
@@ -26,13 +28,50 @@ test('structured validation preserves raw failures and exact evidence rules', ()
   assert.ok(validateStructuredAnalysis({ ...fenced.value, type: 'PROMISE' }, input).errors.includes('TYPE_INVALID'));
 });
 
-test('embedding diagnostics and relationship grouping use observed vectors', () => {
+test('embedding diagnostics expose reproducible vector and pair measurements', () => {
+  const diagnostics = embeddingDiagnostics([1, 0], { tokenCount: 7 });
+  assert.equal(diagnostics.normalized, true);
+  assert.equal(diagnostics.tokenCount, 7);
+  assert.equal(diagnostics.minimum, 0);
+  assert.equal(diagnostics.maximum, 1);
+  assert.match(diagnostics.fingerprint, /^[a-f0-9]{8}$/);
+  assert.deepEqual(vectorPairDiagnostics([1, 0], [1, 0]), {
+    cosine: 1, euclideanDistance: 0, exactlyEqual: true,
+    maximumAbsoluteDifference: 0, meanAbsoluteDifference: 0,
+  });
+});
+
+test('relationship reports default to pairwise only and complete-link prevents bridge merging', () => {
   const vectors = [[1, 0], [.95, .05], [0, 1]];
-  assert.equal(embeddingDiagnostics([1, 0]).normalized, true);
-  const report = relationshipReport(['finance one', 'finance two', 'astronomy'], vectors, .8);
+  const pairwise = relationshipReport(['finance one', 'finance two', 'astronomy'], vectors);
+  assert.deepEqual(pairwise.clusters, []);
+  assert.deepEqual(pairwise.uncertain, []);
+  assert.equal(pairwise.clustering.strategy, 'disabled');
+  const report = relationshipReport(['finance one', 'finance two', 'astronomy'], vectors, { threshold: .8, clustering: 'complete-link' });
   assert.deepEqual(report.clusters, [[0, 1]]);
   assert.equal(report.suggestions.length, 1);
   assert.match(report.caution, /does not prove/);
+
+  const bridge = [[1, .9, .7], [.9, 1, .9], [.7, .9, 1]];
+  // Supply bridge geometry directly to isolate clustering policy from cosine calculation.
+  assert.deepEqual(completeLinkClusters(bridge, .8), [[0, 1]]);
+});
+
+test('broad embedding benchmark reports separation, ranking, repeats and exploratory errors', () => {
+  const vectors = EMBEDDING_BENCHMARK.map((item, index) => {
+    if (item.repeatOf) return [0, 0, 1, 0, 0];
+    const topics = ['finance', 'programming', 'astronomy', 'cooking', 'animals'];
+    const vector = topics.map(topic => topic === item.topic ? 1 : 0);
+    vector[index % vector.length] += 0.01;
+    const norm = Math.hypot(...vector);
+    return vector.map(value => value / norm);
+  });
+  vectors[vectors.length - 1] = [...vectors[EMBEDDING_BENCHMARK.findIndex(item => item.id === 'A1')]];
+  const metrics = embeddingBenchmarkMetrics(EMBEDDING_BENCHMARK, relationshipReport(EMBEDDING_BENCHMARK.map(item => item.text), vectors));
+  assert.ok(metrics.relatedMean > metrics.unrelatedMean);
+  assert.ok(metrics.pairwiseRankingAccuracy > .9);
+  assert.equal(metrics.repeated[0].exactlyEqual, true);
+  assert.match(metrics.qualification, /not used/);
 });
 
 test('hybrid schema exposes deterministic postprocessing and rejects unusable observations', () => {

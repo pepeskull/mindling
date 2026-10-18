@@ -1,5 +1,6 @@
 import { MODEL_CATALOG, modelIdentity, formatBytes } from './model-catalog.js';
 import { EXAMPLES, evaluateResultForExample } from './evaluation.js';
+import { EMBEDDING_BENCHMARK, embeddingBenchmarkMetrics } from './embedding-benchmark.js';
 import { ModelSequenceController } from './model-runner.js';
 import { displayMetric } from './benchmark.js';
 
@@ -12,6 +13,7 @@ const telemetry = new Map();
 const completed = new Set();
 let labReady = false;
 let labReadyPromise;
+let latestRelationship = null;
 
 function escape(value) {
   return String(value).replace(/[&<>'"]/gu, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[character]);
@@ -49,6 +51,7 @@ function setRunUi(active) {
   $('[data-run]').disabled = active || selected.size === 0 || !labReady;
   $('[data-stop]').disabled = !active;
   $('[data-run-relationships]').disabled = active || !labReady;
+  $('[data-run-embedding-benchmark]').disabled = active || !labReady;
   $('[data-pulse]').classList.toggle('active', active);
 }
 
@@ -143,30 +146,76 @@ async function runSelected() {
   } finally { setRunUi(false); $('[data-current-model]').textContent = 'No model running'; }
 }
 
-async function runRelationships() {
+function relationshipOptions() {
+  const strategy = $('[data-clustering]').value;
+  return strategy === 'complete-link'
+    ? { clustering: strategy, threshold: Number($('[data-cluster-threshold]').value) }
+    : { clustering: 'disabled' };
+}
+
+async function runRelationshipWorkload(texts, benchmarkCases = null) {
   if (controller.active) return;
   await labReadyPromise;
   if (!labReady) return;
   const model = MODEL_CATALOG.find(item => item.key === $('[data-relationship-model]').value);
-  const texts = $('[data-relationship-input]').value.split(/\n+/u).map(value => value.trim()).filter(Boolean).slice(0, 12);
   if (!model || texts.length < 2) return;
-  setRunUi(true); const button = $('[data-run-relationships]'); button.disabled = true; button.textContent = 'Analyzing…';
+  setRunUi(true);
   let relationshipResult = null;
   const listener = controller.onEvent;
   controller.onEvent = event => {
     if (event.state === 'RESULT') relationshipResult = event.result;
     else listener(event);
   };
-  try { await controller.run([model], () => ({ text: texts[0], relationshipTexts: texts, backendPreference: $('[data-backend]').value })); }
-  finally { controller.onEvent = listener; button.disabled = false; button.textContent = 'Analyze relationships'; setRunUi(false); }
-  if (relationshipResult?.relationships) renderRelationships(relationshipResult.relationships, texts, model);
+  try {
+    await controller.run([model], () => ({
+      text: texts[0], relationshipTexts: texts, backendPreference: $('[data-backend]').value,
+      relationshipOptions: benchmarkCases ? { clustering: 'disabled' } : relationshipOptions(),
+    }));
+  } finally { controller.onEvent = listener; setRunUi(false); }
+  if (relationshipResult?.relationships) {
+    const benchmark = benchmarkCases ? embeddingBenchmarkMetrics(benchmarkCases, relationshipResult.relationships) : null;
+    latestRelationship = { model: modelIdentity(model), backend: relationshipResult.backend, texts, diagnostics: relationshipResult.embeddings, report: relationshipResult.relationships, benchmark };
+    $('[data-results-section]').hidden = false;
+    $('[data-export]').disabled = false;
+    renderRelationships(relationshipResult, texts, model, benchmark);
+  } else if (relationshipResult) renderRelationshipFailure(relationshipResult, model);
 }
 
-function renderRelationships(report, texts, model) {
+async function runRelationships() {
+  const texts = $('[data-relationship-input]').value.split(/\n+/u).map(value => value.trim()).filter(Boolean).slice(0, 24);
+  const button = $('[data-run-relationships]'); button.textContent = 'Analyzing…';
+  try { await runRelationshipWorkload(texts); } finally { button.textContent = 'Analyze relationships'; }
+}
+
+async function runEmbeddingBenchmark() {
+  const button = $('[data-run-embedding-benchmark]'); button.textContent = 'Benchmarking…';
+  try { await runRelationshipWorkload(EMBEDDING_BENCHMARK.map(item => item.text), EMBEDDING_BENCHMARK); }
+  finally { button.textContent = 'Run broad benchmark'; }
+}
+
+function number(value, digits = 6) { return Number.isFinite(value) ? value.toFixed(digits) : 'N/A'; }
+
+function renderRelationshipFailure(result, model) {
+  const output = $('[data-relationship-output]'); output.hidden = false;
+  output.innerHTML = `<h3>${escape(model.name)}</h3><p class="diagnostic">${escape(result.error || 'Relationship analysis failed')}</p>`;
+}
+
+function renderRelationships(result, texts, model, benchmark) {
+  const report = result.relationships;
   const output = $('[data-relationship-output]'); output.hidden = false;
   const head = texts.map((_, index) => `<th>M${index + 1}</th>`).join('');
-  const body = report.matrix.map((row, index) => `<tr><td>M${index + 1}</td>${row.map(value => `<td>${Number.isFinite(value) ? value.toFixed(3) : 'N/A'}</td>`).join('')}</tr>`).join('');
-  output.innerHTML = `<h3>${escape(model.name)} · cosine similarity</h3><div class="table-scroll"><table class="matrix"><thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table></div><div class="cluster-list"><p>${escape(report.caution)}</p><strong>Proposed clusters</strong><ol>${report.clusters.length ? report.clusters.map(cluster => `<li>${cluster.map(index => `M${index + 1}`).join(', ')}</li>`).join('') : '<li>No cluster crossed the 0.62 exploratory threshold.</li>'}</ol><strong>Memory key</strong><ol>${texts.map(text => `<li>${escape(text)}</li>`).join('')}</ol></div>`;
+  const body = report.matrix.map((row, index) => `<tr><td>M${index + 1}</td>${row.map(value => `<td>${number(value)}</td>`).join('')}</tr>`).join('');
+  const diagnosticRows = (result.embeddings || []).map((item, index) => `<tr><td>M${index + 1}</td><td>${escape(modelIdentity(model))}</td><td>${escape(result.backend)}</td><td>${escape(item.tokenCount ?? 'N/A')}</td><td>${escape(item.dimensions)}</td><td>${number(item.norm)}</td><td>${number(item.minimum)}</td><td>${number(item.maximum)}</td><td>${number(item.mean)}</td><td>${number(item.standardDeviation)}</td><td>${escape(item.fingerprint || 'N/A')}</td><td>${item.finite ? 'No' : 'Yes'}</td></tr>`).join('');
+  const pairRows = report.pairs.map(pair => `<tr><td>M${pair.from + 1}–M${pair.to + 1}</td><td>${number(pair.cosine)}</td><td>${number(pair.euclideanDistance)}</td><td>${pair.exactlyEqual ? 'Yes' : 'No'}</td><td>${number(pair.maximumAbsoluteDifference)}</td><td>${number(pair.meanAbsoluteDifference)}</td></tr>`).join('');
+  const clusterText = report.clustering.strategy === 'disabled'
+    ? '<li>Disabled: pairwise measurements only.</li>'
+    : report.clusters.length ? report.clusters.map(cluster => `<li>${cluster.map(index => `M${index + 1}`).join(', ')}</li>`).join('') : '<li>No exploratory complete-link cluster met the displayed threshold.</li>';
+  const uncertainText = report.clustering.threshold === null
+    ? 'Unavailable without a model-specific threshold.'
+    : report.uncertain.length ? report.uncertain.map(pair => `M${pair.from + 1}–M${pair.to + 1} (${number(pair.cosine)})`).join(', ') : 'No pair is within ±0.05 of the exploratory threshold.';
+  const benchmarkHtml = benchmark ? `<div class="diagnostic-table"><h4>Broad benchmark</h4><div class="benchmark-summary"><div><span>Related mean</span><strong>${number(benchmark.relatedMean)}</strong></div><div><span>Unrelated mean</span><strong>${number(benchmark.unrelatedMean)}</strong></div><div><span>Separation</span><strong>${number(benchmark.separation)}</strong></div><div><span>Ranking accuracy</span><strong>${number(benchmark.pairwiseRankingAccuracy)}</strong></div><div><span>Exploratory FP rate</span><strong>${number(benchmark.exploratoryThreshold?.falsePositiveRate)}</strong></div><div><span>Exploratory FN rate</span><strong>${number(benchmark.exploratoryThreshold?.falseNegativeRate)}</strong></div></div><p>${escape(benchmark.qualification)}</p></div>` : '';
+  const diagnosticsHtml = $('[data-developer-diagnostics]').checked ? `<div class="diagnostic-table"><h4>Embedding diagnostics</h4><div class="table-scroll"><table><thead><tr><th>Input</th><th>Model / revision / dtype</th><th>Backend</th><th>Tokens</th><th>Dimensions</th><th>Norm</th><th>Min</th><th>Max</th><th>Mean</th><th>Std dev</th><th>Fingerprint</th><th>Non-finite</th></tr></thead><tbody>${diagnosticRows}</tbody></table></div><h4>Pair diagnostics</h4><div class="table-scroll"><table><thead><tr><th>Pair</th><th>Cosine</th><th>Euclidean</th><th>Exactly equal</th><th>Max abs diff</th><th>Mean abs diff</th></tr></thead><tbody>${pairRows}</tbody></table></div></div>` : '';
+  output.innerHTML = `<h3>${escape(model.name)} · ${escape(result.backend)} · cosine similarity</h3><div class="table-scroll"><table class="matrix"><thead><tr><th></th>${head}</tr></thead><tbody>${body}</tbody></table></div>${benchmarkHtml}${diagnosticsHtml}<div class="cluster-list"><p>${escape(report.caution)}</p><p>${escape(report.clustering.explanation)}</p><strong>Clusters</strong><ol>${clusterText}</ol><strong>Uncertain relationships</strong><p>${escape(uncertainText)}</p><strong>Memory key</strong><ol>${texts.map(text => `<li>${escape(text)}</li>`).join('')}</ol></div>`;
 }
 
 async function probeCapabilities() {
@@ -196,7 +245,7 @@ async function probeCapabilities() {
       const node = document.querySelector(`[data-cache-state="${model.key}"]`);
       if (node && count) node.textContent = `${count} cached file${count === 1 ? '' : 's'} · unverified`;
     }
-    labReady = true; updateSelectedCount(); $('[data-run-relationships]').disabled = false; return true;
+    labReady = true; updateSelectedCount(); $('[data-run-relationships]').disabled = false; $('[data-run-embedding-benchmark]').disabled = false; return true;
   } catch { $('[data-cache]').textContent = 'Unavailable · testing disabled'; return false; }
 }
 
@@ -205,8 +254,10 @@ $('[data-deselect-all]').addEventListener('click', () => { selected.clear(); ren
 $('[data-run]').addEventListener('click', runSelected);
 $('[data-stop]').addEventListener('click', () => controller.stop());
 $('[data-run-relationships]').addEventListener('click', runRelationships);
+$('[data-run-embedding-benchmark]').addEventListener('click', runEmbeddingBenchmark);
+$('[data-clustering]').addEventListener('change', event => { $('[data-cluster-threshold]').disabled = event.target.value === 'disabled'; });
 $('[data-export]').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), input: input.value, results }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), input: input.value, results, latestRelationship }, null, 2)], { type: 'application/json' });
   const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = 'mindling-ai-lab-results.json'; link.click(); setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 });
 

@@ -25,6 +25,8 @@ with sync_playwright() as playwright:
     assert page.title() == "Mindling — AI Model Lab"
     assert page.locator("[data-model-card]").count() == 10
     assert page.locator("[data-current-model]").inner_text() == "No model running"
+    assert len(page.locator("[data-relationship-input]").input_value().splitlines()) == 8
+    assert page.locator("[data-clustering]").input_value() == "disabled"
     assert not any("/js/bootstrap.js" in url for url in requested)
     assert not any("huggingface.co" in url for url in requested), "models must not download on page load"
     assert not any("/src/" in url for url in requested), "game modules must not load in the lab"
@@ -56,9 +58,19 @@ with sync_playwright() as playwright:
         removeEventListener(type, callback) { this.listeners[type].delete(callback); }
         postMessage(message) {
           queueMicrotask(() => {
-            const result = message.action === 'dispose'
-              ? { requested: 1, completed: 1, workerMustTerminate: true }
-              : { ok: true, model: message.payload.model.key, identity: 'orchestration-fixture', backend: 'wasm', raw: '{"fixture":true}', parsed: null, observed: null, validation: { valid: false, errors: ['ORCHESTRATION_FIXTURE'] }, timings: { initializationMs: 1, inferenceMs: 1, totalMs: 2 } };
+            let result;
+            if (message.action === 'dispose') result = { requested: 1, completed: 1, workerMustTerminate: true };
+            else if (message.payload.relationshipTexts?.length > 1) {
+              const count = message.payload.relationshipTexts.length;
+              const pairs = [];
+              for (let from = 0; from < count; from += 1) for (let to = from + 1; to < count; to += 1) pairs.push({ from, to, cosine: .1234567, euclideanDistance: 1.234567, exactlyEqual: false, maximumAbsoluteDifference: .2, meanAbsoluteDifference: .1 });
+              result = {
+                ok: true, model: message.payload.model.key, identity: 'orchestration-fixture', backend: 'wasm',
+                validation: { valid: true, errors: [] }, timings: { initializationMs: 1, inferenceMs: 1, totalMs: 2 },
+                embeddings: Array.from({ length: count }, (_, index) => ({ valid: true, tokenCount: index + 2, dimensions: 2, norm: 1, minimum: 0, maximum: 1, mean: .5, standardDeviation: .5, fingerprint: `fixture${index}`, finite: true })),
+                relationships: { matrix: Array.from({ length: count }, (_, row) => Array.from({ length: count }, (_, column) => row === column ? 1 : .1234567)), pairs, clusters: [], clustering: { strategy: 'disabled', threshold: null, qualified: false, explanation: 'Fixture pairwise mode.' }, caution: 'Fixture caution.' },
+              };
+            } else result = { ok: true, model: message.payload.model.key, identity: 'orchestration-fixture', backend: 'wasm', raw: '{"fixture":true}', parsed: null, observed: null, validation: { valid: false, errors: ['ORCHESTRATION_FIXTURE'] }, timings: { initializationMs: 1, inferenceMs: 1, totalMs: 2 } };
             for (const callback of this.listeners.message) callback({ data: { id: message.id, result } });
           });
         }
@@ -79,6 +91,13 @@ with sync_playwright() as playwright:
     assert page.locator(".result-card").count() == 2
     assert page.locator(".result-card").nth(0).inner_text().find("Invalid output") >= 0
     assert page.locator("[data-comparison] tr").count() == 2
+
+    page.locator("[data-developer-diagnostics]").check()
+    page.locator("[data-run-relationships]").click()
+    page.locator("[data-relationship-output]").filter(has_text="0.123457").wait_for(timeout=5000)
+    relationship_text = page.locator("[data-relationship-output]").inner_text()
+    assert "PAIR DIAGNOSTICS" in relationship_text, relationship_text
+    assert page.locator("[data-export]").is_enabled()
 
     sentinel = page.evaluate("""async () => new Promise((resolve, reject) => {
       const request = indexedDB.open('mindling-db', 4);

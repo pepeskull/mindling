@@ -8,16 +8,11 @@ The lab never opens Mindling's IndexedDB databases, saves entered text as player
 
 Serve the repository root over HTTP and open `/ai-lab/`. Pick an example or enter synthetic English or Swedish text, select candidates, and choose **Run selected models**. Downloads begin only after that action. Models run sequentially and failures remain visible.
 
-For the finance relationship example, open **Memory Relationship Test**, keep these four lines, select an embedding candidate, and run the analysis:
+For the embedding investigation, open **Memory Relationship Test**, keep the eight supplied English and Swedish lines, select MiniLM or E5, and run the analysis. These q8 embedding candidates use the qualified WASM path. Their WebGPU path is unavailable because real Chromium comparison against ONNX Runtime found corrupted semantic geometry.
 
-```text
-Become a trader in finance about stocks
-learn trading and stocks
-learn finance and crypto
-The Earth rotates around its axis
-```
+The similarity matrix is exploratory. A high cosine similarity is not a calibrated probability and does not prove identical intent or information type. Automatic clustering is disabled by default. The optional complete-link mode and its threshold are visible, exploratory controls rather than a production recommendation. Enable **Developer diagnostics** for token counts, vector statistics, fingerprints, and detailed pair measurements. **Run broad benchmark** evaluates 21 synthetic cases spanning five topics, two languages, multiple intents, negative controls, and an exact repeat.
 
-The similarity matrix is exploratory. A high cosine similarity is not a calibrated probability and does not prove identical intent or information type.
+See [EMBEDDING_INVESTIGATION.md](./EMBEDDING_INVESTIGATION.md) for the root cause, trusted reference comparison, matrices, benchmark results, and reproducible commands.
 
 ## Candidate notes
 
@@ -36,6 +31,6 @@ The catalog is pinned as follows. Download figures are approximate required mode
 | TinyLlama 1.1B Chat | `onnx-community/TinyLlama-1.1B-Chat-v1.0-ONNX@cb463df0db21d713728366575b5a71f80de7adb2` | q4 | 912 MB | Apache-2.0 |
 | MiniLM + NLI hybrid | The exact MiniLM and NLI revisions above | q8 | 260 MB, shared | Apache-2.0 + MIT |
 
-All ten have Transformers.js ONNX artifacts and a WASM path; WebGPU is attempted when an adapter is available. Runtime support does not establish semantic quality. LaMini Flan-T5 has a CC-BY-NC-4.0 license and must not be treated as a production candidate without a licensing review. Swedish is only claimed where the upstream model documentation lists it. BGE-M3 and TinyLlama are intentionally retained as resource-heavy comparison points and may fail on constrained browsers.
+All ten have Transformers.js ONNX artifacts and a WASM path. WebGPU remains available for candidates where it has not produced a known-invalid result. q8 WebGPU is disabled for the embedding candidates and the MiniLM hybrid; BGE-M3 is also restricted to WASM until separately qualified. Runtime support does not establish semantic quality. LaMini Flan-T5 has a CC-BY-NC-4.0 license and must not be treated as a production candidate without a licensing review. Swedish is only claimed where the upstream model documentation lists it. BGE-M3 and TinyLlama are intentionally retained as resource-heavy comparison points and may fail on constrained browsers.
 
 Generated classifications are model observations, not factual verification. Embedding candidates return vector diagnostics and relationship measurements rather than invented domain or type labels. The hybrid candidate identifies its deterministic postprocessing separately from model output.
