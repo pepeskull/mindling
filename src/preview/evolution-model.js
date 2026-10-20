@@ -11,7 +11,7 @@ export const STAGES = Object.freeze([
   ["Autonomous Mind", 196, "An intricate, connected internal architecture."],
   ["Agent Mind", 240, "A developed mind. Explore simulated neural exchange."]
 ].map(([name, count, description], index) => Object.freeze({ number: index + 1, name, count, description })));
-export const BUDGET = Object.freeze({ neurons: 240, edges: 960, remoteBrains: 3, remoteNeurons: 96, impulses: 30, curveSteps: 8 });
+export const BUDGET = Object.freeze({ neurons: 240, edges: 960, remoteBrains: 6, remoteNeurons: 24, impulses: 30, curveSteps: 8 });
 export const AMELIA_STATUS = "PENDING AUTHORIZATION";
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
