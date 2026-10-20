@@ -39,7 +39,7 @@ export class ExternalView {
     const a=this.app,n=a.timeline.network,index=n.peers.findIndex(peer=>peer.id===id);
     const peers=presentationFor(a.timeline,a.view.morph).peers;
     const first=!this.locked, source=this.visit.selected;
-    if(!this.visit.enter(id,{owner:this.owner(),connectedIds:peers.filter(p=>p.connected).map(p=>p.id),busy:Boolean(a.busy||a.pendingMutations||a.intelligence?.loading||document.querySelector('dialog[open]'))}))return false;
+    if(!this.visit.enter(id,{owner:this.owner(),connectedIds:peers.filter(p=>p.connected).map(p=>p.id),busy:Boolean(a.busy||a.pendingMutations||document.querySelector('dialog[open]'))}))return false;
     this.source=source;
     if(first){
       this.savedNetwork=structuredClone({ownerStage:n.ownerStage,state:n.state,elapsed:n.elapsed,fade:n.fade,stopping:n.stopping,peers:n.peers});

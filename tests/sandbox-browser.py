@@ -1,6 +1,4 @@
-"""M4 isolated sandbox integration. Run against the static server on port 8000.
-Gemini responses here are explicit fixtures, never a live API verification.
-"""
+"""M4 isolated sandbox integration. Run against the static server on port 8000."""
 import os
 from support.browser_branding import verify_branding
 import subprocess
@@ -15,7 +13,9 @@ with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox','--enable-unsafe-swiftshader'])
     for backend in ['canvas','three']:
         context=browser.new_context(viewport={'width':1440,'height':1000},reduced_motion='reduce')
-        page=context.new_page(); errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+        page=context.new_page(); errors=[]; learning_requests=[]
+        page.on('pageerror',lambda e:errors.append(str(e)))
+        page.on('request',lambda request:learning_requests.append(request.url) if '/api/learning' in request.url or '/api/preview-learning' in request.url or 'huggingface.co' in request.url else None)
         page.route('https://cdn.jsdelivr.net/npm/three@0.180.0/build/*',lambda r:r.abort() if backend=='canvas' else r.fulfill(path=str(ASSETS/r.request.url.rsplit('/',1)[1]),content_type='application/javascript',headers={'Access-Control-Allow-Origin':'*'}))
         page.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))
         page.goto(BASE)
@@ -28,36 +28,29 @@ with sync_playwright() as p:
         page.locator('[data-sandbox="new"]').click();page.wait_for_function("document.querySelector('.hero-copy h1').textContent==='Test Mindling is learning.'")
         page.locator('.sandbox-controls summary').first.click();page.locator('[data-sandbox="fixture"]').click()
         page.wait_for_function("document.querySelector('[data-stat=memories]').textContent==='1'")
-        assert page.locator('[data-stat=neurons]').text_content()=='6'
+        assert page.locator('[data-stat=neurons]').text_content()=='5'
         assert page.locator('[data-energy-value]').text_content()=='8 / 10'
         page.locator('[data-hours="1"]').click();page.wait_for_function("document.querySelector('[data-diagnostics]').textContent.includes('Offset: 0.04')")
-        page.locator('[data-sandbox="fixture"]').click();page.wait_for_function("document.querySelector('[data-sandbox-status]').textContent.includes('duplicate')")
+        page.locator('[data-sandbox="fixture"]').click();page.wait_for_function("document.querySelector('[data-sandbox-status]').textContent.includes('Deterministic fixture')")
         assert page.locator('[data-stat=memories]').text_content()=='1'
         page.locator('[data-hours="1"]').click()
-        # Explicit fixture response exercises the real client/schema/engine boundary, not the live Gemini service.
-        submitted=[]
-        assessment={'meaningful':True,'duplicate':False,'quality':.95,'concept':'gravitational attraction','memory':'Gravity attracts bodies with mass.','area':'Physics','kind':'concept','embedding':[0,1]+[0]*766}
-        def learning_reply(route):
-            submitted.append(route.request.post_data_json)
-            route.fulfill(json={'assessment':assessment})
-        page.route('**/api/preview-learning',learning_reply)
-        page.locator('[data-api-token]').fill('fixture-access')
         page.locator('.sandbox-controls summary').first.click()
         page.locator('#mindling-input').fill('Gravity describes attraction between bodies with mass.')
         page.locator('#interaction-form button[type=submit]').click()
         page.wait_for_function("document.querySelector('[data-stat=memories]').textContent==='2'")
-        assert submitted==[{'text':'Gravity describes attraction between bodies with mass.','pathway':'Researcher'}]
+        assert 'learned locally' in page.locator('[data-sandbox-status]').text_content()
+        assert learning_requests==[]
         page.locator('.sandbox-controls summary').first.click();page.locator('[data-hours="24"]').click()
         page.wait_for_function("document.querySelector('[data-diagnostics]').textContent.includes('Eligible: true')")
         page.locator('[data-sandbox="evolve"]').click();page.wait_for_function("document.querySelector('#scene').dataset.stage==='2'")
-        assert page.locator('[data-stat=neurons]').text_content()=='7'
+        assert page.locator('[data-stat=neurons]').text_content()=='5'
         page.locator('.sandbox-controls summary').first.click()
         page.locator('[data-view=memories]').click();assert page.locator('.memory-record').count()==2;page.locator('[data-close-memory]').click()
         page.locator('.energy-panel .coming-soon').click();page.wait_for_selector('.sandbox-wallet')
         assert page.locator('[data-wallet-qr] svg').count()==1
         assert 'simulation:' in page.locator('[data-wallet-id]').input_value()
         page.locator('[data-quote]').click();page.locator('[data-buy]').click()
-        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='20 / 10'")
+        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='10 / 10 + 10 bonus'")
         assert 'No Solana transaction occurred' in page.locator('[data-wallet-status]').text_content()
         page.locator('[data-close-wallet]').click()
         page.locator('.sandbox-controls summary').first.click()
@@ -71,34 +64,24 @@ with sync_playwright() as p:
         page.locator('[data-sandbox="new"]').click();page.wait_for_function("document.querySelector('.hero-copy h1').textContent==='Test Mindling is learning.'")
         after=page.evaluate('''async()=>{const {PreviewStore}=await import('/src/preview/sandbox/storage.js');const db=await new PreviewStore().open();const s=await db.read();db.close();return s;}''')
         assert after['player']==state['player'] and after['mind']['id']!=state['mind']['id']
-        # Explicit unavailable Gemini request cannot mutate gameplay.
-        page.locator('.sandbox-controls summary').first.click();page.locator('[data-api-token]').fill('test-only-token');page.locator('.sandbox-controls summary').first.click()
-        page.unroute('**/api/preview-learning')
-        page.route('**/api/preview-learning',lambda r:r.fulfill(status=503,json={'error':'GEMINI_NOT_CONFIGURED'}))
+        # Teach, Talk and Deep Training all stay local and preserve their distinct Energy costs.
         page.locator('#mindling-input').fill('Photosynthesis converts sunlight into stored chemical energy.')
         page.locator('#interaction-form button[type=submit]').click()
-        page.locator('.sandbox-controls summary').first.click();page.wait_for_function("document.querySelector('[data-sandbox-status]').textContent.includes('not configured')")
-        assert page.locator('[data-energy-value]').text_content()=='10 / 10'
-        assert page.locator('[data-stat=memories]').text_content()=='0'
-        # Talk stays local; Deep Training uses the explicit Gemini assessment and
-        # pays its distinct three-Energy cost without changing production rules.
-        local_requests=[]
-        page.unroute('**/api/preview-learning')
-        def training_reply(route):
-            local_requests.append(route.request.post_data_json)
-            route.fulfill(json={'assessment':assessment})
-        page.route('**/api/preview-learning',training_reply)
+        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='8 / 10'")
+        assert page.locator('[data-stat=memories]').text_content()=='1'
         page.locator('[data-input-mode="TALK"]').click()
         page.locator('#mindling-input').fill('I have been thinking about how a learning mind needs regular care.')
         page.locator('#interaction-form button[type=submit]').click()
-        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='9 / 10'")
-        assert local_requests==[] and page.locator('[data-stat=memories]').text_content()=='0'
+        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='7 / 10'")
+        assert page.locator('[data-stat=memories]').text_content()=='1'
+        page.locator('.sandbox-controls summary').first.click()
         for _ in range(2):page.locator('[data-hours="1"]').click()
         page.locator('[data-input-mode="DEEP_TRAINING"]').click()
         page.locator('#mindling-input').fill('Gravity describes attraction between bodies with mass.')
         page.locator('#interaction-form button[type=submit]').click()
-        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='6 / 10'")
-        assert len(local_requests)==1 and page.locator('[data-stat=memories]').text_content()=='1'
+        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='7 / 10'")
+        assert page.locator('[data-stat=memories]').text_content()=='2'
+        assert learning_requests==[]
         assert not errors,errors
         page.locator('.sandbox-controls summary').first.click();page.screenshot(path=f'/tmp/m4-{backend}.png')
         page.set_viewport_size({'width':390,'height':844});verify_branding(page, f'sandbox-{backend}-mobile');page.screenshot(path=f'/tmp/m4-{backend}-mobile.png')
@@ -106,7 +89,7 @@ with sync_playwright() as p:
         assert page.locator('[data-life-attribute="neuralStability"]').is_visible()
         for label in page.locator('[data-life-attribute] strong').all_text_contents():assert label.endswith('%') and label[:-1].isdigit(),label
         context.close()
-        print(f'PASS {backend}: learning, real sandbox stats, memory UI, death, wallet, persistence, no production access, mobile',flush=True)
+        print(f'PASS {backend}: native learning, no inference requests, sandbox stats, memory UI, death, wallet, persistence, no production access, mobile',flush=True)
     # Lifecycle runs against the real shell with bootstrap suppressed; no timers or network calls needed.
     life=browser.new_context(viewport={'width':1440,'height':1000}).new_page()
     life.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))

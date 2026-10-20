@@ -10,7 +10,7 @@ The camera/framing solution recorded below is superseded by the [sandbox origina
 
 Every virtual hour Nutrition decreases by 1.4, Rest by 1.1, Wellbeing by 1 and the stimulation reserve by 2 percentage points. Basic Care uses the existing free gains and 6/8/12-hour cooldowns. Sandbox care can be preventive below 100%; production retains its 85% Nutrition, 80% Rest and 90% Health eligibility thresholds. Care never replenishes stimulation or immediately changes Neural Stability.
 
-Talk costs 1 Energy, Teach 2, Deep Training 3. They add 12/20/28 stimulation and the existing 5/10/15 Wellbeing. All sandbox activities share a two-hour virtual cooldown. Talk requires a substantive local thought of at least four words and rejects repeated normalized input within a virtual day; it awards no learning XP or canonical memory. Teach and Deep Training require the existing successful Gemini assessment and duplicate checks. Failed requests or assessments spend no Energy and grant no benefit. The labelled learning fixture remains explicit and non-repeatable.
+Talk costs 1 Energy, Teach 2, Deep Training 3. They add 12/20/28 stimulation and the existing 5/10/15 Wellbeing. All sandbox activities share a two-hour virtual cooldown. Talk requires a substantive local thought of at least four words and rejects repeated normalized input within a virtual day; it awards no learning XP or canonical memory. Teach and Deep Training require successful native validation and duplicate checks. Rejected input spends no Energy and grants no benefit. The labelled learning fixture remains explicit and non-repeatable.
 
 Ten free Energy resets on the virtual UTC day. Wallet top-ups do not bypass cooldowns, duplicate checks, time gates or permanent death.
 
@@ -38,7 +38,7 @@ The fixed hourly grid yields identical results across split advances, serializat
 | Balanced | 20 | 20 | All alive after 120 days |
 | Sparse care/activity | 20 | 0 | 59–84 hours |
 
-Balanced activity schedules are Talk every 4–6 hours, Teach every 6–8 hours, or Deep Training every 8–12 hours, with preventive care. They fit the daily free Energy budget. A six-hour Talk/twelve-hour care routine remains healthy after ten years, with Neural Stability at 100. These physiology scenarios assume successful meaningful activities; separate engine/API tests verify their assessment, Energy and atomicity boundary. They are deterministic calibration, not a live Gemini quality measurement or a proof about every possible player schedule.
+Balanced activity schedules are Talk every 4–6 hours, Teach every 6–8 hours, or Deep Training every 8–12 hours, with preventive care. They fit the daily free Energy budget. A six-hour Talk/twelve-hour care routine remains healthy after ten years, with Neural Stability at 100. These physiology scenarios assume successful meaningful activities; separate engine and transaction tests verify their validation, Energy and atomicity boundary. They are deterministic calibration, not a proof about every possible player schedule.
 
 Stage requirements remain 38 minimum days. The complete meaningful-learning trajectory still reaches Agent Mind at exactly 38 virtual days with free Energy and a balanced care/activity routine.
 
@@ -69,6 +69,6 @@ Canvas after: desktop (image removed), mobile (image removed). All 28 stage/back
 
 Run `node --test tests/*.test.mjs`. With a local static server, run `tests/evolution-browser.py`, `tests/sandbox-browser.py` and `tests/life-v2-browser.py` using `MINDLING_TEST_URL`. The last suite checks computed typography, all stage frames, both backends, resizing, rotation, selection, zoom limits, reload, whole-number percentages and the absence of Neural Stability in production.
 
-Gemini calls in regression tests remain explicit fixtures; deployment secrets are configured separately. Real Solana payments remain disabled.
+Browser regression tests require learning to remain local and issue no inference requests. Real Solana payments remain disabled.
 
 Final Node result: **85 tests, 82 passing, 3 historical failures**. Those failures are the missing semantic matcher for legacy memory metadata and the two `REINFORCEMENT`/`STIMULATION` expectations in `memory-matching.test.mjs`. No new Node failure is classified as historical. All three Chromium suites pass; computed typography is checked at desktop/mobile sizes, the production route has no Neural Stability row, and sandbox database instrumentation rejects every attempt to open production storage.

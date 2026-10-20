@@ -1,4 +1,3 @@
-import { validateAnalysis, validateClassification, indexMemory } from '../../learning/intelligence-index.js';
 import { energyAt, spendEnergy } from '../../economy/energy.js';
 import { analyzeNative } from '../../learning/native-learning.js';
 import { normalize } from '../../learning/text.js';
@@ -42,17 +41,11 @@ export function evolve(state) {
 }
 export function cosine(a,b) { if(!a?.length||!b?.length||a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return x&&y?dot/Math.sqrt(x*y):-1; }
 // Native analysis runs synchronously inside the caller's existing IndexedDB transaction.
-export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',analysis=null}) {
+export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH'}) {
   const m=state.mind,key=normalize(text);
   if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
-  if(analysis)validateAnalysis(analysis,text,m);
-  const a=analyzeNative(text,m,{allowQuestion:Boolean(analysis)});
-  if(analysis&&a.relationship!=='repeated'){
-    const classification=validateClassification(analysis.classification,text);
-    a.category=classification.domain;a.area=a.category;a.topic=classification.topic;
-    a.categoryId=m.categories?.find(c=>normalize(c.name)===normalize(a.category))?.id||'';
-  }
+  const a=analyzeNative(text,m);
   if(a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
   const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=XP[a.kind];
   if(earned+award>XP.daily)throw Error('Daily XP limit reached');
@@ -77,7 +70,6 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',anal
   const memory=n.memories.at(-1);
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
   memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
-  if(analysis)indexMemory(n,memory,analysis);
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];
   return next;

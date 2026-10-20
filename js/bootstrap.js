@@ -3,6 +3,20 @@ import { checkDesktop, showCompatibility } from '../src/platform/desktop.js';
 
 renderFooterLinks();
 
+// Retire only the two former model-asset caches and their workers. Player data
+// lives in IndexedDB and is intentionally outside this cleanup.
+async function retireExperimentalModelCaches() {
+  if (navigator.serviceWorker) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.allSettled(registrations.filter(registration => {
+      const script = registration.active?.scriptURL || registration.waiting?.scriptURL || registration.installing?.scriptURL || '';
+      return script.endsWith('/local-ai-cache.js') || script.endsWith('/ai-lab/lab-cache.js');
+    }).map(registration => registration.unregister()));
+  }
+  if (globalThis.caches) await Promise.allSettled(['mindling-local-model-assets-v1', 'mindling-ai-lab-assets-v1'].map(name => caches.delete(name)));
+}
+void retireExperimentalModelCaches().catch(() => {});
+
 let active = null;
 let stopped = false;
 async function startProduction() {

@@ -44,16 +44,15 @@ export class BrainEngine {
     return state;
   }
 
-  evaluateInput(text, mode = "TALK", semantic) {
+  evaluateInput(text, mode = "TALK", semantic = null) {
     const value = text.trim();
     if (!value) return null;
     const hash = [...value].reduce((total, character) => (total * 31 + character.codePointAt(0)) >>> 0, 7);
     const synapse = this.#state.synapses[hash % this.#state.synapses.length];
     let route = { source: synapse.from, synapse: synapse.id, destination: synapse.to };
-    if (!semantic) return { outcome: "STIMULATION", route };
     const evaluation = evaluateMemory({ content: value, mode, memories: this.#state.memories, pathways: this.#state.pathwayRecords?.length ? this.#state.pathwayRecords : this.#state.pathways, semantic });
     if (evaluation.outcome === "STIMULATION") return { outcome: evaluation.outcome, route };
-    if (evaluation.outcome === "MEMORY_FORMATION") route = semanticRoute(this.#state, value, semantic.embedding, route);
+    if (evaluation.outcome === "MEMORY_FORMATION") route = semanticRoute(this.#state, value, evaluation.semantic.embedding, route);
     const now = new Date().toISOString();
     let memory;
     if (evaluation.outcome === "REINFORCEMENT") {

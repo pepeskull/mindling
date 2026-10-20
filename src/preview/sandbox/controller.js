@@ -1,4 +1,3 @@
-import { analyzeNative } from '../../learning/native-learning.js';
 import { EvolutionPreview } from '../evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../automatic-playback.js';
 import { STAGES } from '../evolution-model.js';
@@ -89,15 +88,14 @@ export class SandboxPreview extends EvolutionPreview {
     const text=document.querySelector('#mindling-input').value;
     const activity=this.activity;
     if(this.activity==='TALK'){await this.change(s=>talk(s,text));document.querySelector('#mindling-input').value='';this.status('Thought shared locally. Stimulation improves; stability recovers over virtual time.');return;}
-    const preflight=analyzeNative(text,m,{allowQuestion:Boolean(this.intelligence?.ready)});
     if(m.energy.remaining<LIFE_RULES.activity[activity].energyCost)throw Error('Not enough Energy; wait for regeneration');
-    const id=crypto.randomUUID(),analysis=preflight.relationship==='repeated'?null:await this.intelligence?.prepare(text,structuredClone(m));
+    const id=crypto.randomUUID();
     await this.change(s=>{
       if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
-      return learn(s,{id,text,mindId:m.id,activity,analysis});
+      return learn(s,{id,text,mindId:m.id,activity});
     });
     const event=this.state.mind.history.find(item=>item.id===id);
-    this.status(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':analysis?'Input learned with experimental local AI organization; not fact-checked.':'Input learned with native lexical fallback; no semantic AI analysis or fact-checking.');
+    this.status(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned locally; the claim is stored as player-provided and is not fact-checked.');
     document.querySelector('#mindling-input').value='';
   }
   async care(type){await this.change(s=>carePreview(s,type));}

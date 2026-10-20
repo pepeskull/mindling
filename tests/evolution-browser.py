@@ -43,7 +43,7 @@ def route_three(page, blocked=False):
         if blocked: route.abort(); return
         route.fulfill(path=str(ASSETS / route.request.url.rsplit('/',1)[1]), content_type='application/javascript', headers={'Access-Control-Allow-Origin':'*'})
     page.route('https://cdn.jsdelivr.net/npm/three@0.180.0/build/*', handle)
-    # This suite exercises visual preview and Talk. AI model acquisition is out of scope.
+    # Removed model hosts stay unavailable throughout visual preview and Talk.
     page.route('https://cdn.jsdelivr.net/npm/@huggingface/**', lambda r:r.abort())
 
 def settle(page):
@@ -58,7 +58,7 @@ with sync_playwright() as p:
     for name in ['Developer','Social','Researcher']:page.locator(f'[data-pathway="{name}"]').click()
     page.locator('[data-next]').click();page.locator('[data-next]').click();page.locator('#mindling-name').fill('Dashboard Test');page.locator('[data-next]').click();page.locator('[data-create]').click()
     page.wait_for_function("document.querySelector('#onboarding').hidden")
-    page.locator('#mindling-input').fill('Hello');page.locator('#interaction-form button[type=submit]').click();page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='9 / 10'")
+    page.locator('#mindling-input').fill('I am thinking about how this Mindling develops.');page.locator('#interaction-form button[type=submit]').click();page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='9 / 10'")
     verify_branding(page, 'normal-desktop')
     page.set_viewport_size({'width':390,'height':844}); verify_branding(page, 'normal-mobile'); page.set_viewport_size({'width':1440,'height':1000})
     # Yesterday's energy must remain yesterday's energy in preview; do not run daily resets.
@@ -119,8 +119,8 @@ with sync_playwright() as p:
     # Reload without the parameter: gameplay really resumes and resets stale daily energy.
     verify_branding(page, 'demo-desktop')
     page.goto(BASE);page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='10 / 10'")
-    page.wait_for_function("!document.querySelector('#mindling-input').disabled && document.querySelectorAll('#scene canvas').length===1")
-    assert page.locator('#mindling-input').is_enabled() and page.locator('#scene canvas').count()==1
+    page.wait_for_function("!document.querySelector('#mindling-input').disabled && document.querySelectorAll('#scene canvas').length===2")
+    assert page.locator('#mindling-input').is_enabled() and page.locator('#scene canvas').count()==2
     print('PASS Three.js: dashboard mount, automatic seven stages/network, saved data isolation, normal gameplay',flush=True)
     # A fresh profile must not acquire an empty database or fictional player data.
     fresh=browser.new_context(viewport={'width':390,'height':844},reduced_motion='reduce')

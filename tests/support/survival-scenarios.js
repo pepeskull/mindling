@@ -2,7 +2,7 @@ import { createSandbox, newMindling, HOUR, DAY } from '../../src/preview/sandbox
 import { advancePreviewLife, carePreview, stimulatePreviewLife } from '../../src/preview/sandbox/life.js';
 import { LIFE_RULES } from '../../src/life/life-system.js';
 
-// Physiology calibration assumes successful meaningful activity; Gemini quality
+// Physiology calibration assumes successful meaningful local activity; input quality
 // and learning atomicity are tested separately. Every action still pays real costs
 // and respects the sandbox cooldowns and ten-Energy virtual daily allowance.
 export function simulateSurvival({ kind, interval = 6, careInterval = 12, phase = 0, activity = 'TALK', initial = 100, hours = 120 * 24 }) {
