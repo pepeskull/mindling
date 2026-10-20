@@ -1,3 +1,5 @@
+import { compareConcepts } from './concept-extractor.js';
+
 export const MEMORY_RULES = Object.freeze({
   formationThreshold: 0.58,
   initialStrength: 0.32,
@@ -29,6 +31,7 @@ function inputQuality(tokens, normalized) {
 export function evaluateMemory({ content, mode, memories, pathways, semantic }) {
   const normalizedContent = normalizeContent(content);
   const tokens = tokensFor(normalizedContent);
+  semantic ||= { match: memories.find(memory => compareConcepts(content, memory.content).type !== 'NO_MATCH') || null, related: [], embedding: null };
   if (semantic.match) return { outcome: "REINFORCEMENT", normalizedContent, existing: semantic.match, semantic };
   const pathwayIds = pathways.filter(pathway => {
     const pathwayTokens = tokensFor(typeof pathway === "string" ? pathway : pathway.name);

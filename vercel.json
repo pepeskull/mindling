@@ -2,7 +2,7 @@
   "version": 2,
   "routes": [
     { "src": "/api/(?:learning|preview-learning)/?", "status": 410 },
-    { "src": "/(?:benchmarks|tools|tests|docs)(?:/.*)?", "status": 404 },
+    { "src": "/(?:ai-lab|benchmarks|tools|tests|docs)(?:/.*)?", "status": 404 },
     { "handle": "filesystem" },
     { "src": "/.*", "dest": "/index.html" }
   ]

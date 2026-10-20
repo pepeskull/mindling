@@ -6,7 +6,7 @@ below were replaced by that milestone.
 
 Open the application with `?stage-preview=1`. This is an in-memory visualization,
 not a gameplay evolution mechanism. The normal dashboard, storage initialization,
-Life System and semantic inference do not start until Exit Preview. The query
+Life System and local learning do not start until Exit Preview. The query
 parameter is removed on exit and the normal application starts once.
 
 ## Implementation

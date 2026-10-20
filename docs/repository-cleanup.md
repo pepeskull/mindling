@@ -2,7 +2,7 @@
 
 > Historical delivery record. External learning and model configuration described below have been superseded by [native browser learning](semantic-models.md). Recorded test results apply to that historical revision, not the native migration.
 
-This cleanup removes the public benchmark and annotation applications, abandoned semantic experiments, and unused placeholders. Normal gameplay, the M4 sandbox, its protected Gemini boundary, the simulated Solana wallet, and browser/Node test infrastructure remain active.
+This cleanup removes the public benchmark and annotation applications, abandoned semantic experiments, and unused placeholders. Normal gameplay, the M4 sandbox, native browser learning, the simulated Solana wallet, and browser/Node test infrastructure remain active.
 
 ## Removed paths
 
@@ -26,9 +26,8 @@ No production module imports these fixtures.
 
 ## Retained code that can look experimental
 
-- `semantic-model.js`, `semantic-engine.js`, and `canonical-identity.js` are in the normal memory evaluation path. The “candidate” and “shadow” names are historical, but the MiniLM, NLI, paraphrase, and STS adapters currently contribute to canonical matching and cannot be removed without changing gameplay.
+- This historical delivery predated the native-learning migration. The later browser-model adapters and AI Model Lab have now been removed; current gameplay uses `src/learning/native-learning.js` and does not download pretrained models.
 - `src/preview/` is the active M4 isolated sandbox and seven-stage demonstration requested by the product. It deliberately remains separate from production storage.
-- `src/server/learning.cjs` and `api/preview-learning.js` are the protected Gemini boundary. The API invariant permits exactly this one thin entrypoint and rejects any additional API file.
 - `src/preview/vendor/qrcode.js` and its license render the test-only Solana simulation identifier. They do not create a real address or payment.
 - `src/economy/economy.js` remains as an explicit invariant that production token payments are disabled.
 - `mindling-life-system-1.md`, `dashboard-memory-regression-fix.md`, rendering notes, neural/dashboard evolution reports, and `docs/milestone-4/` document active behavior, provenance, regressions, or deployment/security constraints.
@@ -39,10 +38,10 @@ The header and interaction mark load root `logo.png`; unrelated functional SVG i
 
 ## Verification scope
 
-Node tests cover migrations, absence invariants, the exact API allowlist, server authorization/rate-limit behavior, production gameplay, sandbox rules, storage isolation, death, progression, neural growth, and wallet simulation. Chromium checks `/`, `/?stage-preview=1`, and `/?stage-preview=1&preview-mode=demo` with Three.js and Canvas, desktop/mobile layouts, PNG loading, footer destinations, all seven demo stages, XP/clock/life/death behavior, Gemini fixtures, simulated purchase, persistence, and production IndexedDB isolation.
+Node tests cover migrations, absence invariants, production gameplay, native learning, sandbox rules, storage isolation, death, progression, neural growth, and wallet simulation. Chromium checks `/`, `/?stage-preview=1`, and `/?stage-preview=1&preview-mode=demo` with Three.js and Canvas, desktop/mobile layouts, all seven demo stages, XP/clock/life/death behavior, local Teach and Deep Training, simulated purchase, persistence, and production IndexedDB isolation.
 
 That persistence check exposed and fixed a pre-existing callback error in `PreviewStore.read()` that previously left direct IndexedDB reads pending. Reload-after-death and player-wallet preservation now complete in both renderer runs.
 
-Gemini is verified through deterministic server/client fixtures because deployment secrets are intentionally not configured yet. No real Solana payment is enabled or attempted.
+The learning browser smoke records model and learning-endpoint requests and requires that none occur. No real Solana payment is enabled or attempted.
 
-The cleanup run contains 79 Node tests: 76 pass. Three pre-existing memory-matching failures remain: legacy records call a missing semantic matcher, and two assertions expect `REINFORCEMENT` where the current implementation returns `STIMULATION`. The two obsolete-repository/API invariant failures from the M4 delivery are resolved. Both Chromium suites pass with the real Three.js modules and the Canvas fallback.
+The current cleanup run contains 97 passing Node tests. Both Chromium suites pass with the real Three.js modules and the Canvas fallback.

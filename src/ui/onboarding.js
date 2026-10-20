@@ -1,5 +1,3 @@
-import { automaticInstallation, modelDownloadNotice } from '../learning/model-config.js';
-import { INSTALL_STAGES } from '../learning/install-progress.js';
 const PATHWAYS = ["Developer", "Social", "Markets", "Gaming", "Researcher", "Creator", "Analyst", "Assistant", "General Intelligence"];
 const DIMENSIONS = [
   ["thinkingStyle", "Thinking style", "Creative", "Logical"],
@@ -45,7 +43,7 @@ export class Onboarding {
   #name() { return `<p class="onboarding-step">03 / Name</p><h1 id="onboarding-title">What will you call it?</h1><p class="onboarding-copy">The name lives with this Mindling on this device.</p><label class="name-label" for="mindling-name">Mindling name</label><input class="name-input" id="mindling-name" maxlength="24" required autocomplete="off" value="${this.#escape(this.#draft.name)}" placeholder="Enter a name"><p class="name-note"><span data-name-count>${this.#draft.name.length}</span> / 24</p>${this.#actions(!this.#draft.name.trim())}`; }
   #review() {
     const profile = DIMENSIONS.map(([key, title, low, high]) => `<li><span>${title}</span><strong>${this.#dimensionLabel(this.#draft.dimensions[key], low, high)}</strong></li>`).join("");
-    return `<p class="onboarding-step">04 / Review</p><h1 id="onboarding-title">Ready to awaken ${this.#escape(this.#draft.name)}.</h1><dl class="review"><div><dt>Name</dt><dd>${this.#escape(this.#draft.name)}</dd></div><div><dt>Pathways</dt><dd>${this.#draft.pathways.join(" · ")}</dd></div></dl><ul class="profile-list">${profile}</ul><p class="identity-note">A P-256 cryptographic identity will be created and kept locally in this browser. Local storage is not secure hardware custody.</p><aside class="local-ai-notice"><strong>Local AI preparation</strong><p>${automaticInstallation()?`Creating your Mindling will download ${modelDownloadNotice()} to your browser. Your learning content stays on your device.`:`Enhanced local AI is still being qualified. No model download starts during creation. You can use the native learning engine and optionally try the experimental ${modelDownloadNotice()} installation later.`}</p></aside><p class="creation-error" role="alert"></p><div class="onboarding-actions"><button type="button" data-back>Back</button><button type="button" class="primary" data-create>Create Mindling</button></div>`;
+    return `<p class="onboarding-step">04 / Review</p><h1 id="onboarding-title">Ready to awaken ${this.#escape(this.#draft.name)}.</h1><dl class="review"><div><dt>Name</dt><dd>${this.#escape(this.#draft.name)}</dd></div><div><dt>Pathways</dt><dd>${this.#draft.pathways.join(" · ")}</dd></div></dl><ul class="profile-list">${profile}</ul><p class="identity-note">A P-256 cryptographic identity will be created and kept locally in this browser. Local storage is not secure hardware custody.</p><p class="creation-error" role="alert"></p><div class="onboarding-actions"><button type="button" data-back>Back</button><button type="button" class="primary" data-create>Create Mindling</button></div>`;
   }
   #actions(disabled) { return `<div class="onboarding-actions"><button type="button" data-back>Back</button><button type="button" class="primary" data-next ${disabled ? "disabled" : ""}>Continue</button></div>`; }
   #escape(value) { const node = document.createElement("span"); node.textContent = value; return node.innerHTML; }
@@ -80,34 +78,15 @@ export class Onboarding {
     catch { this.#busy=false;this.#render();this.#host.querySelector(".creation-error").textContent="Creation could not be completed locally. Please try again."; }
   }
 
-  async birth(name,{create=async()=>{},install=null,cancel=()=>{}}={}) {
+  async birth(name,{create=async()=>{}}={}) {
     this.#host.hidden=false;this.#host.style.setProperty('--birth-progress','0');
-    this.#host.innerHTML=`<section class="birth-card" aria-labelledby="birth-title"><p>MINDLING / BIRTH</p><div class="birth-orbit"><i></i></div><h1 id="birth-title" aria-live="polite">INITIALIZING MINDLING</h1><span>${this.#escape(name)}</span><div class="awakening-progress glass-panel"><p data-install-detail role="status"></p><progress aria-label="Neural intelligence preparation"></progress><div class="onboarding-actions"><button type="button" data-native hidden>Continue with Native Intelligence</button><button type="button" data-retry hidden>Retry Download</button></div></div></section>`;
-    const title=this.#host.querySelector('#birth-title'),detail=this.#host.querySelector('[data-install-detail]'),progress=this.#host.querySelector('progress'),native=this.#host.querySelector('[data-native]'),retry=this.#host.querySelector('[data-retry]');
+    this.#host.innerHTML=`<section class="birth-card" aria-labelledby="birth-title"><p>MINDLING / BIRTH</p><div class="birth-orbit"><i></i></div><h1 id="birth-title" aria-live="polite">INITIALIZING MINDLING</h1><span>${this.#escape(name)}</span><div class="awakening-progress glass-panel"><p data-install-detail role="status">Creating identity and local memory.</p><progress aria-label="Mindling awakening"></progress></div></section>`;
+    const title=this.#host.querySelector('#birth-title'),detail=this.#host.querySelector('[data-install-detail]'),progress=this.#host.querySelector('progress');
     const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;
     const pause=()=>new Promise(resolve=>setTimeout(resolve,reduced?80:700));
     await create();await pause();
-    let outcome='native',active=true;
-    const update=event=>{if(!active)return;title.textContent=INSTALL_STAGES[event.stage]||'PREPARING NEURAL INTELLIGENCE';detail.textContent=event.detail||'Preparing local intelligence on this device.';progress.removeAttribute('value');};
-    if(install){
-      let again=false;
-      while(active){
-        title.textContent=INSTALL_STAGES.preparing;native.hidden=false;retry.hidden=true;
-        const choice=new Promise(resolve=>{native.onclick=()=>{active=false;cancel();resolve('native');};});
-        const result=await Promise.race([Promise.resolve().then(()=>install(update,again)).then(ok=>ok?'ready':'failed').catch(()=> 'failed'),choice]);
-        if(result==='ready'){outcome='ready';break;}
-        if(result==='native')break;
-        title.textContent='Neural intelligence is temporarily unavailable.';
-        detail.textContent='Your Mindling has been created successfully. You can continue using the native learning engine and install the enhanced intelligence later.';
-        progress.hidden=true;retry.hidden=false;
-        const action=await new Promise(resolve=>{retry.onclick=()=>resolve('retry');native.onclick=()=>{cancel();resolve('native');};});
-        if(action==='native')break;
-        again=true;progress.hidden=false;
-      }
-    }
-    active=false;native.hidden=true;retry.hidden=true;
     title.textContent='AWAKENING COMPLETE';
-    detail.textContent=outcome==='ready'?'Local inference health check passed. Your knowledge stays in your local memory graph.':'Native learning engine active. Pretrained intelligence is not enabled.';
-    progress.hidden=outcome!=='ready';progress.setAttribute('aria-label','Mindling awakening');progress.max=100;progress.value=100;this.#host.style.setProperty('--birth-progress','1');await pause();return outcome;
+    detail.textContent='Local identity and native learning are ready.';
+    progress.max=100;progress.value=100;this.#host.style.setProperty('--birth-progress','1');await pause();return 'ready';
   }
 }
