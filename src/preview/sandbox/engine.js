@@ -1,5 +1,6 @@
 import { energyAt, spendEnergy } from '../../economy/energy.js';
 import { analyzeNative } from '../../learning/native-learning.js';
+import { serviceLearningAnalysis } from './learning-assessment.js';
 import { normalize } from '../../learning/text.js';
 import { assignCategory } from '../../semantic/memory-intelligence.js';
 import { developmentStatistics, retrieveMemories } from '../../learning/knowledge.js';
@@ -41,11 +42,11 @@ export function evolve(state) {
 }
 export function cosine(a,b) { if(!a?.length||!b?.length||a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return x&&y?dot/Math.sqrt(x*y):-1; }
 // Native analysis runs synchronously inside the caller's existing IndexedDB transaction.
-export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH'}) {
+export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',assessment=null}) {
   const m=state.mind,key=normalize(text);
   if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
-  const a=analyzeNative(text,m);
+  const a=assessment ? serviceLearningAnalysis(text,m,assessment) : analyzeNative(text,m);
   if(a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
   const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=XP[a.kind];
   if(earned+award>XP.daily)throw Error('Daily XP limit reached');
@@ -54,7 +55,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH'}) {
   const energy=energyAt(m.energy,state.now);if(energy.remaining<cost)throw Error('Not enough Energy; wait for regeneration');
   if(m.memories.length>=1000)throw Error('Sandbox memory capacity reached');
   const next=structuredClone(state),n=next.mind;stimulatePreviewLife(n.life,activity,next.now);n.energy=spendEnergy(energy,cost,next.now);n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);n.milestones.push(a.concept);
-  n.history.push({id,day,at:next.now,xp:award,kind:a.kind,source:'NATIVE',concept:a.concept});
+  n.history.push({id,day,at:next.now,xp:award,kind:a.kind,source:a.service?'SERVICE':'NATIVE',concept:a.concept});
   // Canonical growth is bounded and independent of the stage's representation count.
   const foundation=n.synapses[n.memories.length%4];foundation.strength=Math.min(1,foundation.strength+.05);foundation.activations++;
   let nodeId=foundation.to, synapseId=foundation.id;
@@ -66,10 +67,11 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH'}) {
     if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}else n.synapses.push({id:synapseId,from:'origin',to:nodeId,strength:.28,activations:1});
   }
   const related=a.relatedMemoryIds.filter(id=>n.memories.some(memory=>memory.id===id&&!memory.supersededBy));
-  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source:'NATIVE',areaSuggestion:a.area});
+  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
   const memory=n.memories.at(-1);
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
-  memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
+  if(a.native)memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
+  if(a.service)memory.analysis={...a.service,activity,learnedAt:memory.createdAt};
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];
   return next;

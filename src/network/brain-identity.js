@@ -7,7 +7,9 @@ export function createBrainIdentity(id){
   const lookup=new Map(indices.map((source,i)=>[source,i])),nodes=indices.map(i=>shape.nodes[i]);
   const positions=new Float32Array(nodes.flatMap(n=>n.position)),radii=new Float32Array(nodes.map(n=>n.radius)),regions=new Uint8Array(nodes.map(n=>n.region));
   const edges=shape.edges.filter(([a,b])=>lookup.has(a)&&lookup.has(b)).map(([a,b])=>[lookup.get(a),lookup.get(b),.13+(a%4)*.055]);
-  const lines=[],segment=(a,b)=>lines.push(...a,...b);
+  // Every Agent Mind keeps all 240 somas. Fibers use a fixed LOD so three
+  // connected brains have stable CPU, GPU and memory costs in both renderers.
+  const lines=[],segment=(a,b)=>{if(lines.length<BUDGET.remoteSegments*6)lines.push(...a,...b);};
   for(const contour of shape.contours)for(let i=1;i<contour.length;i++)segment(contour[i-1],contour[i]);
   const point=(a,b,t,bend)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t+4*t*(1-t)*bend,a[2]+(b[2]-a[2])*t+2*t*(1-t)*bend];
   for(const [a,b,bend] of edges)for(let j=0;j<BUDGET.curveSteps;j++)segment(point(nodes[a].position,nodes[b].position,j/BUDGET.curveSteps,bend),point(nodes[a].position,nodes[b].position,(j+1)/BUDGET.curveSteps,bend));

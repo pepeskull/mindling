@@ -5,6 +5,7 @@ import {desktopSupport} from '../src/platform/desktop.js';
 import {createSandbox,newMindling} from '../src/preview/sandbox/engine.js';
 import {RenderBuffers,REMOTE_SCALE} from '../src/preview/evolution-scene.js';
 import {BrainIdentities} from '../src/network/brain-identity.js';
+import {BUDGET} from '../src/preview/evolution-model.js';
 const start=()=>newMindling(createSandbox(),{confirmed:true,id:'index-player'});
 test('regeneration retains partial intervals across serialization and spends',()=>{
  let e=spendEnergy(energyAt(null,0),4,0);e=energyAt(e,I/2);assert.equal(e.remaining,6);e=spendEnergy(JSON.parse(JSON.stringify(e)),1,I*3/4);assert.equal(energyAt(e,I).remaining,6);assert.equal(energyAt(e,2*I).remaining,7);
@@ -27,10 +28,10 @@ test('desktop signals allow narrow laptops and reject phones/tablets/ambiguous t
 });
 test('each demo brain retains geometry, topology, color and breathing phase in both rendering roles',()=>{
  const cache=new BrainIdentities();for(const id of ['demo:nova','demo:echo','demo:atlas']){
- const brain=cache.get(id),before=structuredClone(brain),b=new RenderBuffers();b.writeBrain(brain,240,[3,1,0],REMOTE_SCALE,1,12,false);const remote=b.positions.slice(720,720+brain.positions.length),radii=b.radii.slice(240,336),colors=b.regions.slice(240,336);b.segmentCount=0;b.writeBrain(brain,0,[0,0,0],1,1,12,false);
+ const brain=cache.get(id),before=structuredClone(brain),b=new RenderBuffers();assert.equal(brain.radii.length,240);assert.ok(brain.lines.length<=BUDGET.remoteSegments*6);b.writeBrain(brain,240,[3,1,0],REMOTE_SCALE,1,12,false);const remote=b.positions.slice(720,720+brain.positions.length),radii=b.radii.slice(240,240+BUDGET.remoteNeurons),colors=b.regions.slice(240,240+BUDGET.remoteNeurons);b.segmentCount=0;b.writeBrain(brain,0,[0,0,0],1,1,12,false);
  for(let i=0;i<remote.length;i++)assert.ok(Math.abs((remote[i]-[3,1,0][i%3])/REMOTE_SCALE-b.positions[i])<1e-6);
  for(let i=0;i<radii.length;i++)assert.ok(Math.abs(radii[i]/REMOTE_SCALE-b.radii[i])<1e-6);
- assert.deepEqual(colors,b.regions.slice(0,96));assert.equal(cache.get(id),brain);assert.deepEqual(brain,before);
+ assert.deepEqual(colors,b.regions.slice(0,BUDGET.remoteNeurons));assert.equal(cache.get(id),brain);assert.deepEqual(brain,before);
  }
  assert.notDeepEqual(cache.get('demo:nova').positions,cache.get('demo:echo').positions);
 });
