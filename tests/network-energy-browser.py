@@ -31,7 +31,12 @@ with sync_playwright() as p:
     for case,(sandbox,canvas,mobile) in enumerate([(False,True,False),(True,True,True),(False,False,True),(True,False,False)]):
         if os.environ.get('MINDLING_BROWSER_CASE') is not None and str(case)!=os.environ['MINDLING_BROWSER_CASE']:continue
         context=browser.new_context(viewport={'width':390 if mobile else 1440,'height':844 if mobile else 1000},reduced_motion='reduce')
-        page=context.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+        page=context.new_page();errors=[];service_requests=[];page.on('pageerror',lambda e:errors.append(str(e)))
+        def learning_reply(route):
+            body=route.request.post_data_json;service_requests.append(body)
+            words=body['input'].strip('.').lower().split()
+            route.fulfill(json={'service':'mindling-learning-service','assessment':{'meaningful':True,'relationship':'new','concept':' '.join(words[:2]),'category':'Network test knowledge','categoryId':'','topic':' '.join(words[:4]),'relatedMemoryId':'','confidence':.9,'evidence':'none'}})
+        page.route('**/api/mindling/learn',learning_reply)
         page.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))
         page.route('https://cdn.jsdelivr.net/npm/three@0.180.0/build/*',lambda r:r.abort() if canvas else r.fulfill(path=str(ASSETS/r.request.url.rsplit('/',1)[1]),content_type='application/javascript',headers={'Access-Control-Allow-Origin':'*'}))
         page.goto(BASE);page.evaluate(SEED);page.unroute('**/js/bootstrap.js');page.route('**/js/bootstrap.js',lambda r:r.fulfill(body=BOOT,content_type='application/javascript'))
@@ -39,6 +44,7 @@ with sync_playwright() as p:
         if sandbox:page.locator('.sandbox-controls > summary').click()
         assert page.locator('#scene').get_attribute('data-backend')==('canvas' if canvas else 'three')
         page.evaluate('()=>{const a=testApp;a.timeline.network.start();a.timeline.network.tick(20);a.refreshNetwork();}')
+        assert page.evaluate("()=>testApp.timeline.network.peers.filter(peer=>peer.id).every(peer=>testApp.view.buffers.identities.get(peer.id).radii.length===240)")
         assert page.evaluate("""async()=>{const a=testApp,pending=a.change(s=>s);const entered=a.external.enter('demo:nova');await pending;return !entered;}""")
         snapshot=page.evaluate(SNAPSHOT)
         original_geometry=page.evaluate("()=>JSON.stringify({positions:Array.from(testApp.view.morph.positions),target:testApp.view.morph.target})")
@@ -118,6 +124,7 @@ with sync_playwright() as p:
         page.locator('#mindling-input').fill('Volcanoes release molten rock from deep beneath the crust.')
         page.locator('#interaction-form button[type=submit]').click()
         page.wait_for_function('testApp.state.mind.energy.remaining===8')
+        assert len(service_requests)==(1 if sandbox else 0)
         assert not errors,errors
         print('PASS view/handlers/isolation:', 'Sandbox' if sandbox else 'Main','Canvas' if canvas else 'Three','narrow desktop' if mobile else 'desktop')
         context.close()

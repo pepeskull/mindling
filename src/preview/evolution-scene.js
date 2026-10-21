@@ -7,7 +7,7 @@ import { previewFraming, morphologyRadius } from '../renderer/scene-framing.js';
 const COLORS = [0x9bd5c5, 0x7daebe, 0xb7c9de, 0x9abfcb, 0xc0b3d2, 0x9bd1ba];
 export const REMOTE_SCALE = .32;
 export const REMOTE_CENTERS = [[-3.05, .45, 0], [2.85, 1.15, -.4], [2.65, -1.4, .2]];
-const MAX_SEGMENTS = BUDGET.edges * BUDGET.curveSteps + BUDGET.neurons * 18 + BUDGET.remoteBrains * 4096;
+const MAX_SEGMENTS = BUDGET.edges * BUDGET.curveSteps + BUDGET.neurons * 18 + BUDGET.remoteBrains * BUDGET.remoteSegments;
 const MAX_NODES = BUDGET.neurons + BUDGET.remoteBrains * BUDGET.remoteNeurons;
 
 function curve(out, offset, ax, ay, az, bx, by, bz, t, bend) {
@@ -260,8 +260,8 @@ export class EvolutionScene {
     const placed=[];
     this.labels.forEach((label,index)=>{
       const peer=peers[index];
-      label.textContent=peer?.name||'';label.disabled=!peer?.connected||Boolean(this.interaction.locked);
-      label.setAttribute('aria-label',`Visit ${peer?.name||'Mindling'} — Agent Mind${peer?.demo?', demo network':''}`);
+      label.textContent=peer ? `${peer.name}${peer.demo?' · Demo':''}` : '';label.disabled=!peer?.connected||Boolean(this.interaction.locked);
+      label.setAttribute('aria-label',`Visit ${peer?.name||'Mindling'} — Agent Mind, ${BUDGET.remoteNeurons} visual neurons${peer?.demo?', demo network':''}`);
       if(!peer||peer.visibility<=.01){label.hidden=true;return;}
       const anchor=this.projectRemote(index);
       label.hidden=!anchor.visible||anchor.x<0||anchor.x>this.width||anchor.y<0||anchor.y>this.height;

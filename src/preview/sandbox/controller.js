@@ -7,6 +7,7 @@ import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,lea
 import { LIFE_RULES } from '../../life/life-system.js';
 import { TestWalletUI } from './wallet-ui.js';
 import { PreviewStore } from './storage.js';
+import { requestLearningAssessment } from './learning-service.js';
 
 export class SandboxPreview extends EvolutionPreview {
   constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'}),originalFraming:true}); this.listeners=new AbortController(); }
@@ -23,7 +24,7 @@ export class SandboxPreview extends EvolutionPreview {
     await super.start();if(this.disposed)return;
     this.timeline.pause();
     this.panel=document.createElement('details');this.panel.className='sandbox-controls glass-panel';this.panel.open=true;
-    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Learning runs locally. Submitted claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
+    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Teach and Deep Training use the Mindling learning service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
     document.querySelector('#app').append(this.panel);
     this.listen(this.panel,'click',e=>{const button=e.target.closest('button');if(!button)return;this.action(async()=>{
       if(button.dataset.hours)return this.change(s=>advanceTime(s,Number(button.dataset.hours)));
@@ -64,7 +65,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.listen(document,'visibilitychange',()=>{if(!document.hidden&&!this.busy)this.change(s=>s).catch(error=>this.status(error.message));});
   }
   listen(node,type,fn){node.addEventListener(type,event=>{if(!this.external?.locked)fn(event);},{signal:this.listeners.signal});}
-  async action(fn){if(this.busy||this.external?.locked)return;this.busy=true;this.status('Working…');try{await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;}}
+  async action(fn){if(this.busy||this.external?.locked)return;this.busy=true;this.updateInputAvailability();this.status('Working…');try{await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;this.updateInputAvailability();}}
   status(text){if(this.disposed)return;const el=this.panel?.querySelector('[data-sandbox-status]');if(el)el.textContent=text;const inline=document.querySelector('#interaction-form .interaction-status');if(inline){inline.textContent=text;inline.classList.add('visible');}}
   async change(reducer,{preserveGameplay=false}={}) {
     this.external?.assertWritable();
@@ -90,12 +91,14 @@ export class SandboxPreview extends EvolutionPreview {
     if(this.activity==='TALK'){await this.change(s=>talk(s,text));document.querySelector('#mindling-input').value='';this.status('Thought shared locally. Stimulation improves; stability recovers over virtual time.');return;}
     if(m.energy.remaining<LIFE_RULES.activity[activity].energyCost)throw Error('Not enough Energy; wait for regeneration');
     const id=crypto.randomUUID();
+    const assessment=await requestLearningAssessment(text,structuredClone(m));
+    if(this.disposed)throw Error('Preview was closed before learning completed. No Energy or XP changed.');
     await this.change(s=>{
       if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
-      return learn(s,{id,text,mindId:m.id,activity});
+      return learn(s,{id,text,mindId:m.id,activity,assessment});
     });
     const event=this.state.mind.history.find(item=>item.id===id);
-    this.status(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned locally; the claim is stored as player-provided and is not fact-checked.');
+    this.status(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.');
     document.querySelector('#mindling-input').value='';
   }
   async care(type){await this.change(s=>carePreview(s,type));}
@@ -105,6 +108,14 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{const selected=(b.dataset.inputMode||b.dataset.activityMode)===type;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));});
     document.querySelector('#interaction-form button[type=submit]').setAttribute('aria-label','Send message');
     document.querySelector('#mindling-input').placeholder=type==='TALK'?'Share a meaningful thought locally…':'Teach your Mindling something new…';
+    this.updateInputAvailability();
+  }
+  updateInputAvailability(){
+    const m=this.state?.mind,alive=m?.life?.lifeState==='ALIVE',cost=LIFE_RULES.activity[this.activity]?.energyCost??Infinity,enough=Boolean(alive&&m.energy.remaining>=cost),locked=Boolean(this.busy||this.external?.locked);
+    const input=document.querySelector('#mindling-input'),submit=document.querySelector('#interaction-form button[type=submit]');
+    if(input)input.disabled=!enough||locked;
+    if(submit){submit.disabled=!enough||locked;submit.title=!alive?'Create a living test Mindling first':!enough?`Requires ${cost} Energy; ${m.energy.remaining} remaining`:locked?'Wait for the current message to finish':`Send now · ${cost} Energy`;}
+    if(alive&&!enough&&!locked)this.status(`Requires ${cost} Energy; ${m.energy.remaining} remaining. Energy regenerates every 12 minutes.`);
   }
   async runFixture(){
     const text='Photosynthesis converts light energy into chemical energy stored in glucose.';
@@ -135,6 +146,7 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelectorAll('[data-care]').forEach(b=>{b.disabled=!alive;b.title=`Free preventive care; ${LIFE_RULES.care[b.dataset.care].cooldownHours}-hour virtual cooldown`;});
     document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{b.disabled=!alive||m.energy.remaining<LIFE_RULES.activity[b.dataset.inputMode||b.dataset.activityMode].energyCost;b.title='Uses available Energy; no activity cooldown';});
     this.dashboard.renderEnergy(m.energy,this.state.now);
+    this.updateInputAvailability();
     document.querySelector('[data-energy-progress]').hidden=false;
     document.querySelector('[data-neural-cycle]').textContent=`NC ${String(1+Math.floor((this.state.now-m.createdAt)/DAY)).padStart(4,'0')}`;
     document.querySelector('[data-neural-cycles]').textContent=`${1+Math.floor((this.state.now-m.createdAt)/DAY)} Neural Cycles`;
@@ -142,7 +154,7 @@ export class SandboxPreview extends EvolutionPreview {
     if(!this.panel)return;
     const gate=eligibility(this.state);
     this.panel.querySelector('[data-diagnostics]').textContent=`${STAGES[stage-1].name}\nStage XP: ${m.stageXP} / ${gate.required.xp} · Lifetime: ${m.lifetimeXP}\nStage entered: ${new Date(m.enteredAt).toISOString()}\nStage days: ${(gate.elapsed/DAY).toFixed(2)} / ${gate.required.days}\nLearning milestones: ${gate.concepts} / ${gate.required.concepts}\nEligible: ${gate.eligible}\nVirtual time: ${new Date(this.state.now).toISOString()}\nOffset: ${((this.state.now-this.state.origin)/DAY).toFixed(2)} days\n${m.nodes.length} canonical neurons → ${STAGES[stage-1].count} visual representations`;
-    this.panel.querySelector('[data-history]').textContent=JSON.stringify(m.history.slice(-12).map(event=>({...event,source:event.source==='NATIVE'?'Local learning':event.source?'Historical record':undefined})),null,2);
+    this.panel.querySelector('[data-history]').textContent=JSON.stringify(m.history.slice(-12).map(event=>({...event,source:event.source==='NATIVE'?'Local learning':event.source==='SERVICE'?'Mindling learning service':event.source?'Historical record':undefined})),null,2);
     const select=this.panel.querySelector('[data-node-selection]');const previous=select.value;select.replaceChildren(...m.nodes.map(n=>{const o=document.createElement('option');o.value=n.id;o.textContent=n.id;return o;}));if(m.nodes.some(n=>n.id===previous))select.value=previous;this.inspectNode(select.value);
     this.view.canonicalMapping=visualMapping(m,STAGES[stage-1].count);
     // Strength influences existing soma radii; no fake canonical neurons are created.

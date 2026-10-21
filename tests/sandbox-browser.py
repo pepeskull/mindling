@@ -13,9 +13,16 @@ with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox','--enable-unsafe-swiftshader'])
     for backend in ['canvas','three']:
         context=browser.new_context(viewport={'width':1440,'height':1000},reduced_motion='reduce')
-        page=context.new_page(); errors=[]; learning_requests=[]
+        page=context.new_page(); errors=[]; learning_requests=[]; service={'fail':False}
         page.on('pageerror',lambda e:errors.append(str(e)))
-        page.on('request',lambda request:learning_requests.append(request.url) if '/api/learning' in request.url or '/api/preview-learning' in request.url or 'huggingface.co' in request.url else None)
+        def learning_reply(route):
+            body=route.request.post_data_json
+            learning_requests.append(body)
+            if service['fail']:
+                service['fail']=False;route.fulfill(status=502,json={'service':'mindling-learning-service','error':{'code':'ANALYSIS_UNAVAILABLE'}});return
+            words=body['input'].strip('.').lower().split()
+            route.fulfill(json={'service':'mindling-learning-service','assessment':{'meaningful':True,'relationship':'new','concept':' '.join(words[:2]),'category':'Preview knowledge','categoryId':'','topic':' '.join(words[:4]),'relatedMemoryId':'','confidence':.9,'evidence':'none'}})
+        page.route('**/api/mindling/learn',learning_reply)
         page.route('https://cdn.jsdelivr.net/npm/three@0.180.0/build/*',lambda r:r.abort() if backend=='canvas' else r.fulfill(path=str(ASSETS/r.request.url.rsplit('/',1)[1]),content_type='application/javascript',headers={'Access-Control-Allow-Origin':'*'}))
         page.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))
         page.goto(BASE)
@@ -38,8 +45,8 @@ with sync_playwright() as p:
         page.locator('#mindling-input').fill('Gravity describes attraction between bodies with mass.')
         page.locator('#interaction-form button[type=submit]').click()
         page.wait_for_function("document.querySelector('[data-stat=memories]').textContent==='2'")
-        assert 'learned locally' in page.locator('[data-sandbox-status]').text_content()
-        assert learning_requests==[]
+        assert 'learning service' in page.locator('[data-sandbox-status]').text_content()
+        assert len(learning_requests)==1 and set(learning_requests[0])=={'input','candidates','categories'}
         page.locator('.sandbox-controls summary').first.click();page.locator('[data-hours="24"]').click()
         page.wait_for_function("document.querySelector('[data-diagnostics]').textContent.includes('Eligible: true')")
         page.locator('[data-sandbox="evolve"]').click();page.wait_for_function("document.querySelector('#scene').dataset.stage==='2'")
@@ -64,10 +71,16 @@ with sync_playwright() as p:
         page.locator('[data-sandbox="new"]').click();page.wait_for_function("document.querySelector('.hero-copy h1').textContent==='Test Mindling is learning.'")
         after=page.evaluate('''async()=>{const {PreviewStore}=await import('/src/preview/sandbox/storage.js');const db=await new PreviewStore().open();const s=await db.read();db.close();return s;}''')
         assert after['player']==state['player'] and after['mind']['id']!=state['mind']['id']
-        # Teach, Talk and Deep Training all stay local and preserve their distinct Energy costs.
+        # Teach and Deep Training use the isolated service; Talk stays local.
         page.locator('#mindling-input').fill('Photosynthesis converts sunlight into stored chemical energy.')
         page.locator('#interaction-form button[type=submit]').click()
         page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='8 / 10'")
+        assert page.locator('[data-stat=memories]').text_content()=='1'
+        service['fail']=True
+        page.locator('#mindling-input').fill('Ocean tides follow repeating gravitational cycles.')
+        page.locator('#interaction-form button[type=submit]').click()
+        page.wait_for_function("document.querySelector('[data-sandbox-status]').textContent.includes('temporarily unavailable')")
+        assert page.locator('[data-energy-value]').text_content()=='8 / 10'
         assert page.locator('[data-stat=memories]').text_content()=='1'
         page.locator('[data-input-mode="TALK"]').click()
         page.locator('#mindling-input').fill('I have been thinking about how a learning mind needs regular care.')
@@ -81,7 +94,7 @@ with sync_playwright() as p:
         page.locator('#interaction-form button[type=submit]').click()
         page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='7 / 10'")
         assert page.locator('[data-stat=memories]').text_content()=='2'
-        assert learning_requests==[]
+        assert len(learning_requests)==4
         assert not errors,errors
         page.locator('.sandbox-controls summary').first.click();page.screenshot(path=f'/tmp/m4-{backend}.png')
         page.set_viewport_size({'width':390,'height':844});verify_branding(page, f'sandbox-{backend}-mobile');page.screenshot(path=f'/tmp/m4-{backend}-mobile.png')
@@ -89,7 +102,7 @@ with sync_playwright() as p:
         assert page.locator('[data-life-attribute="neuralStability"]').is_visible()
         for label in page.locator('[data-life-attribute] strong').all_text_contents():assert label.endswith('%') and label[:-1].isdigit(),label
         context.close()
-        print(f'PASS {backend}: native learning, no inference requests, sandbox stats, memory UI, death, wallet, persistence, no production access, mobile',flush=True)
+        print(f'PASS {backend}: isolated learning service, safe failure, sandbox stats, memory UI, death, wallet, persistence, no production access, mobile',flush=True)
     # Lifecycle runs against the real shell with bootstrap suppressed; no timers or network calls needed.
     life=browser.new_context(viewport={'width':1440,'height':1000}).new_page()
     life.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))

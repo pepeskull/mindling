@@ -105,7 +105,7 @@ with sync_playwright() as p:
     assert page.locator('.preview-stage-label, .preview-network-label, .hero-copy span').count()==0
     assert page.locator('.preview-simulated').is_visible()
     assert page.locator('.social-status em').text_content()=='Connected · 3 Mindlings · Active'
-    assert page.locator('.preview-peer-label:visible').all_text_contents()==['Nova','Echo','Atlas']
+    assert page.locator('.preview-peer-label:visible').all_text_contents()==['Nova · Demo','Echo · Demo','Atlas · Demo']
     assert page.locator('#scene').get_attribute('data-stage')=='7'
     assert page.locator('[data-life-stage]').inner_text()=='Agent Mind'
     assert page.evaluate('window.__testMetrics().writes')==0
@@ -131,7 +131,7 @@ with sync_playwright() as p:
     fallback.wait_for_function("document.querySelector('#scene').dataset.stage==='7'",timeout=40000)
     fallback.wait_for_function("document.querySelector('#scene').dataset.network==='EXCHANGING'",timeout=25000)
     fallback.screenshot(path='/tmp/dashboard-canvas-mobile.png')
-    assert fallback.locator('.preview-peer-label:visible').all_text_contents()==['Nova','Echo','Atlas']
+    assert fallback.locator('.preview-peer-label:visible').all_text_contents()==['Nova · Demo','Echo · Demo','Atlas · Demo']
     assert fallback.evaluate('window.__testMetrics().writes')==0
     assert fallback.evaluate('indexedDB.databases()')==[]
     fallback.locator('[data-mobile-view="development"]').click();assert fallback.locator('.left-stack').is_visible()
