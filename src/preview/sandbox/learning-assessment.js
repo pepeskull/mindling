@@ -1,5 +1,5 @@
 import { retrievePreviewMemories, candidateMetadata } from './memory-retrieval.js';
-import { validateDecision } from './memory-decision.js';
+import { validateAssessment } from './memory-decision.js';
 import { validateText } from '../../learning/text.js';
 import { exactMemory } from '../../semantic/memory-intelligence.js';
 
@@ -10,7 +10,7 @@ const EVIDENCE = new Set(['none', 'lexical_overlap', 'semantic_match', 'exact_ma
 const clean = (value, maximum) => typeof value === 'string' && value === value.trim() && value.length <= maximum ? value : null;
 
 export function learningContext(text, mind) {
-  validateText(text);
+  validateText(text,{allowQuestion:true});
   const active = (mind.memories || []).filter(memory => typeof memory.content === 'string');
   const ranked = retrievePreviewMemories(text, active, { limit: 8 }).map(item => item.memory);
   if(ranked.some(m=>typeof m.id!=='string'||!m.id||m.id.length>100))throw Error('Saved memory identifiers are invalid. No Energy or XP changed.');
@@ -20,7 +20,8 @@ export function learningContext(text, mind) {
     categoryId: typeof memory.categoryId === 'string' ? memory.categoryId.slice(0, 100) : '',
     category: typeof memory.category === 'string' ? memory.category.slice(0, 80) : '',
     topic: typeof memory.topic === 'string' ? memory.topic.slice(0, 100) : '',
-    ...candidateMetadata(memory)
+    ...candidateMetadata(memory),
+    complete:memory.content.length<=500
   }));
   const categories = [];
   for (const category of [...(mind.categories || []), ...active.map(memory => ({ id: memory.categoryId, name: memory.category }))]) {
@@ -40,7 +41,7 @@ export function localExactAssessment(text, mind) {
 }
 
 export function validateServiceAssessment(raw, context) {
-  if(raw?.version===2)return validateDecision(raw,context);
+  if(raw?.version===2||raw?.version===3)return validateAssessment(raw,context);
   // Explicit legacy contract for already deployed clients and deterministic historical fixtures.
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Error('Learning analysis was invalid. No Energy or XP changed.');
   const keys = ['meaningful','relationship','concept','category','categoryId','topic','relatedMemoryId','confidence','evidence'];
@@ -64,15 +65,10 @@ export function validateServiceAssessment(raw, context) {
 }
 
 export function serviceLearningAnalysis(text, mind, assessment) {
-  const context = learningContext(text, mind), exact = localExactAssessment(text, mind);
-  const valid = assessment?.version===2 ? validateDecision(assessment, context) : exact || validateServiceAssessment(assessment, context);
-  if(valid.version===2)return {decision:valid};
-  if (!valid.meaningful || valid.relationship === 'reject') throw Error('The learning service could not approve this input. No Energy or XP changed.');
-  if (valid.relationship === 'repeated') return { relationship:'repeated', relatedMemoryId:valid.relatedMemoryId };
-  return {
-    memory:text.trim(), concept:valid.concept, area:valid.category, kind:'concept', category:valid.category,
-    categoryId:valid.categoryId, topic:valid.topic, relationship:valid.relationship,
-    relatedMemoryId:valid.relatedMemoryId, relatedMemoryIds:valid.relatedMemoryId ? [valid.relatedMemoryId] : [],
-    service:{ name:LEARNING_SERVICE, confidence:valid.confidence, evidence:valid.evidence, verification:'unverified-player-claim' }
-  };
+  const context=learningContext(text,mind),valid=validateServiceAssessment(assessment,context);
+  if(valid.version===2||valid.version===3)return {decision:valid};
+  if(!valid.meaningful||valid.relationship==='reject')throw Error('The learning service could not approve this input. No Energy or XP changed.');
+  const relationship={new:'NEW_MEMORY',related:'RELATED_MEMORY',repeated:'SAME_MEMORY'}[valid.relationship];
+  const operation={new:'CREATE_NEW',related:'LINK_TO_EXISTING',repeated:'REINFORCE_EXISTING'}[valid.relationship];
+  return {decision:validateAssessment({version:2,relationship,operation,responseAction:'ACKNOWLEDGE',kind:'claim',certainty:'asserted',concept:valid.concept,category:valid.category,categoryId:valid.categoryId,topic:valid.topic,relatedMemoryId:valid.relatedMemoryId,confidence:valid.confidence},context)};
 }

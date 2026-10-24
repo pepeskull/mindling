@@ -59,8 +59,8 @@ for(const [name,text,d,outcome] of scenarios)test(`synthetic decision: ${name}`,
   }else if(outcome==='update'){
     const previous=s.mind.memories.find(m=>m.id===d.relatedMemoryId),memory=n.mind.memories.find(m=>m.id===d.relatedMemoryId);
     assert.equal(memory.content,text);assert.equal(memory.valueHistory[0].content,previous.content);assert.equal(n.mind.memories.length,5);assert.equal(n.mind.lifetimeXP,60);assert.equal(n.mind.energy.remaining,8);
-  }else if(outcome==='reinforce'){assert.equal(n.mind.memories.length,5);assert.equal(n.mind.lifetimeXP,0);assert.equal(n.mind.energy.remaining,8);}
-  else {assert.equal(n.mind.energy.remaining,10);assert.equal(n.mind.lifetimeXP,0);assert.equal(n.mind.memories.length,5);if(outcome==='flag')assert.equal(n.mind.memories.find(m=>m.id==='earth').content,'Earth orbits the Sun.');}
+  }else if(outcome==='reinforce'){assert.equal(n.mind.memories.length,5);assert.equal(n.mind.lifetimeXP,0);assert.equal(n.mind.energy.remaining,10);}
+  else {assert.equal(n.mind.energy.remaining,outcome==='flag'?8:10);assert.equal(n.mind.lifetimeXP,0);assert.equal(n.mind.memories.length,5);if(outcome==='flag')assert.equal(n.mind.memories.find(m=>m.id==='earth').content,'Earth orbits the Sun.');}
   assert.throws(()=>run(n,text,d),/processed/);
 });
 test('retrieval is independently ranked, bounded, includes goals, aliases and history',()=>{
@@ -73,10 +73,10 @@ test('retrieval is independently ranked, bounded, includes goals, aliases and hi
   const updated=run(state(),'I prefer light interfaces now.',target('UPDATE_EXISTING','UPDATED_MEMORY','dark',{kind:'preference'}));
   assert.equal(learningContext('I prefer light interfaces now.',updated.mind).candidates.find(m=>m.id==='dark').previousValues[0],'The player prefers dark interfaces.');
 });
-test('v2 exact repetitions use Energy without a text submission cooldown or XP',async()=>{
+test('v2 exact repetitions are free without a text submission cooldown or XP',async()=>{
   let s=state();const text='The player prefers dark interfaces.';
   for(let i=0;i<3;i++){const d=await requestLearningAssessment(text,s.mind,{fetcher:()=>{throw Error('exact match must stay local');}});s=run(s,text,d,`repeat${i}`);}
-  assert.equal(s.mind.energy.remaining,4);assert.equal(s.mind.lifetimeXP,0);
+  assert.equal(s.mind.energy.remaining,10);assert.equal(s.mind.lifetimeXP,0);
 });
 test('insufficient Energy and repeated successful assessments cannot partially mutate',()=>{
   const s=state();s.mind.energy.remaining=1;const before=structuredClone(s);

@@ -1,5 +1,7 @@
 # Stage Preview memory intelligence, version 2
 
+> Historical version 2 implementation report. Current duplicate Energy rules, atomic-memory storage and contract version 3 are described in [the Energy and atomic-memory update](preview-energy-atomic-memories.md).
+
 ## Audit and boundaries
 
 Audited from `main` at `e4cd02313f517bfee40f16fc3600703588ccf534`.

@@ -5,7 +5,7 @@ import { AutomaticNetworkCountdown } from '../automatic-playback.js';
 import { STAGES } from '../evolution-model.js';
 import { presentationFor } from '../dashboard-presentation.js';
 import { condition, carePreview, previewWarning } from './life.js';
-import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,talk,upgradeSandbox,advanceSandbox,DAY,visualMapping } from './engine.js';
+import { createSandbox,newMindling,advanceTime,resetClock,evolve,eligibility,learn,upgradeSandbox,advanceSandbox,DAY,visualMapping } from './engine.js';
 import { LIFE_RULES } from '../../life/life-system.js';
 import { TestWalletUI } from './wallet-ui.js';
 import { PreviewStore } from './storage.js';
@@ -26,7 +26,7 @@ export class SandboxPreview extends EvolutionPreview {
     await super.start();if(this.disposed)return;
     this.timeline.pause();
     this.panel=document.createElement('details');this.panel.className='sandbox-controls glass-panel';this.panel.open=true;
-    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Teach and Deep Training use the Mindling learning service. Your message and up to eight relevant sandbox memories are sent to an external service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
+    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Talk, Teach and Deep Training use the Mindling learning service. Your message and up to eight relevant sandbox memories are sent to an external service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
     document.querySelector('#app').append(this.panel);
     this.listen(this.panel,'click',e=>{const button=e.target.closest('button');if(!button)return;this.action(async()=>{
       if(button.dataset.hours)return this.change(s=>advanceTime(s,Number(button.dataset.hours)));
@@ -90,8 +90,6 @@ export class SandboxPreview extends EvolutionPreview {
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
     const text=document.querySelector('#mindling-input').value;
     const activity=this.activity;
-    if(this.activity==='TALK'){await this.change(s=>talk(s,text));document.querySelector('#mindling-input').value='';this.status('Thought shared locally. Stimulation improves; stability recovers over virtual time.');return;}
-    if(m.energy.remaining<LIFE_RULES.activity[activity].energyCost)throw Error('Not enough Energy; wait for regeneration');
     const id=crypto.randomUUID();
     const submittedContext=JSON.stringify(learningContext(text,m));
     const assessment=await requestLearningAssessment(text,structuredClone(m));
@@ -102,8 +100,9 @@ export class SandboxPreview extends EvolutionPreview {
       return learn(s,{id,text,mindId:m.id,activity,assessment});
     });
     const event=this.state.mind.history.find(item=>item.id===id);
-    const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage. No Energy or XP changed.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored. No Energy or XP changed.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered. No Energy or XP changed.',NO_MEMORY_CHANGE:'No memory change was needed. No Energy or XP changed.',FLAG_CONTRADICTION:'This claim conflicts with an existing memory. Existing knowledge was preserved; no Energy or XP changed.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.'};
-    this.status(messages[event?.operation]||(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.'));
+    const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered.',NO_MEMORY_CHANGE:'No memory change was needed.',FLAG_CONTRADICTION:'Conflicting claim recorded; existing knowledge was preserved.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.',BATCH:'Independent statements processed together; existing history was preserved.'};
+    const message=event?.kind==='reinforcement'?'Already learned. Memory reinforced.':messages[event?.operation]||'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.';
+    this.status(`${message} ${event?.energySpent?`${event.energySpent} Energy spent.`:'No Energy spent.'}${event?.xp?'':' No XP awarded.'}`);
     document.querySelector('#mindling-input').value='';
   }
   async care(type){await this.change(s=>carePreview(s,type));}
@@ -112,16 +111,16 @@ export class SandboxPreview extends EvolutionPreview {
     this.activity=type;
     document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{const selected=(b.dataset.inputMode||b.dataset.activityMode)===type;b.classList.toggle('selected',selected);b.setAttribute('aria-pressed',String(selected));});
     document.querySelector('#interaction-form button[type=submit]').setAttribute('aria-label','Send message');
-    document.querySelector('#mindling-input').placeholder=type==='TALK'?'Share a meaningful thought locally…':'Teach your Mindling something new…';
+    document.querySelector('#mindling-input').placeholder=type==='TALK'?'Share a thought or something to remember…':'Teach your Mindling something new…';
     this.updateInputAvailability();
   }
   updateInputAvailability(){
-    const m=this.state?.mind,alive=m?.life?.lifeState==='ALIVE',cost=LIFE_RULES.activity[this.activity]?.energyCost??Infinity,enough=Boolean(alive&&m.energy.remaining>=cost),locked=Boolean(this.busy||this.external?.locked);
+    const m=this.state?.mind,alive=m?.life?.lifeState==='ALIVE',cost=LIFE_RULES.activity[this.activity]?.energyCost??Infinity,locked=Boolean(this.busy||this.external?.locked);
     const input=document.querySelector('#mindling-input'),submit=document.querySelector('#interaction-form button[type=submit]');
-    if(input)input.disabled=!enough||locked;
-    if(submit){submit.disabled=!enough||locked;submit.title=!alive?'Create a living test Mindling first':!enough?`Requires ${cost} Energy; ${m.energy.remaining} remaining`:locked?'Wait for the current message to finish':`Send now · ${cost} Energy`;}
-    if(alive&&!enough&&!locked)this.status(`Requires ${cost} Energy; ${m.energy.remaining} remaining. Energy regenerates every 12 minutes.`);
+    if(input)input.disabled=!alive||locked;
+    if(submit){submit.disabled=!alive||locked;submit.title=!alive?'Create a living test Mindling first':locked?'Wait for the current message to finish':`Meaningful changes cost ${cost} Energy; duplicates and no-change decisions are free`;}
   }
+
   async runFixture(){
     const text='Photosynthesis converts light energy into chemical energy stored in glucose.';
     await this.change(s=>learn(s,{id:crypto.randomUUID(),text}));
@@ -150,7 +149,7 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelector('#interaction-form button[type=submit]').disabled=!alive;
     document.querySelector('[data-download-profile]').disabled=true;
     document.querySelectorAll('[data-care]').forEach(b=>{b.disabled=!alive;b.title=`Free preventive care; ${LIFE_RULES.care[b.dataset.care].cooldownHours}-hour virtual cooldown`;});
-    document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{b.disabled=!alive||m.energy.remaining<LIFE_RULES.activity[b.dataset.inputMode||b.dataset.activityMode].energyCost;b.title='Uses available Energy; no activity cooldown';});
+    document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{b.disabled=!alive;b.title='Uses available Energy; no activity cooldown';});
     this.dashboard.renderEnergy(m.energy,this.state.now);
     this.updateInputAvailability();
     document.querySelector('[data-energy-progress]').hidden=false;
