@@ -21,7 +21,7 @@ with sync_playwright() as p:
             if service['fail']:
                 service['fail']=False;route.fulfill(status=502,json={'service':'mindling-learning-service','error':{'code':'ANALYSIS_UNAVAILABLE'}});return
             words=body['input'].strip('.').lower().split()
-            route.fulfill(json={'service':'mindling-learning-service','assessment':{'meaningful':True,'relationship':'new','concept':' '.join(words[:2]),'category':'Preview knowledge','categoryId':'','topic':' '.join(words[:4]),'relatedMemoryId':'','confidence':.9,'evidence':'none'}})
+            route.fulfill(json={'service':'mindling-learning-service','assessment':{'version':2,'relationship':'NEW_MEMORY','operation':'CREATE_NEW','responseAction':'ACKNOWLEDGE','kind':'claim','certainty':'asserted','concept':' '.join(words[:2]),'category':'Preview knowledge','categoryId':'','topic':' '.join(words[:4]),'relatedMemoryId':'','confidence':.9}})
         page.route('**/api/mindling/learn',learning_reply)
         page.route('https://cdn.jsdelivr.net/npm/three@0.180.0/build/*',lambda r:r.abort() if backend=='canvas' else r.fulfill(path=str(ASSETS/r.request.url.rsplit('/',1)[1]),content_type='application/javascript',headers={'Access-Control-Allow-Origin':'*'}))
         page.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))

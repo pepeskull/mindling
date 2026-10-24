@@ -6,6 +6,7 @@ import { assignCategory } from '../../semantic/memory-intelligence.js';
 import { developmentStatistics, retrieveMemories } from '../../learning/knowledge.js';
 export { normalize } from '../../learning/text.js';
 import { advancePreviewLife, stimulatePreviewLife, upgradePreviewLife } from './life.js';
+import { applyMemoryDecision } from './memory-mutation.js';
 import { LIFE_RULES } from '../../life/life-system.js';
 import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
 import { STAGES } from '../evolution-model.js';
@@ -47,6 +48,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
   const a=assessment ? serviceLearningAnalysis(text,m,assessment) : analyzeNative(text,m);
+  if(a.decision)return applyMemoryDecision(state,{id,text,mindId,activity},a.decision,{learn,reinforce});
   if(a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
   const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=XP[a.kind];
   if(earned+award>XP.daily)throw Error('Daily XP limit reached');
@@ -77,14 +79,14 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   return next;
 }
 // Repetitions spend the existing activity cost, with no XP or milestone reward.
-export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity='TEACH'}) {
+export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity='TEACH',allowRepeated=false}) {
   const m=state.mind,key=normalize(text);
   if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching Mindling');
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
   if(typeof text!=='string'||text.length>2000||!key)throw Error('Invalid learning text');
   const memory=m.memories.find(v=>v.id===memoryId);
   if(!memory||memory.supersededBy)throw Error('This historical memory has been corrected. Teach the current knowledge instead.');
-  if((m.activityHistory||[]).some(e=>e.key===key&&state.now-e.at<DAY))throw Error('Already learned. This input was reinforced today.');
+  if(!allowRepeated&&(m.activityHistory||[]).some(e=>e.key===key&&state.now-e.at<DAY))throw Error('Already learned. This input was reinforced today.');
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
   const day=Math.floor(state.now/DAY),cost=LIFE_RULES.activity[activity].energyCost,energy=energyAt(m.energy,state.now);
   if(energy.remaining<cost)throw Error('Not enough Energy');

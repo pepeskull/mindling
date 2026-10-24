@@ -1,3 +1,5 @@
+import { renderPreviewMemoryDetails } from './memory-presentation.js';
+import { learningContext } from './learning-assessment.js';
 import { EvolutionPreview } from '../evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../automatic-playback.js';
 import { STAGES } from '../evolution-model.js';
@@ -24,7 +26,7 @@ export class SandboxPreview extends EvolutionPreview {
     await super.start();if(this.disposed)return;
     this.timeline.pause();
     this.panel=document.createElement('details');this.panel.className='sandbox-controls glass-panel';this.panel.open=true;
-    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Teach and Deep Training use the Mindling learning service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
+    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Teach and Deep Training use the Mindling learning service. Your message and up to eight relevant sandbox memories are sent to an external service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
     document.querySelector('#app').append(this.panel);
     this.listen(this.panel,'click',e=>{const button=e.target.closest('button');if(!button)return;this.action(async()=>{
       if(button.dataset.hours)return this.change(s=>advanceTime(s,Number(button.dataset.hours)));
@@ -91,14 +93,17 @@ export class SandboxPreview extends EvolutionPreview {
     if(this.activity==='TALK'){await this.change(s=>talk(s,text));document.querySelector('#mindling-input').value='';this.status('Thought shared locally. Stimulation improves; stability recovers over virtual time.');return;}
     if(m.energy.remaining<LIFE_RULES.activity[activity].energyCost)throw Error('Not enough Energy; wait for regeneration');
     const id=crypto.randomUUID();
+    const submittedContext=JSON.stringify(learningContext(text,m));
     const assessment=await requestLearningAssessment(text,structuredClone(m));
     if(this.disposed)throw Error('Preview was closed before learning completed. No Energy or XP changed.');
     await this.change(s=>{
       if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
+      if(JSON.stringify(learningContext(text,s.mind))!==submittedContext)throw Error('Relevant memories changed. Submit again. No Energy or XP changed.');
       return learn(s,{id,text,mindId:m.id,activity,assessment});
     });
     const event=this.state.mind.history.find(item=>item.id===id);
-    this.status(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.');
+    const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage. No Energy or XP changed.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored. No Energy or XP changed.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered. No Energy or XP changed.',NO_MEMORY_CHANGE:'No memory change was needed. No Energy or XP changed.',FLAG_CONTRADICTION:'This claim conflicts with an existing memory. Existing knowledge was preserved; no Energy or XP changed.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.'};
+    this.status(messages[event?.operation]||(event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.'));
     document.querySelector('#mindling-input').value='';
   }
   async care(type){await this.change(s=>carePreview(s,type));}
@@ -131,6 +136,7 @@ export class SandboxPreview extends EvolutionPreview {
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.
     const subtitle=this.presentation.subtitle;document.querySelector('.hero-copy').append(subtitle);
     this.dashboard.render({...m,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString()});subtitle.remove();
+    renderPreviewMemoryDetails(m,document.querySelector('.knowledge-area-list'));
     this.presentation.stage=null;
     this.refreshNetwork();
     const alive=m.life.lifeState==='ALIVE';
