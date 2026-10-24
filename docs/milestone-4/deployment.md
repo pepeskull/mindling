@@ -1,6 +1,6 @@
 # Native learning deployment
 
-The external learning endpoints and provider clients have been removed. Vercel serves the existing application; `/api/learning` and `/api/preview-learning` return 410. Neither normal gameplay nor the development sandbox needs a learning API token. Learning uses only native JavaScript and the existing local IndexedDB transaction.
+The external learning endpoints and provider clients have been removed. Vercel serves the existing application; `/api/learning` and `/api/preview-learning` return 410. Normal gameplay needs no learning API token. Stage Preview Teach/Deep Training now uses the separate server learning service; see [current configuration and memory intelligence](../preview-memory-intelligence.md). Production learning uses native JavaScript and the existing local IndexedDB transaction.
 
 After this change is deployed, these obsolete environment variables may be removed manually from environments dedicated to this application:
 

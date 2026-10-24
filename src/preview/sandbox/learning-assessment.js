@@ -1,4 +1,5 @@
-import { retrieveMemories } from '../../learning/knowledge.js';
+import { retrievePreviewMemories, candidateMetadata } from './memory-retrieval.js';
+import { validateDecision } from './memory-decision.js';
 import { validateText } from '../../learning/text.js';
 import { exactMemory } from '../../semantic/memory-intelligence.js';
 
@@ -10,14 +11,16 @@ const clean = (value, maximum) => typeof value === 'string' && value === value.t
 
 export function learningContext(text, mind) {
   validateText(text);
-  const active = (mind.memories || []).filter(memory => !memory.supersededBy && typeof memory.content === 'string');
-  const ranked = retrieveMemories(text, active, { limit: 8 }).map(item => item.memory);
+  const active = (mind.memories || []).filter(memory => typeof memory.content === 'string');
+  const ranked = retrievePreviewMemories(text, active, { limit: 8 }).map(item => item.memory);
+  if(ranked.some(m=>typeof m.id!=='string'||!m.id||m.id.length>100))throw Error('Saved memory identifiers are invalid. No Energy or XP changed.');
   const candidates = ranked.map(memory => ({
-    id: String(memory.id).slice(0, 100),
-    content: memory.content.slice(0, 500),
+    id: memory.id,
+    content: memory.content.slice(0, 500).trim(),
     categoryId: typeof memory.categoryId === 'string' ? memory.categoryId.slice(0, 100) : '',
     category: typeof memory.category === 'string' ? memory.category.slice(0, 80) : '',
-    topic: typeof memory.topic === 'string' ? memory.topic.slice(0, 100) : ''
+    topic: typeof memory.topic === 'string' ? memory.topic.slice(0, 100) : '',
+    ...candidateMetadata(memory)
   }));
   const categories = [];
   for (const category of [...(mind.categories || []), ...active.map(memory => ({ id: memory.categoryId, name: memory.category }))]) {
@@ -29,7 +32,7 @@ export function learningContext(text, mind) {
 }
 
 export function localExactAssessment(text, mind) {
-  const match = exactMemory(mind.memories || [], text);
+  const match = exactMemory((mind.memories || []).filter(m=>!m.supersededBy&&m.intelligence?.current!==false), text);
   return match ? {
     meaningful: true, relationship: 'repeated', concept: '', category: '', categoryId: '', topic: '',
     relatedMemoryId: match.id, confidence: 1, evidence: 'exact_match'
@@ -37,6 +40,8 @@ export function localExactAssessment(text, mind) {
 }
 
 export function validateServiceAssessment(raw, context) {
+  if(raw?.version===2)return validateDecision(raw,context);
+  // Explicit legacy contract for already deployed clients and deterministic historical fixtures.
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Error('Learning analysis was invalid. No Energy or XP changed.');
   const keys = ['meaningful','relationship','concept','category','categoryId','topic','relatedMemoryId','confidence','evidence'];
   if (Object.keys(raw).length !== keys.length || keys.some(key => !Object.hasOwn(raw, key))) throw Error('Learning analysis was incomplete. No Energy or XP changed.');
@@ -60,7 +65,8 @@ export function validateServiceAssessment(raw, context) {
 
 export function serviceLearningAnalysis(text, mind, assessment) {
   const context = learningContext(text, mind), exact = localExactAssessment(text, mind);
-  const valid = exact || validateServiceAssessment(assessment, context);
+  const valid = assessment?.version===2 ? validateDecision(assessment, context) : exact || validateServiceAssessment(assessment, context);
+  if(valid.version===2)return {decision:valid};
   if (!valid.meaningful || valid.relationship === 'reject') throw Error('The learning service could not approve this input. No Energy or XP changed.');
   if (valid.relationship === 'repeated') return { relationship:'repeated', relatedMemoryId:valid.relatedMemoryId };
   return {

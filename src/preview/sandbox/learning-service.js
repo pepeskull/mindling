@@ -4,7 +4,7 @@ const ENDPOINT = '/api/mindling/learn';
 
 export async function requestLearningAssessment(text, mind, { fetcher = fetch, timeout = 15000 } = {}) {
   const context = learningContext(text, mind), exact = localExactAssessment(text, mind);
-  if (exact) return exact;
+  if (exact) return {version:2,relationship:'SAME_MEMORY',operation:'REINFORCE_EXISTING',responseAction:'ACKNOWLEDGE',kind:context.candidates.find(m=>m.id===exact.relatedMemoryId)?.kind||'claim',certainty:'asserted',concept:'',category:'',categoryId:'',topic:'',relatedMemoryId:exact.relatedMemoryId,confidence:1};
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeout);
   try {
     const response = await fetcher(ENDPOINT, {

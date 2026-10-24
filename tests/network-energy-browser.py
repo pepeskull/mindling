@@ -35,7 +35,7 @@ with sync_playwright() as p:
         def learning_reply(route):
             body=route.request.post_data_json;service_requests.append(body)
             words=body['input'].strip('.').lower().split()
-            route.fulfill(json={'service':'mindling-learning-service','assessment':{'meaningful':True,'relationship':'new','concept':' '.join(words[:2]),'category':'Network test knowledge','categoryId':'','topic':' '.join(words[:4]),'relatedMemoryId':'','confidence':.9,'evidence':'none'}})
+            route.fulfill(json={'service':'mindling-learning-service','assessment':{'version':2,'relationship':'NEW_MEMORY','operation':'CREATE_NEW','responseAction':'ACKNOWLEDGE','kind':'claim','certainty':'asserted','concept':' '.join(words[:2]),'category':'Network test knowledge','categoryId':'','topic':' '.join(words[:4]),'relatedMemoryId':'','confidence':.9}})
         page.route('**/api/mindling/learn',learning_reply)
         page.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))
         page.route('https://cdn.jsdelivr.net/npm/three@0.180.0/build/*',lambda r:r.abort() if canvas else r.fulfill(path=str(ASSETS/r.request.url.rsplit('/',1)[1]),content_type='application/javascript',headers={'Access-Control-Allow-Origin':'*'}))
