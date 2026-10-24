@@ -33,7 +33,7 @@ const files=Object.fromEntries(names.map(name=>[name,new FileFsRef({fsPath:path.
 const workPath=fs.mkdtempSync('/tmp/mindling-vercel-function-');
 const {output:fn}=await nodeBuilder.build({files,entrypoint:'api/mindling/learn.js',workPath,repoRootPath:workPath,config:{zeroConfig:true,projectSettings:{nodeVersion:'24.x'}},meta:{}});
 assert.equal(fn.type,'Lambda');
-for(const name of ['api/mindling/learn.js','src/server/mindling-learning.cjs','src/preview/sandbox/memory-decision.js','src/learning/text.js'])assert.ok(fn.files[name],`Missing traced dependency: ${name}`);
+for(const name of ['api/mindling/learn.js','src/server/mindling-learning.cjs','src/preview/sandbox/memory-decision.js','src/preview/sandbox/atomic-memory.js','src/learning/text.js'])assert.ok(fn.files[name],`Missing traced dependency: ${name}`);
 console.log(`PASS official Node build: ${fn.runtime} Lambda includes the handler and dynamic decision-schema dependencies.`);
 
 const artifact=fs.mkdtempSync('/tmp/mindling-vercel-artifact-');
@@ -44,7 +44,8 @@ for(const [name,file] of Object.entries(fn.files)){
 const entry=createRequire(import.meta.url)(path.join(artifact,'api/mindling/learn.js'));
 const response=()=>({status(code){this.statusCode=code;return this;},json(body){this.body=body;return this;}});
 const originalFetch=globalThis.fetch,originalKey=process.env.SERVICE_API,originalModel=process.env.SERVICE_MODEL;
-const assessment={version:2,relationship:'NEW_MEMORY',operation:'CREATE_NEW',responseAction:'ACKNOWLEDGE',kind:'claim',certainty:'asserted',concept:'neural signals',category:'Science',categoryId:'',topic:'neurons',relatedMemoryId:'',confidence:.95};
+const decision={version:2,relationship:'NEW_MEMORY',operation:'CREATE_NEW',responseAction:'ACKNOWLEDGE',kind:'claim',certainty:'asserted',concept:'neural signals',category:'Science',categoryId:'',topic:'neurons',relatedMemoryId:'',confidence:.95};
+const assessment={version:3,operations:[{statement:0,targetPart:-1,decision}]};
 try{
   process.env.SERVICE_API='synthetic-build-key';process.env.SERVICE_MODEL='synthetic-build-model';
   globalThis.fetch=async(url,options)=>{

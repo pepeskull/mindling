@@ -21,7 +21,7 @@ with sync_playwright() as p:
             if service['fail']:
                 service['fail']=False;route.fulfill(status=502,json={'service':'mindling-learning-service','error':{'code':'ANALYSIS_UNAVAILABLE'}});return
             words=body['input'].strip('.').lower().split()
-            route.fulfill(json={'service':'mindling-learning-service','assessment':{'version':2,'relationship':'NEW_MEMORY','operation':'CREATE_NEW','responseAction':'ACKNOWLEDGE','kind':'claim','certainty':'asserted','concept':' '.join(words[:2]),'category':'Preview knowledge','categoryId':'','topic':' '.join(words[:4]),'relatedMemoryId':'','confidence':.9}})
+            route.fulfill(json={'service':'mindling-learning-service','assessment':{'version':2,'relationship':'NEW_MEMORY','operation':'NO_MEMORY_CHANGE' if body['input'].startswith('I have been thinking') else 'CREATE_NEW','responseAction':'ACKNOWLEDGE','kind':'claim','certainty':'asserted','concept':' '.join(words[:2]),'category':'Preview knowledge','categoryId':'','topic':' '.join(words[:4]),'relatedMemoryId':'','confidence':.9}})
         page.route('**/api/mindling/learn',learning_reply)
         page.route('https://cdn.jsdelivr.net/npm/three@0.180.0/build/*',lambda r:r.abort() if backend=='canvas' else r.fulfill(path=str(ASSETS/r.request.url.rsplit('/',1)[1]),content_type='application/javascript',headers={'Access-Control-Allow-Origin':'*'}))
         page.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))
@@ -71,7 +71,7 @@ with sync_playwright() as p:
         page.locator('[data-sandbox="new"]').click();page.wait_for_function("document.querySelector('.hero-copy h1').textContent==='Test Mindling is learning.'")
         after=page.evaluate('''async()=>{const {PreviewStore}=await import('/src/preview/sandbox/storage.js');const db=await new PreviewStore().open();const s=await db.read();db.close();return s;}''')
         assert after['player']==state['player'] and after['mind']['id']!=state['mind']['id']
-        # Teach and Deep Training use the isolated service; Talk stays local.
+        # All sandbox modes use operation-aware assessment; conversational no-change is free.
         page.locator('#mindling-input').fill('Photosynthesis converts sunlight into stored chemical energy.')
         page.locator('#interaction-form button[type=submit]').click()
         page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='8 / 10'")
@@ -85,7 +85,8 @@ with sync_playwright() as p:
         page.locator('[data-input-mode="TALK"]').click()
         page.locator('#mindling-input').fill('I have been thinking about how a learning mind needs regular care.')
         page.locator('#interaction-form button[type=submit]').click()
-        page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='7 / 10'")
+        page.wait_for_function("document.querySelector('[data-sandbox-status]').textContent.includes('No memory change')")
+        assert page.locator('[data-energy-value]').text_content()=='8 / 10'
         assert page.locator('[data-stat=memories]').text_content()=='1'
         page.locator('.sandbox-controls summary').first.click()
         for _ in range(2):page.locator('[data-hours="1"]').click()
@@ -94,7 +95,7 @@ with sync_playwright() as p:
         page.locator('#interaction-form button[type=submit]').click()
         page.wait_for_function("document.querySelector('[data-energy-value]').textContent==='7 / 10'")
         assert page.locator('[data-stat=memories]').text_content()=='2'
-        assert len(learning_requests)==4
+        assert len(learning_requests)==5
         assert not errors,errors
         page.locator('.sandbox-controls summary').first.click();page.screenshot(path=f'/tmp/m4-{backend}.png')
         page.set_viewport_size({'width':390,'height':844});verify_branding(page, f'sandbox-{backend}-mobile');page.screenshot(path=f'/tmp/m4-{backend}-mobile.png')

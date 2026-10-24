@@ -53,7 +53,7 @@ with sync_playwright() as p:
             context = browser.new_context(viewport=viewport, reduced_motion='reduce')
             page = context.new_page(); route_models(page, backend)
             errors = []; page.on('pageerror', lambda e: errors.append(str(e)))
-            # Real production creation and Talk; no Life 2.0 production activation.
+            # Real production creation; main already includes its own stability row.
             page.goto(BASE); page.locator('[data-next]').click()
             for name in ['Developer','Social','Researcher']: page.locator(f'[data-pathway="{name}"]').click()
             page.locator('[data-next]').click(); page.locator('[data-next]').click()
@@ -62,7 +62,7 @@ with sync_playwright() as p:
             settle(page)
             if not BASELINE:
                 typography(page)
-                assert page.locator('[data-life-attribute="neuralStability"]').count() == 0
+                assert page.locator('[data-life-attribute="neuralStability"]').count() == 1
             prefix = 'before' if BASELINE else 'after'
             capture(page, OUTPUT/f'{prefix}-main-{backend}-{size}.png')
             # Bootstrap-suppressed shell lets the visual harness own its controller.

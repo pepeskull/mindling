@@ -60,7 +60,7 @@ test('server validates structured analysis and never returns the credential or r
     const res=response();await server.handler(request({input:input(1),candidates:[],categories:[]}),res);
     assert.equal(res.statusCode,200);assert.equal(res.body.service,'mindling-learning-service');assert.deepEqual(res.body.assessment,serverAssessment(1));
     assert.doesNotMatch(JSON.stringify(res.body),/server-secret|providerDebug|openai/i);
-    const sent=JSON.parse(upstream.options.body);assert.equal(sent.messages[1].content,JSON.stringify({input:input(1),candidates:[],categories:[]}));assert.equal(upstream.options.headers.Authorization,'Bearer server-secret-test-value');assert.equal(sent.response_format.type,'json_schema');
+    const sent=JSON.parse(upstream.options.body);assert.equal(sent.messages[1].content,JSON.stringify({input:input(1),candidates:[],categories:[],statements:[input(1)]}));assert.equal(upstream.options.headers.Authorization,'Bearer server-secret-test-value');assert.equal(sent.response_format.type,'json_schema');
   } finally {globalThis.fetch=originalFetch;if(originalKey===undefined)delete process.env.SERVICE_API;else process.env.SERVICE_API=originalKey;}
 });
 
