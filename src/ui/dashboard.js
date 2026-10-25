@@ -1,4 +1,4 @@
-import { renderKnowledge } from '../learning/knowledge-view.js';
+import { NeuralMemoryView } from '../memory/neural-memory-view.js';
 import { energyLabel } from '../economy/energy.js';
 import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
@@ -10,6 +10,7 @@ import { previewWarning } from '../preview/sandbox/life.js';
 
 export class Dashboard {
   #unsubscribe;
+  #memoryMap;
   #readOnly = false;
   #listeners = new AbortController();
   #messageTimer;
@@ -28,6 +29,7 @@ export class Dashboard {
   #knowledgeDevelopment = { overall: 0, areas: [] };
 
   constructor(events, { onInput, onCare, onNewMindling, readOnly = false } = {}) {
+    this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"));
     this.#readOnly = readOnly;
     this.#events = events;
     this.#onInput = onInput;
@@ -76,8 +78,7 @@ export class Dashboard {
     document.querySelector('.mindling-id').textContent = '';
     document.querySelector('.hero-copy h1').textContent = snapshot.status === 'empty' ? 'No saved Mindling' : 'Saved data unavailable';
     document.querySelector('.pathways-copy').textContent = 'No saved pathways available.';
-    document.querySelector('.memory-overall').textContent = 'No saved memory information available.';
-    document.querySelector('.knowledge-area-list').replaceChildren();
+    this.#memoryMap.update({memories:[]});
     document.querySelector('.stages .current small').textContent = snapshot.state ? 'Saved' : 'Preview';
     if (snapshot.state) this.render(snapshot.state);
     if (snapshot.life) {
@@ -125,15 +126,13 @@ export class Dashboard {
   }
 
   #renderMemoryDevelopment() {
-    const overall = document.querySelector(".memory-overall"); const list = document.querySelector(".knowledge-area-list");
-    const percent = Math.round(this.#knowledgeDevelopment.overall * 100);
-    overall.innerHTML = `<div><span>Overall Development</span><strong>${percent}%</strong></div><progress max="100" value="${percent}">${percent}%</progress><small>Bounded internal development · ${this.#state.memories.length} canonical ${this.#state.memories.length === 1 ? "memory" : "memories"}</small>`;
-    renderKnowledge(this.#state,list);
+    this.#memoryMap.update(this.#state);
   }
 
   #setPrimaryView(view) {
     const memory = view === "memories";
     document.querySelector("#memory-view").hidden = !memory;
+    this.#memoryMap.setVisible(memory);
     document.querySelector("#app").classList.toggle("memory-mode", memory);
     document.querySelectorAll("[data-view]").forEach(item => { const active = item.dataset.view === view; item.classList.toggle("active", active); if (item.matches("a")) item.toggleAttribute("aria-current", active); });
     document.querySelectorAll("[data-mobile-view]").forEach(item => item.classList.toggle("active", item.dataset.mobileView === (memory ? "memories" : "dashboard")));
@@ -244,7 +243,10 @@ export class Dashboard {
   }
 
   destroy() {
+    if (this.#listeners.signal.aborted) return;
     this.#listeners.abort();
+    this.#setPrimaryView("dashboard");
+    this.#memoryMap.destroy();
     this.#unsubscribe?.();
     this.#selectionUnsubscribe?.();
     this.#eventUnsubscribes.forEach(unsubscribe => unsubscribe());

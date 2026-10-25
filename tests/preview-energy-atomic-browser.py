@@ -60,7 +60,10 @@ with sync_playwright() as p:
       check(saved.mind.memories.find(m=>m.id===LEGACY).content===ORIGINAL,'Original legacy ID/content destroyed');
       check(saved.mind.memories.some(m=>m.parentMemoryId===LEGACY&&m.content==='Jag heter Alex'),'Unrelated name overwritten');
       check(saved.mind.memories.some(m=>m.intelligence?.kind==='preference'&&m.valueHistory?.some(v=>v.content.includes('JavaScript'))),'Historical preference missing');
-      const memoryText=document.querySelector('.knowledge-area-list').textContent;check(memoryText.includes('Python')&&memoryText.includes('Previous value')&&memoryText.includes('Historical'),'History/current status absent from UI');
+      document.querySelector('[data-view=memories]').click();await new Promise(r=>setTimeout(r,40));document.querySelector('.memory-browser').open=true;
+      const choices=[...document.querySelectorAll('.memory-browser [data-select-memory]')];choices.find(button=>button.textContent.includes('nu Python')).click();
+      const memoryText=document.querySelector('.memory-inspector-content').textContent;check(memoryText.includes('Python')&&memoryText.includes('Previous values')&&memoryText.includes('JavaScript'),'History absent from inspector');
+      [...document.querySelectorAll('.memory-browser [data-select-memory]')].find(button=>button.textContent===ORIGINAL).click();check(document.querySelector('.memory-status-chip').textContent==='Historical memory','Historical parent status absent');document.querySelector('[data-close-memory]').click();
       output=batch('Jag tycker om finans',[d({kind:'preference',concept:'Enjoys finance',topic:'finance interest',confidence:.9})]);
       await submit('Jag tycker om finans','TEACH');await energy(6);check(c.state.mind.lifetimeXP===110,'Finance XP changed');
       const finance=c.state.mind.memories.find(m=>m.content==='Jag tycker om finans');check(finance.strength===.3&&finance.activations===1&&finance.categoryId===CATEGORY,'Finance preference regression');

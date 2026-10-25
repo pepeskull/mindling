@@ -60,8 +60,10 @@ with sync_playwright() as p:
       Object.assign(decision,{relationship:'UPDATED_MEMORY',operation:'UPDATE_EXISTING',relatedMemoryId:id});
       input.value='I prefer light interfaces now.';await c.submitLearning();
       check(c.state.mind.memories.length===1&&c.state.mind.memories[0].id===id,'controller lost stable memory ID');
-      check(document.querySelector('.knowledge-area-list').textContent.includes('I prefer dark interfaces.'),'previous value absent from Memory UI');
-      check(!document.querySelector('.knowledge-area-list').textContent.includes('Native lexical organization'),'external analysis presented as local');
+      document.querySelector('[data-view=memories]').click();await new Promise(r=>setTimeout(r,40));document.querySelector('.memory-browser').open=true;document.querySelector('.memory-browser [data-select-memory]').click();
+      check(document.querySelector('.memory-inspector-content').textContent.includes('I prefer dark interfaces.'),'previous value absent from Memory inspector');
+      check(!document.querySelector('.memory-inspector-content').textContent.includes('Native lexical organization'),'external analysis presented as local');
+      document.querySelector('[data-close-memory]').click();
       const before=c.state.mind.energy.remaining,xp=c.state.mind.lifetimeXP;
       Object.assign(decision,{operation:'ASK_FOR_CLARIFICATION',relationship:'NEW_MEMORY',responseAction:'CLARIFY',relatedMemoryId:''});
       input.value='I prefer that other option.';await c.submitLearning();

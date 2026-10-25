@@ -1,0 +1,120 @@
+/* Memory-only desktop workspace. The gameplay shell and its responsive rules
+   remain intact. Compact windows scroll this two-column desktop canvas. */
+.memory-view.neural-memory-view{--memory-cyan:#81dfd1;--memory-purple:#b8a2ed;inset:var(--top-height) 0 30px;padding:30px clamp(26px,4vw,76px) 24px;overflow:auto;background:radial-gradient(ellipse at 26% 40%,#10212188,transparent 58%),radial-gradient(ellipse at 95% 0%,#1a172744,transparent 42%),#06090a;color:#d7e5e2}
+.neural-memory-view .neural-memory-header{padding-bottom:21px;align-items:center;border-bottom:1px solid #c8ede012;gap:24px;min-width:900px}
+.neural-memory-view .memory-eyebrow{font-size:9px;font-weight:500;letter-spacing:.18em;color:#95b7af;margin:0 0 9px;text-transform:uppercase}
+.neural-memory-header .memory-eyebrow span{display:inline;color:#586b67;margin:0 8px;font-size:9px}
+.neural-memory-view h2{font-size:30px;letter-spacing:-1.1px;font-weight:450;margin:0;color:#edf6f3}
+.neural-memory-header>div>span{font-size:11px;color:#93a6a1;margin-top:7px}
+.neural-memory-view button,.neural-memory-view select,.neural-memory-view input{font-family:var(--font)}
+.neural-memory-view button{cursor:pointer}
+.neural-memory-view button:disabled{opacity:.35;cursor:default}
+.neural-memory-view :is(button,select,input,summary,canvas):focus-visible{outline:2px solid #9ee9da;outline-offset:4px}
+.neural-memory-header>button{background:#d1f1e306;border:1px solid #c5ede61a;color:#b9cac5;border-radius:9px;text-transform:none;font-size:10px;letter-spacing:0;padding:11px 14px;flex:none}
+.neural-memory-header>button span{display:inline;margin-left:15px;color:#84d7c6}
+.memory-stat-strip{display:flex;gap:48px;padding:20px 1px 23px;min-width:900px}
+.memory-stat-strip>div{display:flex;align-items:baseline;gap:10px}
+.memory-stat-strip strong{font-weight:450;font-size:25px;letter-spacing:-.7px;color:#def4ec}
+.memory-stat-strip span{font-size:10px;color:#8caaa1}
+.neural-memory-grid{display:grid;grid-template-columns:minmax(620px,2.45fr) minmax(290px,1fr);gap:19px;min-width:930px;align-items:start}
+.knowledge-graph-panel,.knowledge-radar-panel,.memory-inspector{border:1px solid #c5ede61b;border-radius:16px;background:linear-gradient(135deg,#12201f70,#091011b0);box-shadow:0 10px 50px #0002;overflow:hidden}
+.graph-panel-heading{display:flex;align-items:center;justify-content:space-between;padding:22px 24px 16px;gap:15px}
+.neural-memory-view h3{font-size:17px;letter-spacing:-.35px;font-weight:450;margin:0;color:#e1efea}
+.graph-panel-heading .memory-eyebrow{font-size:8px;color:#688e83;letter-spacing:.16em;margin-bottom:8px}
+.local-memory-tag{font-size:7px;letter-spacing:.11em;color:#96b3aa;display:flex;align-items:center;gap:7px}
+.local-memory-tag i{width:4px;height:4px;background:#91d4bd;border-radius:50%;box-shadow:0 0 8px #81dfd199}
+.memory-toolbar{display:flex;gap:11px;padding:0 24px 18px;border-bottom:1px solid #c5ede610}
+.memory-toolbar label{display:flex;flex-direction:column;gap:7px;font-size:8px;color:#8aaba1;letter-spacing:.04em;min-width:175px}
+.memory-toolbar .memory-search{flex:1}
+.memory-toolbar select,.memory-toolbar input{font-size:10px;min-width:0;width:100%;height:34px;border-radius:7px;border:1px solid #c5ede61c;background:#050d0d80;color:#d0e2da;padding:0 11px;outline:none;box-sizing:border-box}
+.memory-toolbar select{max-width:250px}
+.memory-toolbar input::placeholder{color:#6c8880}
+.memory-graph-stage{position:relative;height:clamp(430px,49vh,650px);overflow:hidden;background:radial-gradient(ellipse at 52% 48%,#17372c45,transparent 68%),radial-gradient(circle,#a1d8c610 .65px,transparent .9px);background-size:auto,27px 27px}
+.memory-graph-stage::after{content:'';position:absolute;inset:0;box-shadow:inset 0 0 70px #02070888;pointer-events:none}
+.memory-graph-stage canvas{width:100%;height:100%;display:block;cursor:grab;touch-action:none;position:relative;z-index:1}
+.memory-graph-stage canvas:active{cursor:grabbing}
+.graph-view-tools{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:2px;padding:5px;background:#081211e8;border:1px solid #bcf3dc25;border-radius:9px;box-shadow:0 6px 20px #0006;white-space:nowrap}
+.graph-view-tools button{font-size:9px;color:#b7d6ca;background:transparent;border:0;border-radius:5px;padding:7px 9px;transition:background .15s}
+.graph-view-tools button:hover:enabled{background:#a2e5d415;color:#d4fff0}
+.graph-view-tools [data-graph-action="in"],.graph-view-tools [data-graph-action="out"]{font-size:17px;width:28px;line-height:16px;padding:6px}
+.graph-view-tools [data-zoom-level]{font-size:8px;color:#78998c;min-width:30px;text-align:center}
+.graph-legend{display:flex;align-items:center;gap:15px;padding:16px 21px 9px;flex-wrap:wrap;border-top:1px solid #c5ede610}
+.graph-legend>span{font-size:8px;color:#8ba89f;display:flex;gap:7px;align-items:center}
+.graph-legend i{display:block;width:17px;height:0;border-top:1px solid #82b6a6}
+.graph-legend .legend-association{border-top:1px dashed #81dfd1}
+.graph-legend .legend-explicit{border-top:2px dotted #b8a2ed}
+.graph-legend .graph-gesture{margin-left:auto;color:#67887b;font-size:7px}
+.graph-message{font-size:8px;line-height:1.6;color:#78988b;padding:0 21px;margin:3px 0 14px;min-height:13px}
+.memory-tooltip{position:absolute;z-index:4;max-width:225px;border-radius:7px;padding:9px 12px;background:#122a25f5;border:1px solid #94edce44;color:#daf3e9;font-size:10px;line-height:1.5;pointer-events:none;box-shadow:0 8px 20px #0005}
+.memory-browser{border-top:1px solid #c5ede610;padding:13px 21px;font-size:10px;color:#a5c5b8}
+.memory-browser summary{cursor:pointer;display:flex;justify-content:space-between;font-size:9px}
+.memory-browser summary span{font-size:8px;color:#698a7d}
+.memory-browser ul{list-style:none;padding:0;margin:12px 0;display:grid;grid-template-columns:1fr 1fr;gap:5px 10px}
+.memory-browser li button{font-size:9px;text-align:left;line-height:1.5;width:100%;background:#b2f1db06;border:1px solid #a2e5d416;color:#b5d2c5;padding:8px 10px;border-radius:5px}
+.memory-browser li button[aria-pressed="true"]{border-color:#8ee2c77a;background:#9cf5d210}
+.memory-browser>div{display:flex;justify-content:space-between;align-items:center;color:#78988b;font-size:8px}
+.memory-browser>div button{background:none;border:1px solid #a2e5d420;color:#adc8bb;padding:5px 9px;border-radius:5px;font-size:9px}
+.memory-side{display:flex;flex-direction:column;gap:17px}
+.knowledge-radar-panel{padding:22px 20px}
+.knowledge-radar-panel .memory-eyebrow,.memory-inspector .memory-eyebrow{color:#7d9f92;font-size:8px;margin-bottom:10px}
+.knowledge-radar-panel h3{font-size:17px}
+.radar-description{font-size:10px;color:#8da89c;margin:9px 0 0;line-height:1.5}
+.memory-radar{margin:0 -10px;min-height:205px}
+.memory-radar svg{display:block;width:100%;max-height:280px}
+.memory-radar text{fill:#a3c3b4;font:8px var(--font)}
+.coverage-values{padding:0;list-style:none;margin:1px 0 16px;display:grid;gap:8px}
+.coverage-values li{display:flex;justify-content:space-between;gap:12px;font-size:9px;color:#9cb5a9}
+.coverage-values li b{font-size:9px;color:#b6ddd0;font-weight:450;white-space:nowrap}
+.radar-method{font-size:9px;line-height:1.7;color:#819e90;border-top:1px solid #b9e7ce15;padding-top:14px;margin:0}
+.radar-method-detail{font-size:9px;color:#8db5a0;margin-top:10px;line-height:1.7}
+.radar-method-detail summary{cursor:pointer;color:#a5d4bd}
+.radar-method-detail p{margin-bottom:0}
+.memory-inspector{padding:22px 20px}
+.memory-inspector h3{font-size:17px}
+.memory-inspector-content{font-size:10px;line-height:1.7;color:#94aea1}
+.memory-inspector-content>p{margin:12px 0 2px}
+.memory-inspector .inspector-memory-text{font-size:13px;line-height:1.65;color:#def1e7;margin:13px 0 17px;overflow-wrap:anywhere}
+.memory-status-chip{font-size:8px;border:1px solid #94d7b936;color:#ace2cb;background:#a3e7c309;border-radius:4px;display:inline-block;padding:2px 7px;margin-top:15px}
+.memory-status-chip.historical{color:#c2b3e7;border-color:#b8a2ed44}
+.inspector-facts{margin:0;display:grid;grid-template-columns:1fr 1fr;gap:13px 12px;padding-bottom:15px;border-bottom:1px solid #c5ede615}
+.inspector-facts div{display:flex;flex-direction:column;gap:4px}
+.inspector-facts dt{font-size:8px;color:#6c9381}
+.inspector-facts dd{font-size:10px;color:#bdd9c9;margin:0}
+.memory-inspector h4{font-size:8px;text-transform:uppercase;letter-spacing:.13em;color:#7caa94;margin:17px 0 10px;font-weight:500}
+.related-memory-button{display:block;width:100%;text-align:left;background:#a3e7c306;border:1px solid #bce6d015;border-radius:7px;color:#b2cebe;padding:9px 11px;font-size:9px;line-height:1.6;margin-top:6px}
+.related-memory-button:hover{border-color:#9ce8c550;background:#9ce8c50b}
+.memory-inspector details{border-top:1px solid #c5ede615;padding-top:12px;margin-top:15px;font-size:9px}
+.memory-inspector summary{cursor:pointer;color:#a2c4b0}
+.memory-inspector details dl{font-size:8px;display:grid;gap:10px;margin-bottom:0}
+.memory-inspector details dt{color:#6c9381}
+.memory-inspector details dd{color:#adc7b8;margin:3px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
+.memory-inspector ul{padding-left:15px;color:#a1baa9;font-size:10px;line-height:1.7}
+.memory-science-note{display:flex;gap:9px;font-size:8px;color:#7f9d8e;line-height:1.8;padding-top:18px;min-width:930px;align-items:center}
+.memory-science-note>span:first-child{color:#a2d9bd;font-size:15px}
+.memory-science-note .memory-cost{margin-left:auto;white-space:nowrap;color:#729383;font-size:8px}
+.graph-empty{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;padding-bottom:35px;text-align:center}
+.graph-empty[hidden],.memory-tooltip[hidden]{display:none}
+.graph-empty p{font-size:17px;letter-spacing:-.3px;color:#beded0;margin:18px 0 8px}
+.graph-empty>span{font-size:10px;color:#7da18f}
+.empty-neural-seed{position:relative;width:130px;height:130px;display:grid;place-items:center;background:radial-gradient(circle,#6fdbad18,transparent 65%)}
+.empty-neural-seed b{width:17px;height:17px;border-radius:50%;background:#9ad9c1;box-shadow:0 0 24px #a1f0ce55,0 0 65px #a1f0ce33;border:1px solid #d8ffec}
+.empty-neural-seed i{position:absolute;inset:17px;border:1px solid #a7e9c52b;border-radius:50%}
+.empty-neural-seed i:nth-child(2){inset:0;border-style:dashed;border-color:#a7e9c519}
+.empty-neural-seed i:nth-child(3){inset:34px;border-color:#bda2e644;transform:rotateX(55deg) rotateZ(35deg)}
+.radar-waiting{min-height:215px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.radar-waiting>span{font-size:48px;color:#7acdb285;text-shadow:0 0 30px #91ddb14d}
+.radar-waiting p{font-size:12px;color:#abc5b5;margin:15px 0 8px}
+.radar-waiting small{font-size:9px;line-height:1.7;color:#729785;max-width:210px}
+@media(prefers-reduced-motion:reduce){.neural-memory-view *{transition:none!important;scroll-behavior:auto!important}}
+.knowledge-radar-panel{padding:20px}
+.memory-radar{min-height:175px}
+.memory-radar svg{max-height:200px}
+.coverage-values{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 16px;margin-top:10px}
+.coverage-values li{gap:5px;min-width:0}
+.coverage-values li>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.radar-scale-label{text-align:center;font-size:8px;color:#81a796;margin:0 0 13px;letter-spacing:.02em}
+.memory-inspector{max-height:370px;overflow:auto;scrollbar-width:thin;scrollbar-color:#4a7160 transparent}
+.neural-memory-view .memory-science-note{position:static;inset:auto;height:auto;justify-content:flex-start;border:0;padding:18px 0 0;font-size:8px;letter-spacing:0;text-transform:none}
+.memory-radar text{font-size:11.5px}
+.neural-memory-header>button{display:flex;gap:12px;align-items:center}
+.neural-memory-header>button svg{color:#84d7c6;flex:none}

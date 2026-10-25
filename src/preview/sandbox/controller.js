@@ -1,4 +1,3 @@
-import { renderPreviewMemoryDetails } from './memory-presentation.js';
 import { learningContext } from './learning-assessment.js';
 import { EvolutionPreview } from '../evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../automatic-playback.js';
@@ -135,7 +134,6 @@ export class SandboxPreview extends EvolutionPreview {
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.
     const subtitle=this.presentation.subtitle;document.querySelector('.hero-copy').append(subtitle);
     this.dashboard.render({...m,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString()});subtitle.remove();
-    renderPreviewMemoryDetails(m,document.querySelector('.knowledge-area-list'));
     this.presentation.stage=null;
     this.refreshNetwork();
     const alive=m.life.lifeState==='ALIVE';

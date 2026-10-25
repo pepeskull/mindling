@@ -52,7 +52,7 @@ with sync_playwright() as p:
         page.locator('[data-sandbox="evolve"]').click();page.wait_for_function("document.querySelector('#scene').dataset.stage==='2'")
         assert page.locator('[data-stat=neurons]').text_content()=='5'
         page.locator('.sandbox-controls summary').first.click()
-        page.locator('[data-view=memories]').click();assert page.locator('.memory-record').count()==2;page.locator('[data-close-memory]').click()
+        page.locator('[data-view=memories]').click();page.wait_for_function("document.querySelector('.memory-stat-strip strong')?.textContent==='2'");assert page.locator('.memory-browser [data-select-memory]').count()==2;page.locator('[data-close-memory]').click()
         page.locator('.energy-panel .coming-soon').click();page.wait_for_selector('.sandbox-wallet')
         assert page.locator('[data-wallet-qr] svg').count()==1
         assert 'simulation:' in page.locator('[data-wallet-id]').input_value()
