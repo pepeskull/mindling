@@ -10,7 +10,7 @@ Memory identity, current/historical status, categories and current knowledge-are
 
 Invalid/missing optional data uses unavailable or empty states. Identified node and synapse totals include records that cannot be drawn; missing positions and dangling endpoints are reported. Only saved finite 3D positions and existing connections are rendered. Embedded memory parts never become extra canonical memories.
 
-The learning chart shows the XP awarded by up to 24 actual saved learning events in chronological event order, with an explicitly labelled XP scale. Its horizontal spacing is by event index, not elapsed time. It is not a cumulative lifetime curve or a proficiency score. Fewer than two events shows insufficient history. Recent activity uses actual timestamps from learning and stage-completion history, including zero-XP decisions without claiming new knowledge. No synthetic baselines or growth snapshots are created.
+The redundant page heading and learning-XP chart have been removed; stage and lifetime XP remain in the progression panel, and the shared header retains the life stage. Recent activity uses actual timestamps from learning and stage-completion history, including zero-XP decisions without claiming new knowledge. No synthetic baselines or growth snapshots are created.
 
 Selected pathways are displayed as directions. Current knowledge areas are shown separately because no stored mapping links them to individual pathways. No proficiency, pathway levels, unlocks or demonstrated cognitive abilities are inferred. Cognitive Training is a coming-soon section with no action button; no evaluation mechanism/results were found in the inspected models.
 
@@ -18,7 +18,7 @@ Selected pathways are displayed as directions. Current knowledge areas are shown
 
 Dashboard's later stages use generated visual morphology and a visual-to-canonical mapping. Development uses a lightweight native Canvas projection of canonical positions instead, avoiding artificial extra neurons/edges and another WebGL engine. It reuses `SceneInteraction` for drag rotation and zoom and `seededValue` for deterministic surface irregularity. Display positions, selection and breathing offsets belong to the view; canonical objects are never modified.
 
-There is one Development RAF scheduler for ambient breathing, local organic motion, node pulses, hover/selection feedback and at most 64 signal points on existing synapses. Pulses are explicitly decorative, not learning or growth evidence. Empty/deceased networks are static. Reduced-motion mode draws on changes only, removes ambient movement, and snaps camera zoom; CSS chart/progress transitions are disabled. Changes to the preference are observed live.
+There is one Development RAF scheduler for ambient breathing, local organic motion, node pulses, hover/selection feedback and at most 64 signal points on existing synapses. Pulses are explicitly decorative, not learning or growth evidence. Empty/deceased networks are static. Reduced-motion mode draws on changes only, removes ambient movement, and snaps camera zoom; CSS progress transitions are disabled. Changes to the preference are observed live.
 
 The component pauses on navigation or document hiding, resumes without accumulating hidden elapsed time, disconnects its ResizeObserver/SceneInteraction, aborts listeners and cancels frames on teardown. Dashboard's existing scene scheduler pauses while Development is open and resumes on return; there is no additional active 3D renderer. Memory retains its existing visibility lifecycle.
 
@@ -34,7 +34,7 @@ An absolute workspace reserves `--top-height` and the existing 30px footer. A sh
 
 Automated tests and browser validation were intentionally not run at the user's request. No screenshots, images, fixtures, new test suites, production builds, dependencies or deployment runs were created. Validation is limited to source inspection and `git diff --check`; visual behavior, interaction and performance have not been browser-verified.
 
-Historical neural/memory/area snapshots and cognitive evaluations are unavailable, so those trends and demonstrated abilities are not presented. The visualization depicts stored canonical positions rather than the Dashboard's generated later-stage brain shape. Existing production and Stage Preview storage boundaries, learning behavior, Energy/XP rules and schema remain unchanged.
+Historical neural/memory/area snapshots and cognitive evaluations are unavailable, so those trends and demonstrated abilities are not presented. Dashboard’s old neuron/synapse popover has been removed in favor of the dedicated Development selection and Memory inspector. The visualization depicts stored canonical positions rather than the Dashboard's generated later-stage brain shape. Existing production and Stage Preview storage boundaries, learning behavior, Energy/XP rules and schema remain unchanged.
 
 ## Preview event dates
 

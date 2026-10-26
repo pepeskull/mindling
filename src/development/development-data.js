@@ -43,7 +43,7 @@ export function developmentData(state = {}, life = null) {
     targetXP: stage && stage.number < 7 ? RULES[stage.number - 1].xp : null,
     milestones: Array.isArray(state.milestones) ? state.milestones.length : null,
     pathways: [...new Set(list(state.pathways).filter(value => typeof value === 'string' && value.trim()))],
-    xpEvents: history.filter(event => event.xp !== null).slice(-24), events,
+    events,
     enteredAt: timestamp(state.enteredAt), simulatedClock,
     // Knowledge, progression and demonstrated ability intentionally stay separate.
     ability: { available: false }
