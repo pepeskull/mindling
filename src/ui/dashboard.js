@@ -1,3 +1,4 @@
+import { canonicalBrain } from '../renderer/canonical-brain.js';
 import { LEARNING_INPUT_LIMIT } from '../memory/content-integrity.js';
 import { DevelopmentView } from '../development/development-view.js';
 import { NeuralMemoryView } from '../memory/neural-memory-view.js';
@@ -97,9 +98,10 @@ export class Dashboard {
 
   render(state) {
     this.#state = state;
+    const brain=canonicalBrain(state);
     const stats = {
-      neurons: state.nodes.length,
-      synapses: state.synapses.length,
+      neurons: brain.neuronCount,
+      synapses: brain.synapseCount,
       memories: state.memories.length
     };
 

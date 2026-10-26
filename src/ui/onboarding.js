@@ -1,4 +1,4 @@
-const PATHWAYS = ["Developer", "Social", "Markets", "Gaming", "Researcher", "Creator", "Analyst", "Assistant", "General Intelligence"];
+import { PATHWAYS } from '../pathways/pathways.js';
 const DIMENSIONS = [
   ["thinkingStyle", "Thinking style", "Creative", "Logical"],
   ["uncertaintyStyle", "Approach to the unknown", "Exploratory", "Cautious"],

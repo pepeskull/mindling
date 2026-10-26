@@ -1,3 +1,4 @@
+import { recordPathwayLearning } from '../../pathways/pathways.js';
 import { capturedContent, sourceStatus } from '../../memory/content-integrity.js';
 import { normalize } from '../../learning/text.js';
 import { assignCategory } from '../../semantic/memory-intelligence.js';
@@ -26,7 +27,7 @@ export function recordMemory(mind,{id,text,decision,event,at,associations}) {
     neuronIds:[...associations.neuronIds],synapseIds:[...associations.synapseIds],relatedMemoryIds:[],source:'SERVICE',areaSuggestion:decision.category,
     analysis:serviceMetadata(decision,event.activity,at),submissionId:event.id,
     intelligence:{kind:decision.kind,certainty:decision.certainty,current:decision.kind!=='historical',verification:'unverified-player-claim',operation:decision.operation,relationship:decision.relationship}};
-  assignCategory(mind,memory,decision);mind.memories.push(memory);return memory;
+  assignCategory(mind,memory,decision);mind.memories.push(memory);recordPathwayLearning(mind,memory,{eventId:event.id,activity:event.activity,at});return memory;
 }
 export function decomposeLegacy(mind,parent,at) {
   if(parent.componentMemoryIds)return parent.componentMemoryIds.map(id=>mind.memories.find(memory=>memory.id===id));

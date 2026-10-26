@@ -1,3 +1,4 @@
+import { PATHWAYS, DEFAULT_ORIGINS } from '../../pathways/pathways.js';
 import { LEARNING_INPUT_LIMIT } from '../../memory/content-integrity.js';
 import { learningContext } from './learning-assessment.js';
 import { EvolutionPreview } from '../evolution-preview.js';
@@ -12,7 +13,7 @@ import { PreviewStore } from './storage.js';
 import { requestLearningAssessment } from './learning-service.js';
 
 export class SandboxPreview extends EvolutionPreview {
-  constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'}),originalFraming:true}); this.listeners=new AbortController(); }
+  constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'}),originalFraming:true,canonicalBrain:true}); this.listeners=new AbortController(); }
   async start() {
     if(new URLSearchParams(location.search).get('stage-preview')!=='1')throw Error('Sandbox requires explicit preview URL');
     const store=await new PreviewStore().open();
@@ -27,12 +28,12 @@ export class SandboxPreview extends EvolutionPreview {
     await super.start();if(this.disposed)return;
     this.timeline.pause();
     this.panel=document.createElement('details');this.panel.className='sandbox-controls glass-panel';this.panel.open=true;
-    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Talk, Teach and Deep Training use the Mindling learning service. Your message and up to eight relevant sandbox memories are sent to an external service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><label>Pathway <select data-test-pathway><option>Researcher</option><option>Developer</option><option>Social</option></select></label><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
+    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Talk, Teach and Deep Training use the Mindling learning service. Your message and up to eight relevant sandbox memories are sent to an external service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><fieldset class="sandbox-origin-pathways"><legend>Origin pathways · choose at least three</legend>${PATHWAYS.map(id=>`<label><input type="checkbox" data-test-pathway value="${id}" ${DEFAULT_ORIGINS.includes(id)?'checked':''}>${id}</label>`).join('')}</fieldset><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="evolve">Evolve when eligible</button><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
     document.querySelector('#app').append(this.panel);
     this.listen(this.panel,'click',e=>{const button=e.target.closest('button');if(!button)return;this.action(async()=>{
       if(button.dataset.hours)return this.change(s=>advanceTime(s,Number(button.dataset.hours)));
       switch(button.dataset.sandbox){
-        case 'new': if(confirm('Create a new isolated test Mindling? The current test identity will be archived.'))await this.change(s=>newMindling(s,{name:this.panel.querySelector('[data-test-name]').value,pathway:this.panel.querySelector('[data-test-pathway]').value,confirmed:true}));this.panel.open=false;break;
+        case 'new': if(confirm('Create a new isolated test Mindling? The current test identity will be archived.'))await this.change(s=>newMindling(s,{name:this.panel.querySelector('[data-test-name]').value,pathways:[...this.panel.querySelectorAll('[data-test-pathway]:checked')].map(input=>input.value),confirmed:true}));this.panel.open=false;break;
         case 'reset': if(confirm('Reset preview gameplay? Production data and the test player wallet are preserved.'))await this.change(s=>{const n=newMindling(s,{confirmed:true});n.origin=n.now;return n;});break;
         case 'clock':await this.change(resetClock);break;
         case 'evolve':await this.change(evolve);break;
@@ -53,10 +54,10 @@ export class SandboxPreview extends EvolutionPreview {
     this.interaction.connect(this.host,{onTap:event=>{
       if(this.external?.tap(event))return;
       if(!this.state.mind)return;
-      const hit=this.timeline.stage===1?this.seed.selectAt(event):null;
-      const id=this.timeline.stage===1?(hit?.type==='neuron'?hit.id:null):this.view.pickCanonical(event);
+      const hit=this.seed.selectAt(event);
+      const id=hit?.type==='neuron'?hit.id:null;
       if(id){this.panel.querySelector('[data-node-selection]').value=id;this.inspectNode(id);}
-    }});
+    },onHover:event=>this.seed.hoverAt(event)});
     this.walletUI=new TestWalletUI(this);
     this.renderState();
     this.energyTimer=setInterval(()=>{
@@ -132,7 +133,7 @@ export class SandboxPreview extends EvolutionPreview {
     if(this.external?.locked)return;
     const m=this.state.mind;if(!m){document.querySelector('.hero-copy h1').textContent='Create a test Mindling';document.querySelectorAll('[data-stat]').forEach(el=>el.textContent='0');return;}
     if(this.identityId!==m.id){this.identityId=m.id;this.countdown=new AutomaticNetworkCountdown();this.timeline.network.reset();}
-    this.seed.update({nodes:m.nodes.slice(0,5),synapses:m.synapses.slice(0,4)});
+    this.seed.update({nodes:m.nodes,synapses:m.synapses});
     const stage=m.stage;if(this.timeline.stage!==stage){this.timeline.select(stage);this.syncStage();this.host.dataset.stage=String(stage);}
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.
     const subtitle=this.presentation.subtitle;document.querySelector('.hero-copy').append(subtitle);

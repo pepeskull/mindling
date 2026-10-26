@@ -26,7 +26,7 @@ export function knowledgeIndex(memories=[]) {
   }
   return {version:NATIVE_VERSION,active,frequencies,associations,exposures};
 }
-export function retrieveMemories(text,memories,{limit=5,index=knowledgeIndex(memories)}={}) {
+export function retrieveMemories(text,memories,{limit=5,index=knowledgeIndex(memories),priority=()=>0}={}) {
   const query=features(text);
   const weight=term=>1+Math.log(1+index.active.length/(1+(index.frequencies.get(term)||0)));
   const total=query.terms.reduce((sum,term)=>sum+weight(term),0)||1;
@@ -37,7 +37,7 @@ export function retrieveMemories(text,memories,{limit=5,index=knowledgeIndex(mem
     const score=.55*coverage+.3*overlap(query.terms,f.terms)+.15*overlap(query.grams,f.grams);
     return {memory,score,sharedTerms:shared};
   }).filter(item=>item.sharedTerms.length>=2&&item.score>=.2)
-    .sort((a,b)=>b.score-a.score||String(a.memory.id).localeCompare(String(b.memory.id))).slice(0,limit);
+    .sort((a,b)=>b.score-a.score||priority(b.memory)-priority(a.memory)||String(a.memory.id).localeCompare(String(b.memory.id))).slice(0,limit);
 }
 export function developmentStatistics(memories) {
   const index=knowledgeIndex(memories);

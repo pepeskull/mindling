@@ -1,3 +1,4 @@
+import { pathwayContext, learningTiePriority } from '../../pathways/pathways.js';
 import { features, normalize } from '../../learning/text.js';
 import { retrieveMemories } from '../../learning/knowledge.js';
 
@@ -11,7 +12,8 @@ function legacyKind(text) {
   if(/\b(goal|aim|wants? to (?:learn|study)|focus on|mål|vill lära)\b/iu.test(text))return 'goal';
   return 'claim';
 }
-export function retrievePreviewMemories(text, memories, {limit=8}={}) {
+export function retrievePreviewMemories(text, memories, {limit=8,mind=null}={}) {
+  const priorities=mind?pathwayContext(mind):null;
   const query=terms(text), exact=normalize(text), lexical=new Map(retrieveMemories(text,memories.filter(m=>!m.supersededBy),{limit:1000}).map(item=>[item.memory.id,item.score]));
   const preference=/\b(prefer|like|favorite|favourite|föredrar|gillar)\b/iu.test(text);
   const goal=/\b(goal|learn|focus|instead|decided|mål|lära|istället)\b/iu.test(text);
@@ -21,7 +23,7 @@ export function retrievePreviewMemories(text, memories, {limit=8}={}) {
     const context=(preference&&kind==='preference'||goal&&kind==='goal') ? 0.3 : 0;
     const score=normalize(memory.content)===exact?3:(lexical.get(memory.id)||0)+shared*.12+context;
     return {memory,score};
-  }).filter(item=>item.score>0).sort((a,b)=>b.score-a.score||String(a.memory.id).localeCompare(String(b.memory.id))).slice(0,limit);
+  }).filter(item=>item.score>0).sort((a,b)=>b.score-a.score||learningTiePriority(b.memory,priorities)-learningTiePriority(a.memory,priorities)||String(a.memory.id).localeCompare(String(b.memory.id))).slice(0,limit);
 }
 export function candidateMetadata(memory) {
   const kind=memory.intelligence?.kind||memory.kind||legacyKind(memory.content||'');

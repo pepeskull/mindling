@@ -1,3 +1,4 @@
+import { PATHWAYS, DEFAULT_ORIGINS, recordPathwayLearning } from '../../pathways/pathways.js';
 import { capturedContent } from '../../memory/content-integrity.js';
 import { energyAt, spendEnergy } from '../../economy/energy.js';
 import { analyzeNative } from '../../learning/native-learning.js';
@@ -21,13 +22,15 @@ export class VirtualClock {
 export function createSandbox(now=Date.UTC(2026,0,1), playerId=crypto.randomUUID()) {
   return { version:1, revision:0, wallAt:Date.now(), now, origin:now, clockResets:0, player:{id:playerId, wallet:{mode:'SIMULATED',balance:'1000000000', receipts:[]}}, tombstones:[], mind:null };
 }
-export function newMindling(state,{name='Test Mindling',pathway='Researcher',id=crypto.randomUUID(),confirmed=false}={}) {
+export function newMindling(state,{name='Test Mindling',pathway=null,pathways=null,id=crypto.randomUUID(),confirmed=false}={}) {
   if (!confirmed) throw Error('Confirm creation of a new test Mindling');
   if (state.tombstones.some(t=>t.id===id) || state.mind?.id===id) throw Error('Identity cannot be reused');
-  if (!['Researcher','Developer','Social'].includes(pathway) || !name.trim() || name.length>40) throw Error('Invalid identity');
+  if(pathways!==null&&!Array.isArray(pathways))throw Error('Origin pathways must be a list.');
+  const origins=[...new Set(pathways??(pathway?[pathway]:DEFAULT_ORIGINS))];
+  if(origins.some(item=>!PATHWAYS.includes(item))||!origins.length||(pathways&&origins.length<3)||typeof name!=='string'||!name.trim()||name.length>40)throw Error('Choose at least three supported origin pathways and a valid name.');
   const next=structuredClone(state), seed=neuralSeedRecords();
   if(next.mind && !next.tombstones.some(t=>t.id===next.mind.id)) next.tombstones.push({id:next.mind.id,at:next.now,reason:'REPLACED'});
-  next.mind={id,name:name.trim(),pathways:[pathway],createdAt:next.now,stage:1,enteredAt:next.now,stageXP:0,lifetimeXP:0,milestones:[],history:[],processed:[],lastLearning:null,
+  next.mind={id,name:name.trim(),pathways:[...origins],originPathways:[...origins],pathwayEvidence:[],createdAt:next.now,stage:1,enteredAt:next.now,stageXP:0,lifetimeXP:0,milestones:[],history:[],processed:[],lastLearning:null,
     nodes:seed.neurons,synapses:seed.synapses,memories:[],areas:[],life:{version:2,attributes:{health:100,nutrition:100,rest:100,wellbeing:100,neuralStability:100},stimulation:100,lastActivity:null,lastAt:next.now,lifeState:'ALIVE',deathAt:null,care:{}},energy:energyAt(null,next.now),activityHistory:[],stageHistory:[]};
   return next;
 }
@@ -75,6 +78,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
   if(a.native)memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
   if(a.service)memory.analysis={...a.service,activity,learnedAt:memory.createdAt};
+  recordPathwayLearning(n,memory,{eventId:id,activity,at:next.now});
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];
   return next;

@@ -105,7 +105,7 @@ export class ExternalView {
   }
   refresh(){
     const a=this.app,peers=presentationFor(a.timeline,a.view.morph).peers;
-    a.view.updateLabels(peers);this.notice.hidden=!eligible(this.owner());
+    a.view.updateLabels(peers);this.notice.hidden=!eligible(this.owner())||['development','memories'].includes(a.primaryView);
     this.buttons.forEach((button,index)=>{const peer=peers[index];button.hidden=!peer?.id;button.textContent=peer?.name||'';button.dataset.id=peer?.id||'';button.disabled=!peer?.connected||this.visit.transitioning;});
     a.host.dataset.network=a.timeline.network.state;
     if(!this.locked)document.querySelector('#network-view span').textContent=eligible(this.owner())?'Demo Agent Mind network. Select a connected name to visit. Live player discovery is unavailable.':'Network participation requires Agent Mind.';

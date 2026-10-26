@@ -2,8 +2,7 @@ import { ExternalView } from '../network/external-view.js';
 import { PreviewTimeline, smooth } from "./evolution-model.js";
 import { EvolutionScene } from "./evolution-scene.js";
 import { SceneInteraction } from "../renderer/scene-interaction.js";
-import { ThreeSeedScene } from "../renderer/three-seed-scene.js";
-import { CanvasSeedScene } from "../renderer/canvas-seed-scene.js";
+import { BrainRenderer } from "../renderer/brain-renderer.js";
 import { createNeuralSeedState } from "../brain/neural-seed-state.js";
 
 import { Dashboard } from '../ui/dashboard.js';
@@ -17,8 +16,8 @@ export class EvolutionPreview {
   frame = null; disposed = false; lastTime = null; elapsed = 0; displayedStage = 1;
   seedWeight = 1; seedFrom = 1; transition = 1;
   motion = matchMedia('(prefers-reduced-motion: reduce)');
-  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot, originalFraming = true, interactive = false, autoPlay = true, autoNetwork = true } = {}) {
-    this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; this.originalFraming = originalFraming;
+  constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot, originalFraming = true, interactive = false, autoPlay = true, autoNetwork = true, canonicalBrain = false } = {}) {
+    this.canonicalBrain = canonicalBrain; this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; this.originalFraming = originalFraming;
     this.interactive = interactive; this.autoPlay = autoPlay; this.autoNetwork = autoNetwork;
     this.events = new EventBus(); this.dashboardOptions = {};
   }
@@ -44,13 +43,13 @@ export class EvolutionPreview {
     if (this.disposed) return;
     this.view = new EvolutionScene({ three, interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming });
     const framing=this.originalFraming?null:{referenceHeight:()=>document.querySelector('#app').clientHeight};
-    this.seed = three ? new ThreeSeedScene(three, null, this.interaction, framing) : new CanvasSeedScene(null, this.interaction, framing);
-    const seedModel = this.seedModel || structuredClone(createNeuralSeedState());
+    this.seed = new BrainRenderer(this.seedHost, null, { three, interaction:this.interaction, framing, mode:'dashboard', externallyScheduled:true });
+    const seedModel = this.seedModel || (this.canonicalBrain ? {nodes:[],synapses:[]} : structuredClone(createNeuralSeedState()));
     try { this.view.mount(this.growthHost); this.seed.mount(this.seedHost, seedModel); }
     catch {
       this.view.destroy(); this.seed.destroy?.(); this.seedHost.replaceChildren(); this.growthHost.replaceChildren();
       this.view = new EvolutionScene({ interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming }); this.view.mount(this.growthHost);
-      this.seed = new CanvasSeedScene(null, this.interaction, framing); this.seed.mount(this.seedHost, seedModel);
+      this.seed = new BrainRenderer(this.seedHost, null, { interaction:this.interaction, framing, mode:'dashboard', externallyScheduled:true }); this.seed.mount(this.seedHost, seedModel);
     }
     this.external=new ExternalView(this);
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
@@ -106,24 +105,35 @@ export class EvolutionPreview {
     this.view.updateLabels(this.presentationState.peers);this.external?.refresh();
   }
   primaryViewChanged = view => {
-    this.primaryView = view;
-    if (view === 'development') { cancelAnimationFrame(this.frame); this.frame = null; }
+    this.primaryView = view;this.external?.refresh();
+    if (view === 'development' || view === 'memories') { cancelAnimationFrame(this.frame); this.frame = null; }
     else { this.lastTime = null; this.schedule(); }
   };
-  schedule() { if (!this.disposed && this.view && this.seed && !document.hidden && this.primaryView !== 'development' && this.frame === null) this.frame = requestAnimationFrame(this.render); }
+  schedule() { if (!this.disposed && this.view && this.seed && !document.hidden && !['development','memories'].includes(this.primaryView) && this.frame === null) this.frame = requestAnimationFrame(this.render); }
   render = now => {
-    this.frame = null; if (this.disposed || document.hidden || this.primaryView === 'development') return;
+    this.frame = null; if (this.disposed || document.hidden || ['development','memories'].includes(this.primaryView)) return;
     const delta = this.lastTime === null ? 0 : Math.max(0, (now - this.lastTime) / 1000); this.lastTime = now; this.elapsed += delta;
     this.external?.tick(delta);
     const ready = this.timeline.stage === 7 && this.transition === 1 && this.view.morph.progress === 1;
     const previous = this.timeline.stage; this.timeline.tick(delta); this.syncStage(); if (previous !== this.timeline.stage) this.refresh();
     if (this.autoNetwork && !this.external?.locked && !this.deceased) this.countdown.update(delta, { stage: this.timeline.stage, transitionComplete: ready, network: this.timeline.network });
     this.interaction.update(delta); this.transition = Math.min(1, this.transition + delta / 1.6);
-    const target = this.timeline.stage === 1 ? 1 : 0; this.seedWeight = this.seedFrom * (1 - smooth(this.transition)) + target * smooth(this.transition);
-    this.seedHost.style.opacity = String(this.seedWeight); this.growthHost.style.opacity = String(1 - this.seedWeight);
-    // Both views share this one scheduler and interaction, including during the crossfade.
-    if (this.seedWeight > 0) this.seed.render(now / 1000, delta);
-    if (this.seedWeight < 1) this.view.render(this.elapsed, delta, this.timeline.network);
+    if(this.canonicalBrain){
+      const visiting=Boolean(this.external?.locked);
+      this.seedWeight=visiting?0:1;
+      this.seedHost.style.opacity=String(this.seedWeight);
+      this.view.hideCanonicalCenter=!visiting;
+      const showNetwork=visiting||this.timeline.network.state!=='DISCONNECTED';
+      this.growthHost.style.opacity=showNetwork?'1':'0';
+      if(!visiting)this.seed.render(now/1000,delta);
+      if(showNetwork)this.view.render(this.elapsed,delta,this.timeline.network);
+      else if(this.view.morph.progress<1){this.view.morph.tick(delta);this.view.buffers.rebuild(this.view.morph);this.view.centralSegments=this.view.buffers.segmentCount;}
+    }else{
+      const target = this.timeline.stage === 1 ? 1 : 0; this.seedWeight = this.seedFrom * (1 - smooth(this.transition)) + target * smooth(this.transition);
+      this.seedHost.style.opacity = String(this.seedWeight); this.growthHost.style.opacity = String(1 - this.seedWeight);
+      if (this.seedWeight > 0) this.seed.render(now / 1000, delta);
+      if (this.seedWeight < 1) this.view.render(this.elapsed, delta, this.timeline.network);
+    }
     this.refreshNetwork(); this.schedule();
   };
   visibility = () => { if (document.hidden) { if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null; } else { this.lastTime = null; this.schedule(); } };

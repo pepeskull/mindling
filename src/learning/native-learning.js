@@ -1,3 +1,4 @@
+import { pathwayContext, learningTiePriority } from '../pathways/pathways.js';
 import {features,normalize,overlap,sentences,validateText,NATIVE_VERSION} from './text.js';
 import {knowledgeIndex,retrieveMemories} from './knowledge.js';
 
@@ -43,7 +44,7 @@ export function analyzeNative(text,mind,{allowQuestion=false}={}) {
   // It is evidence of a possible repeat, never authority to merge different facts.
   const legacyKey=text.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,' ').trim();
   if(mind.memories.some(memory=>!memory.native&&[memory.normalized,memory.normalizedContent].includes(legacyKey)))throw Error('This may repeat a historical input. Existing memories are unchanged. No Energy or XP changed.');
-  const input=validateText(text,{allowQuestion}),index=knowledgeIndex(mind.memories),related=retrieveMemories(text,mind.memories,{index});
+  const input=validateText(text,{allowQuestion}),index=knowledgeIndex(mind.memories),priorities=pathwayContext(mind),related=retrieveMemories(text,mind.memories,{index,priority:memory=>learningTiePriority(memory,priorities)});
   for(const memory of index.active){
     for(const old of sentences(memory.content))for(const fresh of input.sentences){
       const relation=compare(fresh,old);
