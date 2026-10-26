@@ -2,7 +2,6 @@ import { developmentData } from './development-data.js';
 import { NeuralDevelopmentScene } from './neural-development-scene.js';
 
 const element = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
-const svg = (tag, attributes) => { const node = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value); return node; };
 const date = value => value === null ? 'Not recorded' : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 const eventDate = event => `${event.simulated ? 'Simulated date: ' : ''}${date(event.recordedAt ?? event.at)}`;
 const value = number => number === null ? '—' : number.toLocaleString();
@@ -11,7 +10,6 @@ export class DevelopmentView {
   constructor(root) {
     this.root = root; this.abort = new AbortController(); this.visible = false;
     root.innerHTML = `
-      <div class="development-heading"><div><p class="development-eyebrow">NEURAL DEVELOPMENT</p><h2 id="development-title">A mind in the making.</h2></div><span data-development-stage></span></div>
       <div class="development-grid">
         <section class="development-evolution development-panel" aria-labelledby="evolution-title">
           <div class="development-panel-heading"><div><p class="development-eyebrow">01 / NEURAL EVOLUTION</p><h3 id="evolution-title" data-development-name>Your Mindling</h3></div><span class="development-presence" data-development-presence>Living architecture</span></div>
@@ -26,7 +24,6 @@ export class DevelopmentView {
           <div class="development-panel-body">
             <dl class="development-metrics" data-development-metrics></dl>
             <div class="development-xp" data-development-xp></div>
-            <div class="development-chart" data-development-chart></div>
             <p class="development-muted">Memory, knowledge-area and neural growth trends need historical snapshots. Current totals are shown above.</p>
             <div class="development-training"><p class="development-eyebrow">DEMONSTRATED ABILITY</p><h4>Cognitive Training <span>Coming Soon</span></h4><p>Stored knowledge is a starting point. Future evaluations will test how your Mindling applies it to unfamiliar problems.</p><p>No cognitive evaluations are recorded.</p></div>
           </div>
@@ -61,7 +58,6 @@ export class DevelopmentView {
     this.root.querySelector('.development-network-empty').hidden = Boolean(data.nodes.length);
     this.root.querySelector('.development-network-empty span').textContent = data.neuronCount ? 'Saved neurons have no drawable positions.' : 'No saved neurons are available yet.';
     this.root.querySelector('[data-development-name]').textContent = data.name;
-    this.root.querySelector('[data-development-stage]').textContent = data.stage;
     this.root.querySelector('[data-development-presence]').textContent = data.deceased ? 'Preserved architecture' : 'Living architecture';
     const stats = this.root.querySelector('[data-development-brain-stats]'); stats.replaceChildren();
     for (const [count, label] of [[data.neuronCount, 'Neurons'], [data.synapseCount, 'Synapses'], [data.memoryCount, 'Memories']]) { const item = element('div'); item.append(element('strong', value(count)), element('span', label)); stats.append(item); }
@@ -78,7 +74,6 @@ export class DevelopmentView {
       xp.append(element('p', 'Evolution also requires time and learning milestones.', 'development-muted'));
     } else xp.append(element('p', data.stageNumber === 7 ? `${value(data.stageXP)} stage XP · Final recorded stage` : 'Stage XP is not available in this record.', 'development-muted'));
     if (data.enteredAt !== null) xp.append(element('p', `${data.simulatedClock ? 'Simulation stage entered' : 'Current stage entered'} ${date(data.enteredAt)}`, 'development-muted'));
-    this.renderChart(data.xpEvents);
     const pathways = this.root.querySelector('[data-development-pathways]'); pathways.replaceChildren();
     for (const pathway of data.pathways) pathways.append(element('span', pathway));
     if (!data.pathways.length) pathways.append(element('p', 'No pathways recorded.', 'development-muted'));
@@ -94,19 +89,6 @@ export class DevelopmentView {
     const text = index < 0 ? 'Select a neuron to explore its saved connections.' : `Neuron ${String(index + 1).padStart(2, '0')} · ${this.data.edges.filter(edge => edge.from === id || edge.to === id).length} drawable saved connections`;
     this.root.querySelector('[data-development-selection]').textContent = text;
     this.root.querySelector('[data-development-neuron]').value = index < 0 ? '' : id;
-  }
-  renderChart(events) {
-    const host = this.root.querySelector('[data-development-chart]'); host.replaceChildren(element('h4', 'Recorded learning XP'));
-    if (events.length < 2) { host.append(element('p', 'At least two saved learning events are needed to show a history.', 'development-muted')); return; }
-    const chart = svg('svg', { viewBox: '0 0 260 112', role: 'img', 'aria-label': 'XP awarded per recorded learning event; points are ordered by saved event time' });
-    const title = svg('title', {}); title.textContent = events.map(event => `${eventDate(event)}: ${event.xp} XP`).join('; '); chart.append(title);
-    const max = Math.max(1, ...events.map(event => event.xp));
-    chart.append(svg('path', { d: 'M8 8V94H252', fill: 'none', stroke: 'var(--border-hover)' }));
-    const points = events.map((event, i) => `${8 + i / (events.length - 1) * 244},${94 - event.xp / max * 78}`).join(' ');
-    chart.append(svg('polyline', { points, fill: 'none', stroke: 'var(--accent)', 'stroke-width': '1.5', 'stroke-linejoin': 'round' }));
-    const zero = svg('text', { x: 9, y: 108 }); zero.textContent = '0 XP'; chart.append(zero);
-    const scale = svg('text', { x: 9, y: 10 }); scale.textContent = `${max} XP`; chart.append(scale); host.append(chart);
-    host.append(element('p', `${events.length} most recent saved learning events, in time order. Each point shows that event’s XP, not cumulative XP or ability.`, 'development-muted'));
   }
   destroy() { if (this.abort.signal.aborted) return; this.abort.abort(); this.scene.destroy(); this.state = null; this.life = null; this.data = null; this.root.replaceChildren(); }
 }

@@ -3,7 +3,6 @@ import { NeuralMemoryView } from '../memory/neural-memory-view.js';
 import { energyLabel } from '../economy/energy.js';
 import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
-import { deriveKnowledgeDevelopment, deriveNeuronParticipation } from "../brain/knowledge-development.js";
 import { LIFE_RULES, lifeStageFor, neuralCycles, warningFor } from "../life/life-system.js";
 import { formatLifePercentage } from './life-format.js';
 import { STAGES } from '../preview/evolution-model.js';
@@ -19,7 +18,6 @@ export class Dashboard {
   #messageTimer;
   #form;
   #handleSubmit;
-  #selectionUnsubscribe;
   #state;
   #events;
   #onInput;
@@ -29,7 +27,6 @@ export class Dashboard {
   #pending = false;
   #mode = "TALK";
   #eventUnsubscribes = [];
-  #knowledgeDevelopment = { overall: 0, areas: [] };
 
   constructor(events, { onInput, onCare, onNewMindling, onViewChange, readOnly = false } = {}) {
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"));
@@ -41,7 +38,6 @@ export class Dashboard {
     this.#onCare = onCare;
     this.#onNewMindling = onNewMindling;
     this.#unsubscribe = events.on(EVENTS.STATE_READY, (state) => this.render(state));
-    this.#selectionUnsubscribe = events.on(EVENTS.SCENE_SELECTION, selection => this.#showSelection(selection));
     this.#eventUnsubscribes = [
       events.on(EVENTS.MEMORY_CREATED, () => this.#showStatus("Memory formed")),
       events.on(EVENTS.MEMORY_REINFORCED, () => this.#showStatus("Memory reinforced")),
@@ -117,7 +113,6 @@ export class Dashboard {
     document.querySelector(".pathways-copy").textContent = state.pathways.join(" · ");
     document.querySelector(".mindling-id").textContent = state.mindlingId;
     document.querySelector("[data-profile-filename]").textContent = safeProfileFilename(state.name);
-    this.#knowledgeDevelopment = deriveKnowledgeDevelopment(state.memories);
     this.#renderMemoryDevelopment();
   }
 
@@ -162,29 +157,6 @@ export class Dashboard {
     status.textContent = message; status.classList.add("visible"); clearTimeout(this.#messageTimer);
     this.#messageTimer = setTimeout(() => status.classList.remove("visible"), 2800);
   }
-
-  #showSelection(selection) {
-    const inspector = document.querySelector("#neural-inspector");
-    if (!selection) { inspector.hidden = true; return; }
-    if (selection.type === "neuron") {
-      const index = this.#state.nodes.findIndex(node => node.id === selection.id);
-      const connections = this.#state.synapses.filter(item => item.from === selection.id || item.to === selection.id).length;
-      const participation = deriveNeuronParticipation(this.#state, selection.id, this.#knowledgeDevelopment);
-      const dominant = participation.areaParticipation[0];
-      const knowledge = participation.areaParticipation.length ? `<div class="neuron-knowledge"><span>Knowledge participation</span>${participation.areaParticipation.slice(0, 3).map(area => `<p><i style="--share:${Math.round(area.share * 100)}%"></i><b>${this.#escape(area.label)}</b><em>${Math.round(area.share * 100)}%</em></p>`).join("")}</div>` : "";
-      inspector.innerHTML = `<button type="button" aria-label="Close inspector">×</button><p>Neuron ${String(index + 1).padStart(2, "0")}</p><dl><div><dt>Activity</dt><dd>${participation.activity}</dd></div><div><dt>Connections</dt><dd>${connections}</dd></div><div><dt>Memories</dt><dd>${participation.memoryCount}</dd></div><div><dt>Activations</dt><dd>${participation.activationTotal}</dd></div><div><dt>Reinforcement</dt><dd>${Math.round(participation.reinforcement * 100)}%</dd></div><div><dt>Development</dt><dd>${participation.specialization === "EMERGING_SPECIALIZATION" ? "Emerging specialization" : "Unspecialized"}</dd></div>${participation.primaryAreaId && dominant ? `<div><dt>Primary area</dt><dd>${this.#escape(dominant.label)}</dd></div>` : ""}</dl>${knowledge}`;
-    } else {
-      const index = this.#state.synapses.findIndex(item => item.id === selection.id);
-      const synapse = this.#state.synapses[index];
-      const from = this.#state.nodes.findIndex(node => node.id === synapse.from) + 1;
-      const to = this.#state.nodes.findIndex(node => node.id === synapse.to) + 1;
-      inspector.innerHTML = `<button type="button" aria-label="Close inspector">×</button><p>Synapse ${String(index + 1).padStart(2, "0")}</p><dl><div><dt>Connection</dt><dd>Neuron ${String(from).padStart(2, "0")} → ${String(to).padStart(2, "0")}</dd></div><div><dt>State</dt><dd>Quiet</dd></div><div><dt>Strength</dt><dd>${Math.round((synapse.strength ?? .2) * 100)}%</dd></div></dl>`;
-    }
-    inspector.hidden = false;
-    inspector.querySelector("button").addEventListener("click", () => { inspector.hidden = true; });
-  }
-
-  #escape(value) { const node = document.createElement("span"); node.textContent = value; return node.innerHTML; }
 
   #renderLife(life, now = Date.now()) {
     this.#life = life;
@@ -261,7 +233,6 @@ export class Dashboard {
     this.#memoryMap.destroy();
     this.#development.destroy();
     this.#unsubscribe?.();
-    this.#selectionUnsubscribe?.();
     this.#eventUnsubscribes.forEach(unsubscribe => unsubscribe());
     this.#form?.removeEventListener("submit", this.#handleSubmit);
     clearTimeout(this.#messageTimer);

@@ -27,7 +27,7 @@ export class ExternalView {
   lockControls() {
     this.savedFocus=document.activeElement;
     this.memoryMode=this.root.classList.contains('memory-mode');this.root.classList.remove('memory-mode');
-    this.overlays=[...this.root.querySelectorAll('#memory-view,#network-view,#neural-inspector')].map(node=>[node,node.hidden]);
+    this.overlays=[...this.root.querySelectorAll('#memory-view,#network-view')].map(node=>[node,node.hidden]);
     for(const [node] of this.overlays)node.hidden=true;
     this.controls=[...this.root.children].filter(node=>![this.panel,this.notice,this.app.host].includes(node)).map(node=>[node,node.inert]);
     for(const [node] of this.controls){node.inert=true;node.classList.add('external-dim');}

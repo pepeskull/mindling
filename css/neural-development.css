@@ -6,10 +6,7 @@
   color: var(--text-primary); font-family: var(--font);
 }
 .development-view[hidden] { display: none; }
-.development-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex: none; }
 .development-eyebrow { margin: 0 0 9px; color: var(--text-muted); font-size: 8px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
-.development-view h2 { margin: 0; font-size: clamp(23px, 2vw, 30px); font-weight: 430; letter-spacing: -.035em; }
-.development-heading > span { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 100px; color: var(--accent); font-size: 10px; }
 .development-grid { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 58fr) minmax(0, 27fr) minmax(160px, 19fr); gap: 16px; }
 .development-panel { min-height: 0; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius); background: linear-gradient(135deg, rgba(16,18,20,.67), rgba(6,7,8,.55)); backdrop-filter: blur(22px) saturate(115%); -webkit-backdrop-filter: blur(22px) saturate(115%); overflow: auto; scrollbar-width: thin; }
 .development-panel-heading { padding: 20px 18px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
@@ -48,9 +45,6 @@
 .development-xp progress::-webkit-progress-bar { background: var(--border-subtle); border-radius: 4px; }
 .development-xp progress::-webkit-progress-value { background: var(--accent); border-radius: 4px; transition: width .6s ease; }
 .development-xp progress::-moz-progress-bar { background: var(--accent); border-radius: 4px; }
-.development-chart svg { display: block; width: 100%; max-width: 100%; height: auto; }
-.development-chart text { font: 8px var(--font); fill: var(--text-muted); }
-.development-chart polyline { stroke-dasharray: 600; stroke-dashoffset: 0; animation: development-line-reveal .8s ease both; }
 .development-training { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-subtle); }
 .development-training h4 { margin-top: 0; line-height: 1.8; }
 .development-training h4 span { display: inline-block; margin-left: 5px; border: 1px solid var(--border-subtle); border-radius: 4px; padding: 1px 5px; color: var(--text-muted); font-size: 8px; }
@@ -67,10 +61,9 @@
 .development-events strong { display: block; margin-top: 5px; font-size: 9px; font-weight: 500; color: var(--text-secondary); }
 .development-events p { font-size: 9px; color: var(--text-secondary); margin: 5px 0; }
 .development-mode .scene, .development-mode .scene-vignette, .development-mode .dashboard { visibility: hidden; pointer-events: none; }
-@keyframes development-line-reveal { from { stroke-dashoffset: 600; } to { stroke-dashoffset: 0; } }
 @media (prefers-reduced-motion: reduce) { .development-view *, .development-view *::before { animation: none; transition: none; } }
 
-.development-heading > div, .development-panel-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.development-panel-heading > div { min-width: 0; overflow-wrap: anywhere; }
 .development-grid > section { max-width: 100%; }
 
 .development-network-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; pointer-events: none; }
