@@ -55,7 +55,6 @@ export class Dashboard {
     }
     this.#listen(document.querySelector("[data-view='memories']"), "click", () => this.#setPrimaryView("memories"));
     this.#listen(document.querySelector("[data-view='dashboard']"), "click", event => { event.preventDefault(); this.#setPrimaryView("dashboard"); });
-    this.#listen(document.querySelector("[data-close-memory]"), "click", () => this.#setPrimaryView("dashboard"));
     this.#listen(document.querySelector("[data-close-network]"), "click", () => { document.querySelector("#network-view").hidden = true; });
     document.querySelectorAll("[data-mobile-view]").forEach(button => this.#listen(button, "click", () => this.#openMobileView(button.dataset.mobileView)));
     this.#listen(document.querySelector("[data-download-profile]"), "click", () => { if (this.#state) downloadMindlingProfile(this.#state, this.#life); });
