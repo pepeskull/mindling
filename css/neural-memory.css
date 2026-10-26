@@ -1,11 +1,8 @@
 /* Memory chrome reuses Dashboard tokens and glass.css treatments. */
 .memory-view.neural-memory-view{inset:var(--top-height) 0 30px;padding:20px clamp(20px,3.2vw,60px) 16px;display:flex;flex-direction:column;gap:12px;min-height:0;min-width:0;overflow:clip;background:transparent;color:var(--text-primary)}
 .memory-view.neural-memory-view[hidden]{display:none}
-.neural-memory-view .neural-memory-header{padding:12px 16px;align-items:center;border-bottom:1px solid var(--border-subtle);gap:24px;min-width:0}
 .neural-memory-view .memory-eyebrow{font-size:9px;font-weight:500;letter-spacing:.18em;color:var(--text-secondary);margin:0 0 9px;text-transform:uppercase}
-.neural-memory-header .memory-eyebrow span{display:inline;color:var(--text-muted);margin:0 8px;font-size:9px}
 .neural-memory-view h2{font-size:30px;letter-spacing:-1.1px;font-weight:430;margin:0;color:var(--text-primary)}
-.neural-memory-header>div>span{font-size:11px;color:var(--text-secondary);margin-top:7px}
 .neural-memory-view button,.neural-memory-view select,.neural-memory-view input{font-family:var(--font)}
 .neural-memory-view button{cursor:pointer}
 .neural-memory-view button:disabled{opacity:.35;cursor:default}
@@ -21,12 +18,6 @@
 .graph-panel-heading .memory-eyebrow{font-size:8px;color:var(--text-muted);letter-spacing:.16em;margin-bottom:8px}
 .local-memory-tag{font-size:7px;letter-spacing:.11em;color:var(--text-secondary);display:flex;align-items:center;gap:7px}
 .local-memory-tag i{width:4px;height:4px;background:var(--accent);border-radius:50%;}
-.memory-toolbar{display:flex;gap:11px;padding:0 24px 18px;border-bottom:1px solid var(--border-subtle)}
-.memory-toolbar label{display:flex;flex-direction:column;gap:7px;font-size:8px;color:var(--text-secondary);letter-spacing:.04em;min-width:175px}
-.memory-toolbar .memory-search{flex:1}
-.memory-toolbar select,.memory-toolbar input{font-size:10px;min-width:0;width:100%;height:34px;border-radius:7px;border:1px solid var(--border-subtle);background:var(--surface-glass);color:var(--text-primary);padding:0 11px;outline:none;box-sizing:border-box}
-.memory-toolbar select{max-width:250px}
-.memory-toolbar input::placeholder{color:var(--text-muted)}
 .memory-graph-stage{position:relative;flex:1 0 160px;min-height:160px;overflow:hidden;background:transparent}
 .memory-graph-stage canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none;z-index:1}
 .memory-graph-stage canvas:active{cursor:grabbing}
@@ -82,9 +73,6 @@
 .related-memory-button:hover{border-color:var(--border-subtle);background:var(--border-subtle)}
 .memory-inspector details{border-top:1px solid var(--border-subtle);padding-top:12px;margin-top:15px;font-size:9px}
 .memory-inspector summary{cursor:pointer;color:var(--text-secondary)}
-.memory-inspector details dl{font-size:8px;display:grid;gap:10px;margin-bottom:0}
-.memory-inspector details dt{color:var(--text-muted)}
-.memory-inspector details dd{color:var(--text-secondary);margin:3px 0 0;overflow-wrap:anywhere;white-space:pre-wrap}
 .memory-inspector ul{padding-left:15px;color:var(--text-secondary);font-size:10px;line-height:1.7}
 .memory-science-note{display:flex;gap:9px;font-size:8px;color:var(--text-secondary);line-height:1.8;padding-top:18px;min-width:0;align-items:center}
 .memory-science-note>span:first-child{color:var(--accent);font-size:15px}
@@ -119,11 +107,8 @@
 .neural-memory-view .memory-browser{flex-shrink:1;min-height:30px;max-height:35%;overflow:auto}
 .neural-memory-view .memory-radar{min-width:0}
 .neural-memory-view .memory-radar svg{max-width:100%}
-.neural-memory-view .memory-science-note{flex:none;padding:8px 12px;border-top:1px solid var(--border-subtle);border-radius:var(--radius);flex-wrap:wrap}
-.neural-memory-view .neural-memory-header{flex:none;border-radius:var(--radius)}
+.neural-memory-view .memory-science-note{flex:none;padding:8px 12px;border-top:0px solid var(--border-subtle);border-radius:var(--radius);flex-wrap:wrap}
 .neural-memory-view .graph-view-tools{max-width:calc(100% - 16px);flex-wrap:wrap;justify-content:center;white-space:normal;width:max-content}
-.neural-memory-view .memory-toolbar{flex-wrap:wrap;padding:0 16px 12px}
-.neural-memory-view .memory-toolbar label{min-width:0;flex:1 1 140px}
 .neural-memory-view :is(input,select){background:rgba(255,255,255,.025);border-color:var(--border-subtle);border-radius:7px;color:var(--text-primary)}
 .neural-memory-view select option{background:var(--surface-deep);color:var(--text-primary)}
 .neural-memory-view :is(button,input,select):hover:not(:disabled){border-color:var(--border-hover)}
@@ -138,3 +123,5 @@
  .memory-stat-strip strong{font-size:21px}
  .memory-stat-strip{gap:24px;flex-wrap:wrap}
 }
+
+.memory-graph-stage canvas.memory-flow{pointer-events:none;z-index:1}
