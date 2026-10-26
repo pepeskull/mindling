@@ -133,7 +133,7 @@ export class SandboxPreview extends EvolutionPreview {
     const stage=m.stage;if(this.timeline.stage!==stage){this.timeline.select(stage);this.syncStage();this.host.dataset.stage=String(stage);}
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.
     const subtitle=this.presentation.subtitle;document.querySelector('.hero-copy').append(subtitle);
-    this.dashboard.render({...m,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString()});subtitle.remove();
+    this.dashboard.render({...m,developmentClock:'simulated',mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString()});subtitle.remove();
     this.presentation.stage=null;
     this.refreshNetwork();
     const alive=m.life.lifeState==='ALIVE';

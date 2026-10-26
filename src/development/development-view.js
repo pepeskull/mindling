@@ -4,6 +4,7 @@ import { NeuralDevelopmentScene } from './neural-development-scene.js';
 const element = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
 const svg = (tag, attributes) => { const node = document.createElementNS('http://www.w3.org/2000/svg', tag); for (const [key, value] of Object.entries(attributes)) node.setAttribute(key, value); return node; };
 const date = value => value === null ? 'Not recorded' : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+const eventDate = event => `${event.simulated ? 'Simulated date: ' : ''}${date(event.recordedAt ?? event.at)}`;
 const value = number => number === null ? '—' : number.toLocaleString();
 
 export class DevelopmentView {
@@ -76,7 +77,7 @@ export class DevelopmentView {
       const progress = element('progress'); progress.max = data.targetXP; progress.value = Math.min(data.stageXP, data.targetXP); progress.setAttribute('aria-label', 'XP toward the next stage requirement'); progress.textContent = `${data.stageXP} of ${data.targetXP} XP`; xp.append(progress);
       xp.append(element('p', 'Evolution also requires time and learning milestones.', 'development-muted'));
     } else xp.append(element('p', data.stageNumber === 7 ? `${value(data.stageXP)} stage XP · Final recorded stage` : 'Stage XP is not available in this record.', 'development-muted'));
-    if (data.enteredAt !== null) xp.append(element('p', `Current stage entered ${date(data.enteredAt)}`, 'development-muted'));
+    if (data.enteredAt !== null) xp.append(element('p', `${data.simulatedClock ? 'Simulation stage entered' : 'Current stage entered'} ${date(data.enteredAt)}`, 'development-muted'));
     this.renderChart(data.xpEvents);
     const pathways = this.root.querySelector('[data-development-pathways]'); pathways.replaceChildren();
     for (const pathway of data.pathways) pathways.append(element('span', pathway));
@@ -85,7 +86,7 @@ export class DevelopmentView {
     for (const area of data.areas) { const item = element('li'); item.append(element('span', area.label), element('strong', String(area.count))); areas.append(item); }
     if (!data.areas.length) areas.append(element('li', 'No current knowledge areas yet.', 'development-muted'));
     const events = this.root.querySelector('[data-development-events]'); events.replaceChildren();
-    for (const event of data.events) { const item = element('li'), time = element('time', date(event.at)); time.dateTime = new Date(event.at).toISOString(); item.append(time, element('strong', event.title), element('p', event.detail)); if (event.xp !== undefined && event.xp !== null) item.append(element('span', `${event.xp} XP recorded`)); events.append(item); }
+    for (const event of data.events) { const item = element('li'), time = element('time', eventDate(event)); if (!event.simulated) time.dateTime = new Date(event.recordedAt ?? event.at).toISOString(); else time.title = 'The real save date was not recorded for this older preview event.'; item.append(time, element('strong', event.title), element('p', event.detail)); if (event.xp !== undefined && event.xp !== null) item.append(element('span', `${event.xp} XP recorded`)); events.append(item); }
     if (!data.events.length) events.append(element('li', 'No development events recorded yet.', 'development-muted'));
   }
   showSelection(id) {
@@ -98,7 +99,7 @@ export class DevelopmentView {
     const host = this.root.querySelector('[data-development-chart]'); host.replaceChildren(element('h4', 'Recorded learning XP'));
     if (events.length < 2) { host.append(element('p', 'At least two saved learning events are needed to show a history.', 'development-muted')); return; }
     const chart = svg('svg', { viewBox: '0 0 260 112', role: 'img', 'aria-label': 'XP awarded per recorded learning event; points are ordered by saved event time' });
-    const title = svg('title', {}); title.textContent = events.map(event => `${date(event.at)}: ${event.xp} XP`).join('; '); chart.append(title);
+    const title = svg('title', {}); title.textContent = events.map(event => `${eventDate(event)}: ${event.xp} XP`).join('; '); chart.append(title);
     const max = Math.max(1, ...events.map(event => event.xp));
     chart.append(svg('path', { d: 'M8 8V94H252', fill: 'none', stroke: 'var(--border-hover)' }));
     const points = events.map((event, i) => `${8 + i / (events.length - 1) * 244},${94 - event.xp / max * 78}`).join(' ');
