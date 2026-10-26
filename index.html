@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="./css/life.css">
   <link rel="stylesheet" href="./css/evolution-preview.css">
   <link rel="stylesheet" href="./css/neural-memory.css">
+  <link rel="stylesheet" href="./css/neural-development.css">
 </head>
 <body>
   <div id="app" class="app-shell">
@@ -31,7 +32,7 @@
       </a>
       <nav aria-label="Primary navigation">
         <a class="active" href="#dashboard" data-view="dashboard" aria-current="page">Dashboard</a>
-        <button type="button" disabled>Development</button>
+        <button type="button" data-view="development">Development</button>
         <button type="button" data-view="memories">Memory</button>
         <button type="button" disabled>Network</button>
       </nav>
@@ -111,6 +112,7 @@
         </button>
       </form>
     </main>
+    <section id="development-view" class="development-view" aria-labelledby="development-title" hidden></section>
     <section id="memory-view" class="memory-view neural-memory-view" aria-label="Neural Memory" hidden></section>
     <section id="network-view" class="mobile-sheet glass-panel" aria-labelledby="network-title" hidden><button type="button" data-close-network aria-label="Close Network">×</button><p>Network</p><h2 id="network-title">Mindling Network</h2><span>Network capabilities have not awakened yet.</span></section>
 

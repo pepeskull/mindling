@@ -29,7 +29,7 @@ export class EvolutionPreview {
     this.originalLabel = this.host.getAttribute('aria-label');
     document.querySelector('#app').classList.add('dashboard-preview');
     document.querySelector('#app').classList.toggle('original-preview-framing', this.originalFraming);
-    this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions });
+    this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged });
     const snapshot = this.snapshotProvider ? await this.snapshotProvider() : null;
     if (this.disposed) return;
     if (snapshot) this.dashboard.showSnapshot(snapshot);
@@ -105,9 +105,14 @@ export class EvolutionPreview {
     this.presentation.update(this.presentationState);
     this.view.updateLabels(this.presentationState.peers);this.external?.refresh();
   }
-  schedule() { if (!this.disposed && !document.hidden && this.frame === null) this.frame = requestAnimationFrame(this.render); }
+  primaryViewChanged = view => {
+    this.primaryView = view;
+    if (view === 'development') { cancelAnimationFrame(this.frame); this.frame = null; }
+    else { this.lastTime = null; this.schedule(); }
+  };
+  schedule() { if (!this.disposed && this.view && this.seed && !document.hidden && this.primaryView !== 'development' && this.frame === null) this.frame = requestAnimationFrame(this.render); }
   render = now => {
-    this.frame = null; if (this.disposed || document.hidden) return;
+    this.frame = null; if (this.disposed || document.hidden || this.primaryView === 'development') return;
     const delta = this.lastTime === null ? 0 : Math.max(0, (now - this.lastTime) / 1000); this.lastTime = now; this.elapsed += delta;
     this.external?.tick(delta);
     const ready = this.timeline.stage === 7 && this.transition === 1 && this.view.morph.progress === 1;
