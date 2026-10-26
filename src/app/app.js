@@ -2,14 +2,14 @@ import { energyCapacityForStage } from '../economy/energy.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../preview/automatic-playback.js';
 import { STAGES } from '../preview/evolution-model.js';
-import { learn, talk, visualMapping } from '../preview/sandbox/engine.js';
+import { learn, talk, eligibility } from '../preview/sandbox/engine.js';
 import { carePreview } from '../preview/sandbox/life.js';
 import { LIFE_RULES } from '../life/life-system.js';
 import { MindlingDatabase } from '../storage/database.js';
 import { Onboarding } from '../ui/onboarding.js';
 import { createLocalIdentity } from '../identity/identity.js';
 import { EVENTS } from './events.js';
-import { advanceGameplay, progressGameplay, createGameplayMindling, dashboardLife, dashboardState } from './gameplay-state.js';
+import { advanceGameplay, createGameplayMindling, dashboardLife, dashboardState } from './gameplay-state.js';
 
 // Share rendering and pure gameplay rules, never preview fixtures, time or wallets.
 export class MindlingApp extends EvolutionPreview {
@@ -27,9 +27,9 @@ export class MindlingApp extends EvolutionPreview {
   async start() {
     await this.db.open();
     if (this.disposed) { this.db.close(); return; }
-    this.state = await this.db.changeGameplay(s => progressGameplay(advanceGameplay(s)));
+    this.state = await this.db.changeGameplay(s => advanceGameplay(s));
     if (this.disposed) { this.db.close(); return; }
-    this.seedModel = this.state.mind ? { nodes: this.state.mind.nodes, synapses: this.state.mind.synapses } : null;
+    this.seedModel = this.state.mind ? { nodes: this.state.mind.nodes, synapses: this.state.mind.synapses, stage:this.state.mind.stage } : null;
     this.stabilityRow = document.createElement('div');
     this.stabilityRow.className = 'life-attribute'; this.stabilityRow.dataset.lifeAttribute = 'neuralStability';
     this.stabilityRow.innerHTML = '<svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><label>Neural Stability</label><strong>—</strong><progress aria-label="Neural Stability" max="100" value="100">100%</progress>';
@@ -44,7 +44,7 @@ export class MindlingApp extends EvolutionPreview {
         if(this.external?.tap(event))return;
         if (!this.state.mind) return;
         const hit = this.seed.selectAt(event);
-        if (!hit?.id) return;
+        if (!hit?.id) {this.events.emit(EVENTS.SCENE_SELECTION,null);return;}
         this.view.selectedCanonical = hit.type === 'neuron' ? hit.id : null;
         this.events.emit(EVENTS.SCENE_SELECTION, hit);
       },
@@ -58,7 +58,8 @@ export class MindlingApp extends EvolutionPreview {
     this.energyTimer=setInterval(()=>{if(!this.external?.locked&&this.state?.mind){
       this.dashboard.renderEnergy(this.state.mind.energy,Date.now());
       const e=this.state.mind.energy;
-      if(e.version===2&&e.remaining-e.bonus<energyCapacityForStage(this.state.mind.stage)&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
+      if(!this.pendingMutations&&eligibility({...this.state,now:Date.now()}).eligible)this.refreshState();
+      else if(e.version===2&&e.remaining-e.bonus<energyCapacityForStage(this.state.mind.stage)&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
     }},1000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.refreshState(); }, { signal: this.listeners.signal });
   }
@@ -66,7 +67,7 @@ export class MindlingApp extends EvolutionPreview {
   async change(reducer = state => state, options = {}) {
     this.external?.assertWritable();this.pendingMutations=(this.pendingMutations||0)+1;
     try {
-      const state = await this.db.changeGameplay(s => {this.external?.assertWritable();return options.preserveGameplay?reducer(s):progressGameplay(reducer(advanceGameplay(s)));}, options);
+      const state = await this.db.changeGameplay(s => {this.external?.assertWritable();return options.preserveGameplay?reducer(s):reducer(advanceGameplay(s));}, options);
       if (!this.disposed) { this.state = state; this.renderState(); }
       return state;
     } finally { this.pendingMutations--; }
@@ -142,11 +143,11 @@ export class MindlingApp extends EvolutionPreview {
     if (this.external?.locked || !this.view || !this.dashboard || !this.state.mind) return;
     const m = this.state.mind;
     this.deceased = m.life.lifeState === 'DECEASED';
-    if (this.identityId !== m.id) { this.identityId = m.id; this.countdown = new AutomaticNetworkCountdown(); this.timeline.network.reset(); this.view.selectedCanonical = null; }
+    if (this.identityId !== m.id) { this.identityId = m.id; this.countdown = new AutomaticNetworkCountdown(); this.timeline.network.reset(); this.view.selectedCanonical = null; this.events.emit(EVENTS.SCENE_SELECTION,null); }
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);
-    this.seed.update({ nodes: m.nodes, synapses: m.synapses });
-    this.dashboard.render(dashboardState(m));
+    this.seed.update({ nodes: m.nodes, synapses: m.synapses, stage:m.stage });
+    this.dashboard.render({...dashboardState(m),developmentNow:this.state.now});
     this.events.emit(EVENTS.LIFE_UPDATED, dashboardLife(this.state));
     document.querySelector('.hero-copy h1').textContent = `${m.name} ${this.deceased ? '— Neural Collapse' : 'is learning.'}`;
     document.querySelector('.hero-copy p').textContent = `${STAGES[m.stage - 1].name} · Stage ${String(m.stage).padStart(2, '0')}`;
@@ -157,13 +158,6 @@ export class MindlingApp extends EvolutionPreview {
       row.querySelector('small').textContent = current ? 'Current' : index + 1 < m.stage ? 'Completed' : 'Locked';
     });
     this.view.reduced = this.motion.matches || this.deceased; this.seed.setReducedMotion(this.view.reduced);
-    this.view.canonicalMapping = visualMapping(m, STAGES[m.stage - 1].count);
-    this.view.morph.target.nodes.forEach((node, index) => {
-      const id = this.view.canonicalMapping[index];
-      const strength = m.synapses.filter(edge => edge.from === id || edge.to === id).reduce((sum, edge) => sum + edge.strength, 0);
-      node.baseRadius ??= node.radius; node.radius = node.baseRadius * (1 + Math.min(.35, strength * .05));
-    });
-    this.view.morph.tick(0); this.view.buffers.rebuild(this.view.morph); this.view.centralSegments = this.view.buffers.segmentCount;
     document.querySelector('.life-panel').title = 'Life System 2.0';
   }
 

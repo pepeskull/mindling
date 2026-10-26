@@ -41,15 +41,15 @@ export class EvolutionPreview {
     let three = null;
     if (!this.forceCanvas) { try { three = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js'); } catch { /* Native Canvas fallback. */ } }
     if (this.disposed) return;
-    this.view = new EvolutionScene({ three, interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming });
+    this.view = new EvolutionScene({ three, interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming,shareContext:this.canonicalBrain });
     const framing=this.originalFraming?null:{referenceHeight:()=>document.querySelector('#app').clientHeight};
-    this.seed = new BrainRenderer(this.seedHost, null, { three, interaction:this.interaction, framing, mode:'dashboard', externallyScheduled:true });
+    this.seed = new BrainRenderer(this.seedHost, null, { three, interaction:this.interaction, framing, mode:'dashboard', externallyScheduled:true,stageScene:this.canonicalBrain?this.view:null,seedOnly:!this.canonicalBrain });
     const seedModel = this.seedModel || (this.canonicalBrain ? {nodes:[],synapses:[]} : structuredClone(createNeuralSeedState()));
-    try { this.view.mount(this.growthHost); this.seed.mount(this.seedHost, seedModel); }
+    try { this.view.mount(this.growthHost); this.seed.mount(this.canonicalBrain?this.growthHost:this.seedHost, seedModel); }
     catch {
       this.view.destroy(); this.seed.destroy?.(); this.seedHost.replaceChildren(); this.growthHost.replaceChildren();
-      this.view = new EvolutionScene({ interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming }); this.view.mount(this.growthHost);
-      this.seed = new BrainRenderer(this.seedHost, null, { interaction:this.interaction, framing, mode:'dashboard', externallyScheduled:true }); this.seed.mount(this.seedHost, seedModel);
+      this.view = new EvolutionScene({ interaction: this.interaction, reduced: this.motion.matches, fitDashboard: true, originalFraming: this.originalFraming,shareContext:this.canonicalBrain }); this.view.mount(this.growthHost);
+      this.seed = new BrainRenderer(this.seedHost, null, { interaction:this.interaction, framing, mode:'dashboard', externallyScheduled:true,stageScene:this.canonicalBrain?this.view:null,seedOnly:!this.canonicalBrain }); this.seed.mount(this.canonicalBrain?this.growthHost:this.seedHost, seedModel);
     }
     this.external=new ExternalView(this);
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
@@ -85,13 +85,13 @@ export class EvolutionPreview {
   motionChanged = () => {
     this.view.reduced = this.motion.matches || Boolean(this.deceased);
     this.seed.setReducedMotion(this.view.reduced);
-    if (this.motion.matches) { this.view.select(this.timeline.stage); this.transition = 1; this.seedWeight = this.timeline.stage === 1 ? 1 : 0; }
+    if (this.motion.matches) { if(!this.canonicalBrain)this.view.select(this.timeline.stage); this.transition = 1; this.seedWeight = this.timeline.stage === 1 ? 1 : 0; }
     this.refresh();
   };
   syncStage() {
     if (this.displayedStage === this.timeline.stage) return;
     this.displayedStage = this.timeline.stage; this.seedFrom = this.seedWeight; this.transition = this.motion.matches ? 1 : 0;
-    this.view.select(this.timeline.stage);
+    if(!this.canonicalBrain)this.view.select(this.timeline.stage);
   }
   refresh() {
     this.host.dataset.stage = String(this.timeline.stage);
@@ -120,14 +120,10 @@ export class EvolutionPreview {
     this.interaction.update(delta); this.transition = Math.min(1, this.transition + delta / 1.6);
     if(this.canonicalBrain){
       const visiting=Boolean(this.external?.locked);
-      this.seedWeight=visiting?0:1;
-      this.seedHost.style.opacity=String(this.seedWeight);
-      this.view.hideCanonicalCenter=!visiting;
-      const showNetwork=visiting||this.timeline.network.state!=='DISCONNECTED';
-      this.growthHost.style.opacity=showNetwork?'1':'0';
-      if(!visiting)this.seed.render(now/1000,delta);
-      if(showNetwork)this.view.render(this.elapsed,delta,this.timeline.network);
-      else if(this.view.morph.progress<1){this.view.morph.tick(delta);this.view.buffers.rebuild(this.view.morph);this.view.centralSegments=this.view.buffers.segmentCount;}
+      this.seedWeight=0;this.seedHost.style.opacity='0';this.growthHost.style.opacity='1';
+      this.view.hideCanonicalCenter=false;
+      if(visiting)this.view.render(this.elapsed,delta,this.timeline.network);
+      else this.seed.render(now/1000,delta,this.timeline.network);
     }else{
       const target = this.timeline.stage === 1 ? 1 : 0; this.seedWeight = this.seedFrom * (1 - smooth(this.transition)) + target * smooth(this.transition);
       this.seedHost.style.opacity = String(this.seedWeight); this.growthHost.style.opacity = String(1 - this.seedWeight);

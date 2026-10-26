@@ -31,7 +31,8 @@ export class ThreeSeedScene {
   #ownsInteraction = true;
   #reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  constructor(three, onSelection, interaction = null, framing = null) {
+  constructor(three, onSelection, interaction = null, framing = null, sharedRenderer = null) {
+    this.sharedRenderer = sharedRenderer;
     this.framing = framing;
     if (interaction) { this.#interaction = interaction; this.#ownsInteraction = false; }
     this.#three = three;
@@ -42,7 +43,7 @@ export class ThreeSeedScene {
   mount(host, model) {
     const T = this.#three;
     this.#host = host;
-    this.#renderer = new T.WebGLRenderer({
+    this.#renderer = this.sharedRenderer || new T.WebGLRenderer({
       antialias: true,
       alpha: true,
       powerPreference: "high-performance"
@@ -50,7 +51,7 @@ export class ThreeSeedScene {
     this.#renderer.setClearColor(0x000000, 0);
     this.#renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
     this.#renderer.outputColorSpace = T.SRGBColorSpace;
-    host.append(this.#renderer.domElement);
+    if (!this.sharedRenderer) host.append(this.#renderer.domElement);
 
     this.#scene = new T.Scene();
     this.#camera = new T.PerspectiveCamera(SEED_CAMERA.fov, 1, 0.1, 30);
@@ -304,7 +305,7 @@ export class ThreeSeedScene {
 
   resize(width, height) {
     if (!width || !height) return;
-    this.#renderer.setSize(width, height, false);
+    if(!this.sharedRenderer||this.#renderer.domElement.parentElement===this.#host)this.#renderer.setSize(width, height, false);
     this.#camera.aspect = width / height;
     this.width = width; this.height = height;
     this.#camera.updateProjectionMatrix();
@@ -391,8 +392,6 @@ export class ThreeSeedScene {
   destroy() {
     if (this.#ownsInteraction) this.#interaction.disconnect();
     this.#disposeObjects(this.#scene);
-    this.#renderer?.dispose();
-    this.#renderer?.forceContextLoss();
-    this.#renderer?.domElement.remove();
+    if (!this.sharedRenderer) { this.#renderer?.dispose(); this.#renderer?.forceContextLoss(); this.#renderer?.domElement.remove(); }
   }
 }

@@ -1,7 +1,7 @@
 import { energyAt, energyCapacityForStage } from '../economy/energy.js';
 import { neuralSeedRecords } from '../brain/neural-seed-state.js';
 import { STAGES } from '../preview/evolution-model.js';
-import { DAY, normalize, newMindling, eligibility, evolve, upgradeGrowth } from '../preview/sandbox/engine.js';
+import { DAY, normalize, newMindling, reconcileEvolution, upgradeGrowth } from '../preview/sandbox/engine.js';
 import { advancePreviewLife, upgradePreviewLife, condition } from '../preview/sandbox/life.js';
 
 const time = (value, fallback) => Number.isFinite(value) ? value : Number.isFinite(Date.parse(value)) ? Date.parse(value) : fallback;
@@ -81,7 +81,7 @@ export function advanceGameplay(input, now = Date.now()) {
   return advancePreviewLife(state);
 }
 
-export function progressGameplay(state) { return eligibility(state).eligible ? evolve(state) : state; }
+export const progressGameplay = reconcileEvolution;
 
 export function createGameplayMindling(state, draft, identity) {
   if (state.mind && state.mind.life.lifeState !== 'DECEASED') throw Error('A living Mindling cannot be replaced.');

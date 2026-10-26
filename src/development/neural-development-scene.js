@@ -15,7 +15,7 @@ export class NeuralDevelopmentScene {
       if(['+','=','-','0'].includes(event.key)){event.preventDefault();this.control(event.key==='0'?'reset':event.key==='-'?'out':'in');}
     },{signal:this.abort.signal});
   }
-  update(data){this.renderer.deceased=data.deceased;this.renderer.update({nodes:data.nodes,synapses:data.edges});this.renderer.setReducedMotion(this.renderer.motion.matches||data.deceased);}
+  update(data){this.renderer.deceased=data.deceased;this.renderer.update({nodes:data.nodes,synapses:data.edges,stage:data.stageNumber});this.renderer.setReducedMotion(this.renderer.motion.matches||data.deceased);}
   setVisible(value){if(value&&!this.started){this.started=true;this.renderer.initialize(this.renderer.model).catch(()=>{if(!this.abort.signal.aborted)this.host.dataset.brainError='unavailable';});}this.renderer.setVisible(value);}
   activate(ids){this.renderer.activate(ids);}
   select(id){const selection=id?{type:'neuron',id}:null;this.selection=selection;this.selected=id;this.renderer.setSelection(selection);this.onSelect?.(selection);}
