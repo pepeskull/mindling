@@ -31,7 +31,7 @@ export class Dashboard {
 
   constructor(events, { onInput, onCare, onNewMindling, onViewChange, trainingStore, readOnly = false } = {}) {
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"));
-    this.#development = new DevelopmentView(document.querySelector("#development-view"), { trainingStore });
+    this.#development = new DevelopmentView(document.querySelector("#development-view"), { trainingStore, events });
     this.#onViewChange = onViewChange;
     this.#readOnly = readOnly;
     this.#events = events;
