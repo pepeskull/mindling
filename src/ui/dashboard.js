@@ -1,3 +1,4 @@
+import { DevelopmentView } from '../development/development-view.js';
 import { NeuralMemoryView } from '../memory/neural-memory-view.js';
 import { energyLabel } from '../economy/energy.js';
 import { EVENTS } from "../app/events.js";
@@ -11,6 +12,8 @@ import { previewWarning } from '../preview/sandbox/life.js';
 export class Dashboard {
   #unsubscribe;
   #memoryMap;
+  #development;
+  #onViewChange;
   #readOnly = false;
   #listeners = new AbortController();
   #messageTimer;
@@ -28,8 +31,10 @@ export class Dashboard {
   #eventUnsubscribes = [];
   #knowledgeDevelopment = { overall: 0, areas: [] };
 
-  constructor(events, { onInput, onCare, onNewMindling, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, readOnly = false } = {}) {
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"));
+    this.#development = new DevelopmentView(document.querySelector("#development-view"));
+    this.#onViewChange = onViewChange;
     this.#readOnly = readOnly;
     this.#events = events;
     this.#onInput = onInput;
@@ -53,6 +58,7 @@ export class Dashboard {
       document.querySelectorAll("[data-care]").forEach(button => this.#listen(button, "click", () => this.#care(button.dataset.care)));
       this.#listen(document.querySelector("[data-new-mindling]"), "click", () => { if (confirm("Preserve this memorial and begin raising a new Mindling?")) this.#onNewMindling(); });
     }
+    this.#listen(document.querySelector("[data-view='development']"), "click", () => this.#setPrimaryView("development"));
     this.#listen(document.querySelector("[data-view='memories']"), "click", () => this.#setPrimaryView("memories"));
     this.#listen(document.querySelector("[data-view='dashboard']"), "click", event => { event.preventDefault(); this.#setPrimaryView("dashboard"); });
     this.#listen(document.querySelector("[data-close-network]"), "click", () => { document.querySelector("#network-view").hidden = true; });
@@ -78,6 +84,7 @@ export class Dashboard {
     document.querySelector('.hero-copy h1').textContent = snapshot.status === 'empty' ? 'No saved Mindling' : 'Saved data unavailable';
     document.querySelector('.pathways-copy').textContent = 'No saved pathways available.';
     this.#memoryMap.update({memories:[]});
+    this.#development.update({});
     document.querySelector('.stages .current small').textContent = snapshot.state ? 'Saved' : 'Preview';
     if (snapshot.state) this.render(snapshot.state);
     if (snapshot.life) {
@@ -126,15 +133,20 @@ export class Dashboard {
 
   #renderMemoryDevelopment() {
     this.#memoryMap.update(this.#state);
+    this.#development.update(this.#state, this.#life);
   }
 
   #setPrimaryView(view) {
-    const memory = view === "memories";
+    const memory = view === "memories", development = view === "development";
+    document.querySelector("#development-view").hidden = !development;
+    this.#development.setVisible(development);
+    document.querySelector("#app").classList.toggle("development-mode", development);
     document.querySelector("#memory-view").hidden = !memory;
     this.#memoryMap.setVisible(memory);
     document.querySelector("#app").classList.toggle("memory-mode", memory);
-    document.querySelectorAll("[data-view]").forEach(item => { const active = item.dataset.view === view; item.classList.toggle("active", active); if (item.matches("a")) item.toggleAttribute("aria-current", active); });
+    document.querySelectorAll("[data-view]").forEach(item => { const active = item.dataset.view === view; item.classList.toggle("active", active); if (active) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
     document.querySelectorAll("[data-mobile-view]").forEach(item => item.classList.toggle("active", item.dataset.mobileView === (memory ? "memories" : "dashboard")));
+    this.#onViewChange?.(view);
   }
 
   #openMobileView(view) {
@@ -176,6 +188,7 @@ export class Dashboard {
 
   #renderLife(life, now = Date.now()) {
     this.#life = life;
+    this.#development.update(this.#state || {}, life);
     const cycles = neuralCycles(life.birthTimestamp, now, life.deathTimestamp);
     document.querySelector("[data-neural-cycle]").textContent = `NC ${String(cycles).padStart(4, "0")}`;
     document.querySelector("[data-neural-cycles]").textContent = `${cycles} Neural ${cycles === 1 ? "Cycle" : "Cycles"}`;
@@ -246,6 +259,7 @@ export class Dashboard {
     this.#listeners.abort();
     this.#setPrimaryView("dashboard");
     this.#memoryMap.destroy();
+    this.#development.destroy();
     this.#unsubscribe?.();
     this.#selectionUnsubscribe?.();
     this.#eventUnsubscribes.forEach(unsubscribe => unsubscribe());

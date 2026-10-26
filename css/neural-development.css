@@ -1,0 +1,79 @@
+/* Dashboard tokens and glass treatment, scoped to the new desktop workspace. */
+.development-view {
+  position: absolute; z-index: 6; inset: var(--top-height) 0 30px;
+  padding: 20px clamp(20px, 3.2vw, 60px) 16px;
+  display: flex; flex-direction: column; gap: 18px; min-width: 0; min-height: 0;
+  color: var(--text-primary); font-family: var(--font);
+}
+.development-view[hidden] { display: none; }
+.development-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; flex: none; }
+.development-eyebrow { margin: 0 0 9px; color: var(--text-muted); font-size: 8px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
+.development-view h2 { margin: 0; font-size: clamp(23px, 2vw, 30px); font-weight: 430; letter-spacing: -.035em; }
+.development-heading > span { padding: 8px 12px; border: 1px solid var(--border-subtle); border-radius: 100px; color: var(--accent); font-size: 10px; }
+.development-grid { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 58fr) minmax(0, 27fr) minmax(160px, 19fr); gap: 16px; }
+.development-panel { min-height: 0; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius); background: linear-gradient(135deg, rgba(16,18,20,.67), rgba(6,7,8,.55)); backdrop-filter: blur(22px) saturate(115%); -webkit-backdrop-filter: blur(22px) saturate(115%); overflow: auto; scrollbar-width: thin; }
+.development-panel-heading { padding: 20px 18px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
+.development-view h3 { margin: 0; color: var(--text-primary); font-size: 16px; font-weight: 430; letter-spacing: -.025em; }
+.development-view h4 { margin: 22px 0 12px; font-size: 10px; font-weight: 500; color: var(--text-primary); }
+.development-presence { color: var(--text-muted); font-size: 8px; }
+.development-evolution { display: flex; flex-direction: column; }
+.development-scene { flex: 1 0 180px; min-height: 180px; position: relative; cursor: grab; touch-action: none; }
+.development-scene.dragging { cursor: grabbing; }
+.development-scene canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+.development-scene-controls { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; margin: 0 16px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 9px; flex: none; }
+.development-view button, .development-view select { font: inherit; font-size: 9px; border-radius: 6px; border: 1px solid var(--border-subtle); background: rgba(255,255,255,.025); color: var(--text-secondary); padding: 7px 9px; transition: color .18s, background .18s, border-color .18s; }
+.development-view button { cursor: pointer; }
+.development-view button:hover:enabled, .development-view select:hover:enabled { border-color: var(--border-hover); color: var(--text-primary); background: rgba(255,255,255,.07); }
+.development-view button:active:enabled { background: var(--accent-muted); }
+.development-view :disabled { opacity: .4; cursor: default; }
+.development-view :is(button,select,[tabindex]):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
+.development-view select { min-width: 0; max-width: 130px; }
+.development-view option { background: var(--surface-deep); color: var(--text-primary); }
+.development-scene-controls label { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 8px; }
+.development-selection { min-height: 26px; padding: 0 18px; margin: 12px 0 0; font-size: 10px; line-height: 1.6; color: var(--text-secondary); flex: none; }
+.development-brain-stats { display: flex; flex-wrap: wrap; gap: 30px; padding: 18px; border-top: 1px solid var(--border-subtle); flex: none; }
+.development-brain-stats > div { display: flex; flex-direction: column; gap: 6px; }
+.development-brain-stats strong { font-size: 25px; font-weight: 430; letter-spacing: -.03em; }
+.development-brain-stats span { font-size: 9px; color: var(--text-muted); }
+.development-caption { margin: 0; padding: 0 18px 16px; color: var(--text-muted); font-size: 8px; line-height: 1.7; flex: none; }
+.development-panel-body { padding: 0 18px 18px; overflow-wrap: anywhere; }
+.development-metrics { margin: 0; }
+.development-metrics > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
+.development-metrics dt { font-size: 10px; color: var(--text-secondary); }
+.development-metrics dd { margin: 0; font-size: 18px; font-weight: 430; font-variant-numeric: tabular-nums; }
+.development-view p { line-height: 1.7; }
+.development-view .development-muted { color: var(--text-muted); font-size: 9px; }
+.development-xp > p { color: var(--text-secondary); font-size: 10px; }
+.development-xp progress { display: block; width: 100%; height: 4px; border: 0; background: var(--border-subtle); accent-color: var(--accent); }
+.development-xp progress::-webkit-progress-bar { background: var(--border-subtle); border-radius: 4px; }
+.development-xp progress::-webkit-progress-value { background: var(--accent); border-radius: 4px; transition: width .6s ease; }
+.development-xp progress::-moz-progress-bar { background: var(--accent); border-radius: 4px; }
+.development-chart svg { display: block; width: 100%; max-width: 100%; height: auto; }
+.development-chart text { font: 8px var(--font); fill: var(--text-muted); }
+.development-chart polyline { stroke-dasharray: 600; stroke-dashoffset: 0; animation: development-line-reveal .8s ease both; }
+.development-training { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-subtle); }
+.development-training h4 { margin-top: 0; line-height: 1.8; }
+.development-training h4 span { display: inline-block; margin-left: 5px; border: 1px solid var(--border-subtle); border-radius: 4px; padding: 1px 5px; color: var(--text-muted); font-size: 8px; }
+.development-training > p:not(.development-eyebrow) { color: var(--text-secondary); font-size: 9px; }
+.development-pathways h4:first-child { margin-top: 0; }
+.development-pathway-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.development-pathway-list > span { padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--accent); background: var(--accent-muted); font-size: 9px; }
+.development-areas, .development-events { margin: 0; padding: 0; list-style: none; }
+.development-areas li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; color: var(--text-secondary); font-size: 9px; border-bottom: 1px solid var(--border-subtle); }
+.development-areas strong { font-weight: 500; color: var(--accent); }
+.development-events li { position: relative; padding: 0 0 18px 12px; border-left: 1px solid var(--border-subtle); }
+.development-events li::before { content: ''; position: absolute; left: -2px; top: 4px; width: 3px; height: 3px; border-radius: 50%; background: var(--accent); }
+.development-events :is(time,span) { display: block; font-size: 8px; color: var(--text-muted); }
+.development-events strong { display: block; margin-top: 5px; font-size: 9px; font-weight: 500; color: var(--text-secondary); }
+.development-events p { font-size: 9px; color: var(--text-secondary); margin: 5px 0; }
+.development-mode .scene, .development-mode .scene-vignette, .development-mode .dashboard { visibility: hidden; pointer-events: none; }
+@keyframes development-line-reveal { from { stroke-dashoffset: 600; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .development-view *, .development-view *::before { animation: none; transition: none; } }
+
+.development-heading > div, .development-panel-heading > div { min-width: 0; overflow-wrap: anywhere; }
+.development-grid > section { max-width: 100%; }
+
+.development-network-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; pointer-events: none; }
+.development-network-empty[hidden] { display: none; }
+.development-network-empty p { margin: 0 0 10px; color: var(--text-secondary); font-size: 16px; font-weight: 430; }
+.development-network-empty span { color: var(--text-muted); font-size: 10px; }
