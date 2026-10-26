@@ -75,7 +75,7 @@ export class DevelopmentView {
     select.disabled = !data.nodes.length; this.showSelection(this.scene.selection);
     this.root.querySelector('[data-development-scene-note]').textContent = !data.neuronCount ? 'No saved neural network yet. Your Mindling’s network will appear here.' : data.unplottedNodes || data.unplottedEdges ? `${data.unplottedNodes} neurons lack saved positions; ${data.unplottedEdges} connections cannot be drawn. Totals preserve all identified records.` : 'Drag to rotate · Scroll to zoom. Ambient pulses are decorative, not learning events.';
     const metrics = this.root.querySelector('[data-development-metrics]'); metrics.replaceChildren();
-    for (const [label, count] of [['Current memories', data.currentMemories], ['Knowledge areas', data.areaCount], ['Lifetime XP', data.lifetimeXP], ['Stage milestones', data.milestones]]) { const row = element('div'); row.append(element('dt', label), element('dd', value(count))); metrics.append(row); }
+    for (const [label, count] of [['Energy', data.energyText], ['Current memories', data.currentMemories], ['Knowledge areas', data.areaCount], ['Lifetime XP', data.lifetimeXP], ['Stage milestones', data.milestones]]) { const row = element('div'); row.append(element('dt', label), element('dd', value(count))); metrics.append(row); }
     const xp = this.root.querySelector('[data-development-xp]'); xp.replaceChildren(element('h4', 'Stage progression'));
     if (data.stageXP !== null && data.targetXP !== null) {
       xp.append(element('p', `${value(data.stageXP)} / ${value(data.targetXP)} stage XP`));

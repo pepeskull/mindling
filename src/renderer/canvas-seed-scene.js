@@ -104,7 +104,7 @@ export class CanvasSeedScene {
   #projectNodes(elapsed) {
     const centerX = this.#width / 2;
     const centerY = this.#height * (this.framing ? .5 : .52);
-    const fit = this.framing ? previewFraming(this.#width, this.#height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom) : null;
+    const fit = this.framing && (this.framing.active?.()??true) ? previewFraming(this.#width, this.#height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom) : null;
     const scale = fit ? fit.unit * fit.zoom : Math.min(this.#width, this.#height) * 0.18 * this.#interaction.zoom;
     const angle = this.#interaction.rotation.y;
 

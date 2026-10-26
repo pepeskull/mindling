@@ -195,6 +195,7 @@ export class Dashboard {
   renderEnergy(energy,now){
     const label=energyLabel(energy,now);
     document.querySelector('[data-energy-value]').textContent=label.value;
+    document.querySelector('[data-energy-progress]').max=label.maximum;
     document.querySelector('[data-energy-progress]').value=label.bar;
     document.querySelector('[data-energy-progress]').textContent=label.value;
     document.querySelector('[data-energy-reset]').textContent=label.text;

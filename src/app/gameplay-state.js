@@ -1,7 +1,7 @@
-import { energyAt } from '../economy/energy.js';
+import { energyAt, energyCapacityForStage } from '../economy/energy.js';
 import { neuralSeedRecords } from '../brain/neural-seed-state.js';
 import { STAGES } from '../preview/evolution-model.js';
-import { DAY, normalize, newMindling, eligibility, evolve } from '../preview/sandbox/engine.js';
+import { DAY, normalize, newMindling, eligibility, evolve, upgradeGrowth } from '../preview/sandbox/engine.js';
 import { advancePreviewLife, upgradePreviewLife, condition } from '../preview/sandbox/life.js';
 
 const time = (value, fallback) => Number.isFinite(value) ? value : Number.isFinite(Date.parse(value)) ? Date.parse(value) : fallback;
@@ -77,7 +77,7 @@ export function advanceGameplay(input, now = Date.now()) {
     m.life.lifeState = 'DECEASED'; m.life.deathAt = state.now;
     state.tombstones.push({ id: m.id, at: state.now, reason: m.life.attributes.health <= 0 ? 'PHYSIOLOGICAL_FAILURE' : 'NEURAL_COLLAPSE' });
   }
-  m.energy=energyAt(m.energy,state.now);
+  upgradeGrowth(m,state.now);
   return advancePreviewLife(state);
 }
 
@@ -100,6 +100,6 @@ export function dashboardLife(state) {
   return { ...life, id: 'primary', schemaVersion: 2, stage: m.stage, condition: condition(life),
     birthTimestamp: life.birthTimestamp || new Date(m.createdAt).toISOString(), lastSimulationAt: new Date(life.lastAt).toISOString(),
     deathTimestamp: life.deathAt == null ? null : new Date(life.deathAt).toISOString(),
-    energy: { ...m.energy, maximum:10 },
+    energy: { ...m.energy, maximum:energyCapacityForStage(m.stage) },
     careCooldowns: Object.fromEntries(Object.entries(life.care).map(([key, value]) => [key, value == null ? null : new Date(value).toISOString()])) };
 }

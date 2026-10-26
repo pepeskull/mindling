@@ -1,4 +1,4 @@
-import { energyAt, spendEnergy, ENERGY_MAX, ENERGY_INTERVAL } from '../economy/energy.js';
+import { energyAt, spendEnergy, ENERGY_MAX, ENERGY_INTERVAL, energyCapacityForStage } from '../economy/energy.js';
 export const DAY_MS = 86_400_000;
 const HOUR_MS = 3_600_000;
 
@@ -20,7 +20,7 @@ export const LIFE_RULES = Object.freeze({
   social: Object.freeze({ playerEnergyCost: 0, minimumWellbeingGain: 2, maximumWellbeingGain: 5, dailyGainCap: 10 })
 });
 
-export const ENERGY_RULES = Object.freeze({ maximum:ENERGY_MAX, interval:ENERGY_INTERVAL });
+export const ENERGY_RULES = Object.freeze({ maximum:ENERGY_MAX, capacityForStage:energyCapacityForStage, interval:ENERGY_INTERVAL });
 
 const clamp = value => Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
 const validTime = (value, fallback) => { const time = Date.parse(value); return Number.isFinite(time) ? time : fallback; };

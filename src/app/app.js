@@ -1,3 +1,4 @@
+import { energyCapacityForStage } from '../economy/energy.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../preview/automatic-playback.js';
 import { STAGES } from '../preview/evolution-model.js';
@@ -57,7 +58,7 @@ export class MindlingApp extends EvolutionPreview {
     this.energyTimer=setInterval(()=>{if(!this.external?.locked&&this.state?.mind){
       this.dashboard.renderEnergy(this.state.mind.energy,Date.now());
       const e=this.state.mind.energy;
-      if(e.version===2&&e.remaining-e.bonus<10&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
+      if(e.version===2&&e.remaining-e.bonus<energyCapacityForStage(this.state.mind.stage)&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
     }},1000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) this.refreshState(); }, { signal: this.listeners.signal });
   }

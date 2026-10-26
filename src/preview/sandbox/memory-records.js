@@ -4,20 +4,7 @@ import { normalize } from '../../learning/text.js';
 import { assignCategory } from '../../semantic/memory-intelligence.js';
 import { explicitMutableKind, atomicStatements } from './atomic-memory.js';
 
-// One existing formation/growth step per submission, even when several facts are saved.
-export function formationAssociations(mind) {
-  const foundation=mind.synapses[mind.memories.length%4];
-  foundation.strength=Math.min(1,foundation.strength+.05);foundation.activations++;
-  let nodeId=foundation.to,synapseId=foundation.id;
-  if(mind.stage>1){
-    nodeId=mind.nodes.length<64?`learned-${mind.nodes.length}`:mind.nodes[5+(mind.memories.length%59)].id;
-    if(mind.nodes.length<64)mind.nodes.push({id:nodeId,position:[0,0,0],size:.6});
-    const edge=mind.synapses.find(edge=>edge.to===nodeId);synapseId=edge?.id||`origin-${nodeId}`;
-    if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}
-    else mind.synapses.push({id:synapseId,from:'origin',to:nodeId,strength:.28,activations:1});
-  }
-  return {neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])]};
-}
+export { growCanonical as formationAssociations } from '../../brain/canonical-growth.js';
 export function serviceMetadata(decision,activity,at) {
   return {name:'mindling-learning-service',confidence:decision.confidence,verification:'unverified-player-claim',activity,learnedAt:at};
 }
