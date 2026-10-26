@@ -1,3 +1,4 @@
+import { LEARNING_INPUT_LIMIT } from '../memory/content-integrity.js';
 import { DevelopmentView } from '../development/development-view.js';
 import { NeuralMemoryView } from '../memory/neural-memory-view.js';
 import { energyLabel } from '../economy/energy.js';
@@ -214,6 +215,7 @@ export class Dashboard {
   async #submitInteraction(event) {
     event.preventDefault();
     const input = document.querySelector("#mindling-input");
+    if (input.value.length > LEARNING_INPUT_LIMIT) { this.#showStatus('Use at most 2,000 characters. Your text has not been submitted.'); return; }
     const text = input.value.trim();
     if (!text || this.#pending) return;
     this.#pending = true; const submit = this.#form.querySelector("button[type='submit']"); submit.disabled = true;

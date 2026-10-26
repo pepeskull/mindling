@@ -1,3 +1,4 @@
+import { capturedContent, sourceStatus } from '../../memory/content-integrity.js';
 import { normalize } from '../../learning/text.js';
 import { assignCategory } from '../../semantic/memory-intelligence.js';
 import { explicitMutableKind, atomicStatements } from './atomic-memory.js';
@@ -21,7 +22,7 @@ export function serviceMetadata(decision,activity,at) {
 }
 export function recordMemory(mind,{id,text,decision,event,at,associations}) {
   if(id.length>100||mind.memories.some(memory=>memory.id===id))throw Error('Memory identifier conflict. No Energy or XP changed.');
-  const memory={id,content:text,concept:decision.concept,normalized:normalize(text),normalizedConcept:normalize(decision.concept),createdAt:at,strength:.3,activations:1,
+  const memory={id,content:text,contentIntegrity:capturedContent(text),concept:decision.concept,normalized:normalize(text),normalizedConcept:normalize(decision.concept),createdAt:at,strength:.3,activations:1,
     neuronIds:[...associations.neuronIds],synapseIds:[...associations.synapseIds],relatedMemoryIds:[],source:'SERVICE',areaSuggestion:decision.category,
     analysis:serviceMetadata(decision,event.activity,at),submissionId:event.id,
     intelligence:{kind:decision.kind,certainty:decision.certainty,current:decision.kind!=='historical',verification:'unverified-player-claim',operation:decision.operation,relationship:decision.relationship}};
@@ -33,7 +34,7 @@ export function decomposeLegacy(mind,parent,at) {
   const ids=parts.map((_,index)=>parent.id.length<=96?`${parent.id}~${index}`:crypto.randomUUID());
   if(ids.some(id=>mind.memories.some(memory=>memory.id===id)))throw Error('Legacy component identifier conflict. No Energy or XP changed.');
   const children=parts.map((content,index)=>{
-    const child={...structuredClone(parent),id:ids[index],content,normalized:normalize(content),parentMemoryId:parent.id,valueHistory:[],
+    const child={...structuredClone(parent),id:ids[index],content,contentIntegrity:sourceStatus(parent)==='captured'?capturedContent(content):undefined,normalized:normalize(content),parentMemoryId:parent.id,valueHistory:[],
       relatedMemoryIds:[...new Set([...(parent.relatedMemoryIds||[]),parent.id,...ids.filter(id=>id!==ids[index])])],
       intelligence:{...parent.intelligence,kind:explicitMutableKind(content)||'claim',certainty:parent.intelligence?.certainty||'asserted',verification:'unverified-player-claim',current:true},
       reinforcementRevision:normalize(content),reinforcementVariants:[]};

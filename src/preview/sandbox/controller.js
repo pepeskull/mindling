@@ -1,3 +1,4 @@
+import { LEARNING_INPUT_LIMIT } from '../../memory/content-integrity.js';
 import { learningContext } from './learning-assessment.js';
 import { EvolutionPreview } from '../evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../automatic-playback.js';
@@ -86,9 +87,10 @@ export class SandboxPreview extends EvolutionPreview {
   }
   async submitLearning(){
     this.external?.assertWritable();
+    const text=document.querySelector('#mindling-input').value;
+    if(text.length>LEARNING_INPUT_LIMIT)throw Error('Use at most 2,000 characters. Your text has not been submitted.');
     await this.change(s=>s);
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
-    const text=document.querySelector('#mindling-input').value;
     const activity=this.activity;
     const id=crypto.randomUUID();
     const submittedContext=JSON.stringify(learningContext(text,m));

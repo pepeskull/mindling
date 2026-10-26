@@ -125,3 +125,7 @@
 }
 
 .memory-graph-stage canvas.memory-flow{pointer-events:none;z-index:1}
+
+.memory-inspector .inspector-memory-text{white-space:pre-wrap;max-height:28vh;overflow:auto;scrollbar-width:thin}
+.memory-inspector .memory-content-status{font-size:9px;color:var(--text-muted);line-height:1.7}
+.neural-memory-view .inspector-memory-text:focus-visible{outline:1px solid var(--accent);outline-offset:2px}

@@ -84,3 +84,7 @@ Manual provider verification can incur the disclosed model costs; no provider ca
 ## Validation performed
 
 Static syntax checks (`node --check`), relative-import existence checks, focused code review and `git diff --check` only. Automated tests, full Node suites and browser validation were intentionally not run at the user's request. No browser automation, screenshots, images, fixtures, build, deployment or dependency installation was performed. Runtime behavior, end-to-end evaluation quality and provider compatibility remain unverified.
+
+## M4.1.1 integrity clarification
+
+New requests use context version 2 to separate recorded source capture from excerpt shortening and distinguish missing linked records from targets outside context. Original version 1 evaluation snapshots remain valid/readable. The input clipping root cause, full lifecycle audit, exact metadata and manual verification are documented in [memory-integrity-audit.md](./memory-integrity-audit.md). Selected context and directly cited premises are now explicit inputs to evaluation; they are not interchangeable evidence.

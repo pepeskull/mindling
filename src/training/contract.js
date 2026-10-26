@@ -10,17 +10,21 @@ const strict = properties => ({ type: 'object', additionalProperties: false, req
 const idArray = ids => ({ type: 'array', maxItems: 10, items: ids.length ? { type: 'string', enum: ids } : { type: 'string', maxLength: 0 } });
 
 export function validateContext(value) {
-  if (!object(value, ['version', 'problem', 'candidates', 'totalCurrent']) || value.version !== 1 || !text(value.problem, 2000) || !Array.isArray(value.candidates) || value.candidates.length < 1 || value.candidates.length > 24 || !Number.isSafeInteger(value.totalCurrent) || value.totalCurrent < value.candidates.length || value.totalCurrent > 100000) fail();
+  if (!object(value, ['version', 'problem', 'candidates', 'totalCurrent']) || ![1, 2].includes(value.version) || !text(value.problem, 2000) || !Array.isArray(value.candidates) || value.candidates.length < 1 || value.candidates.length > 24 || !Number.isSafeInteger(value.totalCurrent) || value.totalCurrent < value.candidates.length || value.totalCurrent > 100000) fail();
   const ids = new Set();
   for (const m of value.candidates) {
-    if (!object(m, ['id','content','complete','concept','topic','category','kind','certainty','verification','confidence','contradictions','conflictsComplete','omittedLinks','links','ranking']) || !text(m.id, 160) || ids.has(m.id) || !text(m.content, 900) || typeof m.complete !== 'boolean') fail();
+    if (!object(m, ['id','content','complete','concept','topic','category','kind','certainty','verification','confidence','contradictions','conflictsComplete','omittedLinks','links','ranking',...(value.version === 2 ? ['integrity'] : [])]) || !text(m.id, 160) || ids.has(m.id) || !text(m.content, 900) || typeof m.complete !== 'boolean') fail();
+    if (value.version === 2) {
+      const i = m.integrity;
+      if (!object(i, ['sourceStatus','sourceLength','excerptLength','excerptTruncated']) || !['captured','incomplete','unknown'].includes(i.sourceStatus) || !Number.isSafeInteger(i.sourceLength) || i.sourceLength < m.content.length || i.excerptLength !== m.content.length || typeof i.excerptTruncated !== 'boolean' || i.excerptTruncated !== (i.sourceLength > i.excerptLength) || m.complete !== !i.excerptTruncated) fail();
+    }
     ids.add(m.id);
     for (const [key, max] of [['concept',100],['topic',100],['category',80],['kind',40],['certainty',40],['verification',80]]) if (!text(m[key], max, true)) fail();
     if (m.confidence !== null && (!Number.isFinite(m.confidence) || m.confidence < 0 || m.confidence > 1)) fail();
     if (typeof m.conflictsComplete !== 'boolean' || !Number.isSafeInteger(m.omittedLinks) || m.omittedLinks < 0 || !strings(m.contradictions, 2, 300) || !Array.isArray(m.links) || m.links.length > 12 || !object(m.ranking, ['score', 'reasons']) || !Number.isFinite(m.ranking.score) || m.ranking.score < 0 || !strings(m.ranking.reasons, 3, 200)) fail();
-    for (const link of m.links) if (!object(link, ['id','kind','inContext']) || !text(link.id, 160) || !['association','co-submitted','part-of','history'].includes(link.kind) || typeof link.inContext !== 'boolean') fail();
+    for (const link of m.links) if (!object(link, ['id','kind','inContext',...(value.version === 2 ? ['availability'] : [])]) || !text(link.id, 160) || !['association','co-submitted','part-of','history'].includes(link.kind) || typeof link.inContext !== 'boolean' || value.version === 2 && !['available','historical','missing','unusable'].includes(link.availability)) fail();
   }
-  for (const m of value.candidates) for (const link of m.links) if (link.inContext !== ids.has(link.id) || link.id === m.id) fail();
+  for (const m of value.candidates) for (const link of m.links) if (link.inContext !== ids.has(link.id) || link.id === m.id || value.version === 2 && link.inContext && link.availability !== 'available') fail();
   return value;
 }
 export function selectionSchema(context) { return strict({ memoryIds: idArray(context.candidates.map(m => m.id)), explanation: boundedText(800) }); }
@@ -54,12 +58,14 @@ export function evaluationSchema(ids) {
   const criterion = strict({ status: { type: 'string', enum: ['met','not_met','unclear','not_applicable'] }, explanation: boundedText(600), memoryIds: idArray(ids) });
   return strict({ criteria: strict(Object.fromEntries(CRITERIA.map(key => [key, criterion]))), summary: boundedText(1600) });
 }
-export function validateEvaluation(value, memories) {
+export function validateEvaluation(value, memories, reasoning = null) {
   if (!object(value, ['criteria','summary']) || !object(value.criteria, CRITERIA) || !text(value.summary, 1600)) fail();
   const ids = new Set(memories.map(m => m.id));
   for (const key of CRITERIA) {
     const c = value.criteria[key];
     if (!object(c, ['status','explanation','memoryIds']) || !['met','not_met','unclear','not_applicable'].includes(c.status) || !text(c.explanation, 600) || !strings(c.memoryIds, 10, 160) || c.memoryIds.some(id => !ids.has(id)) || key === 'memoryUsage' && c.status === 'met' && !c.memoryIds.length || key === 'contradictions' && c.status === 'not_applicable' && memories.some(memory => memory.contradictions.length) || ['memoryUsage','logicalConsistency','uncertainty','explanation'].includes(key) && c.status === 'not_applicable') fail();
+    if (reasoning && c.status === 'met' && c.memoryIds.some(id => !reasoning.memoryIds.includes(id))) fail();
+    if (reasoning && key === 'memoryUsage' && c.status === 'met' && !c.memoryIds.some(id => reasoning.memoryIds.includes(id))) fail();
   }
   return value;
 }
@@ -76,7 +82,7 @@ export function validateResult(value, context) {
   if (!object(value, ['service','model','selection','reasoning','evaluation','outcome']) || value.service !== SERVICE || !text(value.model, 200)) fail();
   validateSelection(value.selection, context);
   const memories = context.candidates.filter(m => value.selection.memoryIds.includes(m.id));
-  validateReasoning(value.reasoning, memories); validateEvaluation(value.evaluation, memories);
+  validateReasoning(value.reasoning, memories); validateEvaluation(value.evaluation, memories, context.version === 2 ? value.reasoning : null);
   if (value.outcome !== evaluationOutcome(value.reasoning, value.evaluation)) fail();
   return value;
 }
