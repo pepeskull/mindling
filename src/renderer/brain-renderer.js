@@ -23,7 +23,7 @@ export class BrainRenderer {
   }
   mount(host, model) {
     this.host = host; this.model = canonicalBrain(model);
-    const framing = this.framing || (this.mode === 'development' ? { referenceHeight: () => this.host.clientHeight, radius: () => Math.max(1.5, ...this.model.nodes.map(node => Math.hypot(...node.position) + node.size * .7)) } : null);
+    const framing = this.framing || ({ active:()=>this.mode==='development'||this.model.nodes.length>5, referenceHeight: () => this.host.clientHeight, radius: () => Math.max(1.5, ...this.model.nodes.map(node => Math.hypot(...node.position) + node.size * .7)) });
     const create = () => this.three ? new ThreeSeedScene(this.three, this.onSelection, this.interaction, framing) : new CanvasSeedScene(this.onSelection, this.interaction, framing);
     this.view = create();
     try { this.view.mount(host, this.model); }

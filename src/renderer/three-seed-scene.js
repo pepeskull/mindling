@@ -318,7 +318,7 @@ export class ThreeSeedScene {
       this.#interaction.rotation.y + ambientTurn,
       0
     );
-    if (this.framing) {
+    if (this.framing && (this.framing.active?.()??true)) {
       const fit = previewFraming(this.width, this.height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom);
       // Orthographic preview camera shares Canvas pixel projection, avoiding an
       // additional portrait perspective shrink. The production camera is unchanged.
@@ -327,7 +327,10 @@ export class ThreeSeedScene {
       this.#camera.left = -this.width / (2 * fit.unit); this.#camera.right = -this.#camera.left;
       this.#camera.top = this.height / (2 * fit.unit); this.#camera.bottom = -this.#camera.top;
       this.#camera.updateProjectionMatrix(); this.#seedGroup.scale.setScalar(fit.zoom);
-    } else this.#seedGroup.scale.setScalar(SEED_CAMERA.scale * this.#interaction.zoom);
+    } else {
+      if(this.#camera.isOrthographicCamera){this.#camera=new this.#three.PerspectiveCamera(SEED_CAMERA.fov,this.width/this.height,.1,30);this.#camera.position.z=SEED_CAMERA.distance;}
+      this.#seedGroup.scale.setScalar(SEED_CAMERA.scale * this.#interaction.zoom);
+    }
 
     for (const object of this.#nodeMeshes) {
       const breath = this.#reducedMotion

@@ -1,3 +1,4 @@
+import { energyCapacityForStage } from '../../economy/energy.js';
 import { PATHWAYS, DEFAULT_ORIGINS } from '../../pathways/pathways.js';
 import { LEARNING_INPUT_LIMIT } from '../../memory/content-integrity.js';
 import { learningContext } from './learning-assessment.js';
@@ -64,7 +65,7 @@ export class SandboxPreview extends EvolutionPreview {
       if(this.external?.locked||this.busy||this.pendingMutations||!this.state.mind)return;
       const now=this.state.now+Math.max(0,Date.now()-this.state.wallAt),energy=this.state.mind.energy;
       this.dashboard.renderEnergy(energy,now);
-      if(now>=energy.updatedAt+720000&&energy.remaining-energy.bonus<10)this.change(s=>s).catch(error=>this.status(error.message));
+      if(now>=energy.updatedAt+720000&&energy.remaining-energy.bonus<energyCapacityForStage(this.state.mind.stage))this.change(s=>s).catch(error=>this.status(error.message));
     },1000);
     this.listen(document,'visibilitychange',()=>{if(!document.hidden&&!this.busy)this.change(s=>s).catch(error=>this.status(error.message));});
   }

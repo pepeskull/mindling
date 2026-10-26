@@ -26,7 +26,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
       // Legacy single-decision compound responses cannot duplicate an existing atomic value.
       const existing=mind.memories.find(memory=>!memory.supersededBy&&memory.intelligence?.current!==false&&normalize(memory.content)===normalize(text));
       if(existing){reinforceMemory(mind,existing,text,at);affected.add(existing.id);results.push('REINFORCE_EXISTING');continue;}
-      associations??=formationAssociations(mind);
+      associations??=formationAssociations(mind,event.id);
       const id=formed?`${event.id}:${item.statement}`:event.id;
       const memory=recordMemory(mind,{id,text,decision:d,event,at,associations});
       if(target){memory.relatedMemoryIds.push(target.id);target.relatedMemoryIds=[...new Set([...(target.relatedMemoryIds||[]),memory.id])];}
@@ -59,7 +59,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
   if(energy.remaining<cost)throw Error('Not enough Energy; wait for regeneration');
   const award=event.activity==='TALK'?0:updated?XP.correction:formed?XP.concept:0;
   const day=Math.floor(state.now/86400000),earned=state.mind.history.filter(entry=>entry.day===day).reduce((sum,entry)=>sum+entry.xp,0);
-  if(earned+award>XP.daily)throw Error('Daily XP limit reached');
+  if(award>0&&earned+award>XP.daily)throw Error('Daily XP limit reached');
   mind.energy=cost?spendEnergy(energy,cost,state.now):energy;
   if(cost){stimulatePreviewLife(mind.life,event.activity,state.now);mind.lastLearning=state.now;}
   mind.stageXP+=award;mind.lifetimeXP+=award;if(formed&&award)mind.milestones.push(formed.concept);

@@ -1,6 +1,8 @@
+import { growCanonical, repairCanonicalPositions } from '../../brain/canonical-growth.js';
+import { reclassifyPathwayEvidence } from '../../pathways/pathways.js';
 import { PATHWAYS, DEFAULT_ORIGINS, recordPathwayLearning } from '../../pathways/pathways.js';
 import { capturedContent } from '../../memory/content-integrity.js';
-import { energyAt, spendEnergy } from '../../economy/energy.js';
+import { energyAt, spendEnergy, setEnergyStage } from '../../economy/energy.js';
 import { analyzeNative } from '../../learning/native-learning.js';
 import { serviceLearningAnalysis } from './learning-assessment.js';
 import { normalize } from '../../learning/text.js';
@@ -13,8 +15,10 @@ import { LIFE_RULES } from '../../life/life-system.js';
 import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
 import { STAGES } from '../evolution-model.js';
 export const HOUR = 3600000, DAY = 24 * HOUR;
-export const RULES = Object.freeze([ [1,100,2], [2,300,4], [4,700,8], [7,1400,12], [10,2400,16], [14,3800,20], [0,0,0] ].map(([days,xp,concepts]) => Object.freeze({days,xp,concepts})));
-export const XP = Object.freeze({ concept:50, understanding:75, correction:60, daily:500 });
+export const RULES = Object.freeze([ [1,30,6], [2,50,10], [3,75,15], [4,100,20], [5,125,25], [7,150,30], [0,0,0] ].map(([days,xp,concepts]) => Object.freeze({days,xp,concepts})));
+export const XP = Object.freeze({ concept:5, understanding:12, correction:3, daily:100 });
+export function learningReward(kind,{independentlyVerified=false}={}){return kind==='understanding'?(independentlyVerified?XP.understanding:XP.concept):XP[kind]??0;}
+export function upgradeGrowth(mind,now){repairCanonicalPositions(mind,now);reclassifyPathwayEvidence(mind,now);mind.energy=setEnergyStage(mind.energy,mind.stage,now);}
 export class VirtualClock {
   constructor(now) { if (!Number.isSafeInteger(now) || now < 0) throw Error('Invalid virtual time'); this.now=now; }
   advance(hours) { if (![1,12,24,168].includes(hours)) throw Error('Unsupported time step'); this.now+=hours*HOUR; return this.now; }
@@ -36,14 +40,14 @@ export function newMindling(state,{name='Test Mindling',pathway=null,pathways=nu
 }
 export function eligibility(state) {
   const m=state.mind;if(!m)return {eligible:false,reason:'Create a test Mindling'};
-  const rule=RULES[m.stage-1], elapsed=Math.max(0,state.now-m.enteredAt), concepts=m.milestones.length;
+  const rule=RULES[m.stage-1], elapsed=Math.max(0,state.now-m.enteredAt), concepts=new Set(m.milestones).size;
   return {eligible:m.stage<7 && m.life.lifeState==='ALIVE' && elapsed>=rule.days*DAY && m.stageXP>=rule.xp && concepts>=rule.concepts,elapsed,required:rule,concepts};
 }
 export function evolve(state) {
   if(!eligibility(state).eligible)throw Error('Time, XP, learning milestones and a living Mindling are required');
   const next=structuredClone(state),m=next.mind;
-  m.stageHistory.push({stage:m.stage,enteredAt:m.enteredAt,leftAt:next.now,xp:m.stageXP,concepts:m.milestones.length});
-  m.stage++;m.enteredAt=next.now;m.stageXP=0;m.milestones=[];return next;
+  m.stageHistory.push({stage:m.stage,enteredAt:m.enteredAt,leftAt:next.now,xp:m.stageXP,concepts:new Set(m.milestones).size});
+  m.stage++;m.energy=setEnergyStage(m.energy,m.stage,next.now);m.enteredAt=next.now;m.stageXP=0;m.milestones=[];return next;
 }
 export function cosine(a,b) { if(!a?.length||!b?.length||a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return x&&y?dot/Math.sqrt(x*y):-1; }
 // Native analysis runs synchronously inside the caller's existing IndexedDB transaction.
@@ -54,26 +58,17 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   const a=assessment ? serviceLearningAnalysis(text,m,assessment) : analyzeNative(text,m);
   if(a.decision)return applyMemoryDecision(state,{id,text,mindId,activity},a.decision,{XP});
   if(a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
-  const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=XP[a.kind];
+  const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=learningReward(a.kind);
   if(earned+award>XP.daily)throw Error('Daily XP limit reached');
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
   const cost=LIFE_RULES.activity[activity].energyCost;
   const energy=energyAt(m.energy,state.now);if(energy.remaining<cost)throw Error('Not enough Energy; wait for regeneration');
   if(m.memories.length>=1000)throw Error('Sandbox memory capacity reached');
   const next=structuredClone(state),n=next.mind;stimulatePreviewLife(n.life,activity,next.now);n.energy=spendEnergy(energy,cost,next.now);n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);n.milestones.push(a.concept);
-  n.history.push({id,day,at:next.now,xp:award,kind:a.kind,source:a.service?'SERVICE':'NATIVE',concept:a.concept});
-  // Canonical growth is bounded and independent of the stage's representation count.
-  const foundation=n.synapses[n.memories.length%4];foundation.strength=Math.min(1,foundation.strength+.05);foundation.activations++;
-  let nodeId=foundation.to, synapseId=foundation.id;
-  // Learning in Neural Seed strengthens its original five-neuron/four-synapse circuit.
-  if(n.stage>1){
-    nodeId=n.nodes.length<64?`learned-${n.nodes.length}`:n.nodes[5+(n.memories.length%59)].id;
-    if(n.nodes.length<64)n.nodes.push({id:nodeId,position:[0,0,0],size:.6});
-    const edge=n.synapses.find(e=>e.to===nodeId);synapseId=edge?.id||`origin-${nodeId}`;
-    if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}else n.synapses.push({id:synapseId,from:'origin',to:nodeId,strength:.28,activations:1});
-  }
+  n.history.push({id,day,at:next.now,xp:award,kind:a.kind==='understanding'?'concept':a.kind,assessmentKind:a.kind,source:a.service?'SERVICE':'NATIVE',concept:a.concept});
+  const associations=growCanonical(n,id);
   const related=a.relatedMemoryIds.filter(id=>n.memories.some(memory=>memory.id===id&&!memory.supersededBy));
-  n.memories.push({id,content:a.memory,contentIntegrity:capturedContent(a.memory),concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
+  n.memories.push({id,content:a.memory,contentIntegrity:capturedContent(a.memory),concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:associations.neuronIds,synapseIds:associations.synapseIds,relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
   const memory=n.memories.at(-1);
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
   if(a.native)memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
@@ -122,7 +117,7 @@ export function talk(state,text,{id=crypto.randomUUID()}={}) {
   return next;
 }
 export function upgradeSandbox(input) {
-  const next=structuredClone(input);if(next.mind){upgradePreviewLife(next.mind.life);next.mind.energy=energyAt(next.mind.energy,next.now);}return next;
+  const next=structuredClone(input);if(next.mind){upgradePreviewLife(next.mind.life);upgradeGrowth(next.mind,next.now);}return next;
 }
 // Sandbox physiological time advances independently; wall time adds offline elapsed time
 // to that virtual clock, and debug time jumps remain confined to this database.
