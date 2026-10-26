@@ -1,3 +1,4 @@
+import { capturedContent } from '../../memory/content-integrity.js';
 import { energyAt, spendEnergy } from '../../economy/energy.js';
 import { analyzeNative } from '../../learning/native-learning.js';
 import { serviceLearningAnalysis } from './learning-assessment.js';
@@ -69,7 +70,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
     if(edge){edge.strength=Math.min(1,edge.strength+.08);edge.activations++;}else n.synapses.push({id:synapseId,from:'origin',to:nodeId,strength:.28,activations:1});
   }
   const related=a.relatedMemoryIds.filter(id=>n.memories.some(memory=>memory.id===id&&!memory.supersededBy));
-  n.memories.push({id,content:a.memory,concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
+  n.memories.push({id,content:a.memory,contentIntegrity:capturedContent(a.memory),concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:[...new Set(['origin',foundation.to,nodeId])],synapseIds:[...new Set([foundation.id,synapseId])],relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
   const memory=n.memories.at(-1);
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
   if(a.native)memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};

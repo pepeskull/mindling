@@ -105,7 +105,8 @@
         <img class="interaction-mark" src="./logo.png" alt="" width="17" height="17">
         <fieldset class="input-modes" aria-label="Input mode"><legend class="sr-only">Input mode</legend><button type="button" class="selected" data-input-mode="TALK" aria-pressed="true">Talk</button><button type="button" data-input-mode="TEACH" aria-pressed="false">Teach</button><button type="button" data-input-mode="DEEP_TRAINING" aria-pressed="false">Deep Training</button></fieldset>
         <label class="sr-only" for="mindling-input">Talk to or teach your Mindling</label>
-        <input id="mindling-input" maxlength="140" autocomplete="off" placeholder="Talk to your Mindling...">
+        <span id="mindling-input-limit" class="sr-only">Maximum 2,000 characters. Longer input is rejected without shortening.</span>
+        <input id="mindling-input" aria-describedby="mindling-input-limit" autocomplete="off" placeholder="Talk to your Mindling...">
         <span class="interaction-status" role="status" aria-live="polite"></span>
         <button type="submit" aria-label="Send message">
           <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m4 10 11-5-3 10-2-4-6-1Z"/></svg>

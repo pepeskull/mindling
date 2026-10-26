@@ -1,3 +1,4 @@
+import { excerptDescription } from '../memory/content-integrity.js';
 import { trainingContext, assertTrainingContext } from './retrieval.js';
 import { CRITERIA, validateContext, validateResult } from './contract.js';
 
@@ -121,15 +122,17 @@ export class TrainingPanel {
     host.append(node('h5', 'Referenced memories'));
     for (const memoryId of reasoning.memoryIds) {
       const memory = record.context.candidates.find(item => item.id === memoryId), current = this.state?.memories?.find(item => item.id === memoryId);
-      host.append(node('p', memory.content));
+      host.append(node('p', memory.content), node('p', excerptDescription(memory), 'development-muted'));
       host.append(node('p', `${memoryId}${!current ? ' · no longer available in this Mindling' : current.supersededBy || current.intelligence?.current === false ? ' · historical or superseded since evaluation' : (typeof current.content !== 'string' || current.content.trim() !== memory.content) && memory.complete ? ' · content changed since evaluation' : ''}`, 'development-muted'));
     }
     if (!reasoning.memoryIds.length) host.append(node('p', 'No memories were cited.'));
     host.append(node('h5', 'Evaluation criteria'), node('p', evaluation.summary));
-    for (const key of CRITERIA) { const c = evaluation.criteria[key]; host.append(node('h6', `${labels[key]} — ${labels[c.status]}`), node('p', c.explanation)); if (c.memoryIds.length) host.append(node('p', `Evidence: ${c.memoryIds.join(', ')}`, 'development-muted')); }
+    for (const key of CRITERIA) { const c = evaluation.criteria[key]; host.append(node('h6', `${labels[key]} — ${labels[c.status]}`), node('p', c.explanation)); if (c.memoryIds.length) host.append(node('p', `Criterion evidence: ${c.memoryIds.map(id => `${id} (${reasoning.memoryIds.includes(id) ? 'cited by reasoning' : 'selected but not cited by reasoning'})`).join(', ')}`, 'development-muted')); }
     const audit = node('details'); audit.append(node('summary', 'Retrieval and evaluation method'));
     audit.append(node('p', selection.explanation), node('p', `${record.context.candidates.length} candidates from ${record.context.totalCurrent} current records; ${selection.memoryIds.length} selected semantically. Candidate search is bounded and may miss relevant knowledge. Only saved ID relationships were supplied; relationships do not establish truth.`));
-    for (const memory of record.context.candidates) audit.append(node('p', `${memory.id}: ${memory.ranking.reasons.join('; ')}${memory.complete ? '' : '; content truncated'}${memory.contradictions.length ? '; recorded conflicts supplied' : ''}${memory.conflictsComplete ? '' : '; conflict context is incomplete'}${memory.omittedLinks ? `; ${memory.omittedLinks} links omitted` : ''}`));
+    for (const memory of record.context.candidates) audit.append(node('p', `${memory.id}: ${memory.ranking.reasons.join('; ')}; ${excerptDescription(memory)}${memory.contradictions.length ? '; recorded conflicts supplied' : ''}${memory.conflictsComplete ? '' : '; conflict context is incomplete'}${memory.omittedLinks ? `; ${memory.omittedLinks} links omitted` : ''}`));
+    for (const id of selection.memoryIds.filter(id => !reasoning.memoryIds.includes(id))) audit.append(node('p', `Selected but not cited by reasoning: ${id}. This is context for review, not a quoted premise of the answer.`));
+    for (const memory of record.context.candidates) for (const link of memory.links) if (!link.inContext) audit.append(node('p', `${memory.id} → ${link.id}: ${link.availability || 'outside context'} saved ${link.kind} reference; target content was not supplied and is not evidence.`));
     audit.append(node('p', 'Outcome rule: insufficient information or no references → inconclusive; failed memory usage/logical consistency → unsupported; other failed criteria → partially supported; unclear criteria → inconclusive; otherwise supported. Same-provider model review is fallible and is not independent verification.')); host.append(audit);
   }
   destroy() { this.cancel(); this.abort.abort(); this.state = null; this.history = null; this.currentRecord = null; this.host.replaceChildren(); }

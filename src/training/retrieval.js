@@ -1,7 +1,8 @@
+import { sourceStatus } from '../memory/content-integrity.js';
 import { graphData } from '../memory/graph-data.js';
 import { features, overlap } from '../learning/text.js';
 
-export const RETRIEVAL_VERSION = 1;
+export const RETRIEVAL_VERSION = 2;
 export const MAX_CANDIDATES = 24;
 const clean = (value, limit) => typeof value === 'string' ? value.trim().slice(0, limit).trim() : '';
 const list = value => Array.isArray(value) ? value : [];
@@ -35,15 +36,28 @@ export function trainingContext(problem, state) {
   for (const item of ranked) if (!seenAreas.has(item.node.areaId)) { add(item); seenAreas.add(item.node.areaId); if (chosen.size >= 21) break; }
   for (const item of ranked) add(item);
   const selected = new Set([...chosen.values()].map(item => item.node.id));
+  const allStored = new Map(graph.memories.map(memory => [memory.recordId, memory]));
   const candidates = [...chosen.values()].map(({ node, score, reasons }) => {
     const m = node.raw;
     const storedConflicts = list(m.contradictions).filter(item => typeof item?.claim === 'string' && item.claim.trim());
-    const allLinks = graph.edges.filter(edge => edge.kind !== 'hierarchy' && (edge.from === node.id || edge.to === node.id))
-      .map(edge => ({ id: byNode.get(edge.from === node.id ? edge.to : edge.from)?.recordId, kind: edge.kind, inContext: selected.has(edge.from === node.id ? edge.to : edge.from) }))
-      .filter(link => link.id && byId.has(link.id)).sort((a, b) => compare(a.id + a.kind, b.id + b.kind));
+    const linkMap = new Map();
+    const addLink = (id, kind) => {
+      if (typeof id !== 'string' || !id || id.length > 160 || id !== id.trim() || id === node.recordId) return;
+      const target = allStored.get(id);
+      const availability = !target ? 'missing' : target.historical ? 'historical' : byId.has(id) ? 'available' : 'unusable';
+      linkMap.set(`${kind}:${id}`, { id, kind, availability, inContext: availability === 'available' && selected.has(target.id) });
+    };
+    for (const edge of graph.edges) if (edge.kind !== 'hierarchy' && (edge.from === node.id || edge.to === node.id)) addLink(byNode.get(edge.from === node.id ? edge.to : edge.from)?.recordId, edge.kind);
+    // graphData safely omits dangling references; expose their saved IDs here
+    // without inventing target content or considering them established premises.
+    for (const [field, kind] of [['relatedMemoryIds','association'],['coSubmittedMemoryIds','co-submitted'],['componentMemoryIds','part-of'],['supersededByIds','history']]) for (const id of list(m[field])) addLink(id, kind);
+    if (m.parentMemoryId) addLink(m.parentMemoryId, 'part-of');
+    if (m.supersededBy) addLink(m.supersededBy, 'history');
+    const allLinks = [...linkMap.values()].sort((a, b) => Number(b.inContext) - Number(a.inContext) || compare(a.id + a.kind, b.id + b.kind));
     const links = allLinks.slice(0, 12);
     const content = clean(m.content, 900);
     return { id: node.recordId, content, complete: m.content.trim() === content,
+      integrity: { sourceStatus: sourceStatus(m), sourceLength: m.content.trim().length, excerptLength: content.length, excerptTruncated: m.content.trim() !== content },
       concept: clean(m.concept, 100), topic: clean(m.topic, 100), category: clean(m.category || m.areaSuggestion, 80),
       kind: clean(m.intelligence?.kind || m.kind || 'claim', 40), certainty: clean(m.intelligence?.certainty || 'Not recorded', 40),
       verification: clean(m.intelligence?.verification || m.analysis?.verification || m.native?.verification || m.verification || 'unverified-player-claim', 80),
@@ -56,7 +70,7 @@ export function trainingContext(problem, state) {
   // Bound actual UTF-8 request size too, including long IDs and non-ASCII text.
   while (candidates.length > 1 && new TextEncoder().encode(JSON.stringify(context)).length > 56000) candidates.pop();
   const included = new Set(candidates.map(memory => memory.id));
-  for (const memory of candidates) for (const link of memory.links) link.inContext = included.has(link.id);
+  for (const memory of candidates) for (const link of memory.links) link.inContext = link.availability === 'available' && included.has(link.id);
   return context;
 }
 

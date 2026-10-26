@@ -1,3 +1,4 @@
+import { capturedContent } from '../../memory/content-integrity.js';
 import { energyAt, spendEnergy } from '../../economy/energy.js';
 import { LIFE_RULES } from '../../life/life-system.js';
 import { stimulatePreviewLife } from './life.js';
@@ -37,7 +38,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
       if(normalize(prior)===normalize(content)||(beforeValue&&afterValue&&beforeValue===afterValue)){reinforceMemory(mind,target,content,at);affected.add(target.id);results.push('REINFORCE_EXISTING');continue;}
       if(selection.parts.length>1)target=decomposeLegacy(mind,target,at)[selection.index];
       target.valueHistory=[...(target.valueHistory||[]),{content:target.content,concept:target.concept,category:target.category,categoryId:target.categoryId,topic:target.topic,intelligence:target.intelligence||null,native:target.native||null,analysis:target.analysis||null,source:target.source||null,at:target.updatedAt||target.createdAt,eventId:event.id}];
-      Object.assign(target,{content,normalized:normalize(content),concept:d.concept,normalizedConcept:normalize(d.concept),updatedAt:at,source:'SERVICE',analysis:serviceMetadata(d,event.activity,at),
+      Object.assign(target,{content,contentIntegrity:capturedContent(content),normalized:normalize(content),concept:d.concept,normalizedConcept:normalize(d.concept),updatedAt:at,source:'SERVICE',analysis:serviceMetadata(d,event.activity,at),
         intelligence:{kind:d.kind,certainty:d.certainty,current:true,verification:'unverified-player-claim',operation,relationship:d.relationship}});
       assignCategory(mind,target,d);delete target.native;
       changed=true;updated=true;affected.add(target.id);
