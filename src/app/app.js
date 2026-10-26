@@ -43,7 +43,6 @@ export class MindlingApp extends EvolutionPreview {
     document.querySelector('#app').classList.add('gameplay-mode');
     await super.start();
     if (this.disposed) return;
-    this.subtitle = document.querySelector('.hero-copy span'); this.subtitle?.remove();
     this.dashboard.setStorageStatus(true);
     this.interaction.connect(this.host, {
       onTap: event => {
@@ -106,7 +105,7 @@ export class MindlingApp extends EvolutionPreview {
         const event = this.state.mind.history.find(item => item.id === id);
         const memory = this.state.mind.memories.find(item => item.id === (event?.memoryId || id));
         const edge = this.state.mind.synapses.find(item => item.id === memory?.synapseIds?.[0]);
-        if (edge) this.seed.signal({source:edge.from,destination:edge.to,synapse:edge.id,outcome:event?.kind==='reinforcement'?'REINFORCEMENT':'MEMORY_FORMATION'});
+        if (edge) this.seed.signal({entry:false,source:edge.from,destination:edge.to,synapse:edge.id,outcome:event?.kind==='reinforcement'?'REINFORCEMENT':'MEMORY_FORMATION'});
         return {accepted:true,message:event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned locally; the claim is stored as player-provided and is not fact-checked.'};
       }
       const recalled = this.state.mind.nativeRecall?.memoryIds || [];
@@ -156,8 +155,6 @@ export class MindlingApp extends EvolutionPreview {
     this.seed.update({ nodes: m.nodes, synapses: m.synapses, stage:m.stage });
     this.dashboard.render({...dashboardState(m),developmentNow:this.state.now});
     this.events.emit(EVENTS.LIFE_UPDATED, dashboardLife(this.state));
-    document.querySelector('.hero-copy h1').textContent = `${m.name} ${this.deceased ? '— Neural Collapse' : 'is learning.'}`;
-    document.querySelector('.hero-copy p').textContent = `${STAGES[m.stage - 1].name} · Stage ${String(m.stage).padStart(2, '0')}`;
     document.querySelectorAll('.stages li').forEach((row, index) => {
       const current = index + 1 === m.stage;
       row.classList.toggle('current', current); row.classList.toggle('completed', index + 1 < m.stage);
@@ -179,6 +176,5 @@ export class MindlingApp extends EvolutionPreview {
     clearInterval(this.lifeTimer);clearInterval(this.energyTimer); this.listeners.abort(); this.stabilityRow?.remove();
     this.cognition.destroy();this.onboarding?.hide(); this.db.close(); document.querySelector('#app')?.classList.remove('gameplay-mode');
     super.destroy();
-    if (this.subtitle) document.querySelector('.hero-copy').append(this.subtitle);
   }
 }

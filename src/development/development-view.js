@@ -14,17 +14,13 @@ export class DevelopmentView {
       <div class="development-grid">
         <section class="development-evolution development-panel" aria-labelledby="evolution-title">
           <div class="development-panel-heading"><div><p class="development-eyebrow">01 / NEURAL EVOLUTION</p><h3 id="evolution-title" data-development-name>Your Mindling</h3></div><span class="development-presence" data-development-presence>Living architecture</span></div>
-          <div class="development-scene" tabindex="0" role="img" aria-label="Mindling neural development"><div class="development-network-empty" hidden><p>A network waiting to grow.</p><span>No saved neurons are available yet.</span></div></div>
-        </section>
-        <section class="development-cognition development-panel" aria-labelledby="cognition-title">
-          <div class="development-panel-heading"><div><p class="development-eyebrow">02 / PROGRESSION</p><h3 id="cognition-title">Cognitive Development</h3></div></div>
-          <div class="development-panel-body">
-            <dl class="development-metrics" data-development-metrics></dl>
-            <div class="development-xp" data-development-xp></div>
-          </div>
+          <p class="development-stage" data-development-stage></p>
+          <div class="development-scene" tabindex="0" role="img" aria-label="Interactive Mindling neural development"><div class="development-network-empty" hidden><p>A network waiting to grow.</p><span>No saved neurons are available yet.</span></div></div>
+          <div class="graph-view-tools development-zoom-tools glass-line" aria-label="Brain zoom controls"><button type="button" data-brain-action="out" aria-label="Zoom out">−</button><span data-brain-zoom>100%</span><button type="button" data-brain-action="in" aria-label="Zoom in">+</button><button type="button" data-brain-action="fit">Fit brain</button><button type="button" data-brain-action="reset">Reset view</button><button type="button" data-brain-action="focus" disabled>Focus selected</button></div>
+          <div class="development-progression"><dl class="development-metrics" data-development-metrics></dl><div class="development-xp" data-development-xp></div></div>
         </section>
         <section class="development-pathways development-panel" aria-labelledby="pathways-title">
-          <div class="development-panel-heading"><div><p class="development-eyebrow">03 / DIRECTION</p><h3 id="pathways-title">Pathways & Learning</h3></div></div>
+          <div class="development-panel-heading"><div><p class="development-eyebrow">02 / DIRECTION</p><h3 id="pathways-title">Pathways & Learning</h3></div></div>
           <div class="development-panel-body"><div data-adaptive-pathways></div>
             <h4>Acquired knowledge</h4><ul class="development-areas" data-development-areas></ul><p class="development-muted">Current memory counts by area. Pathway-specific knowledge links are not recorded.</p>
             <h4>Recent development</h4><ol class="development-events" data-development-events></ol>
@@ -32,7 +28,8 @@ export class DevelopmentView {
         </section>
       </div>`;
     this.pathways = new AdaptivePathwaysView(root.querySelector('[data-adaptive-pathways]'));
-    this.scene = new NeuralDevelopmentScene(root.querySelector('.development-scene'));
+    this.scene = new NeuralDevelopmentScene(root.querySelector('.development-scene'),zoom=>{root.querySelector('[data-brain-zoom]').textContent=`${Number((zoom*100).toFixed(1))}%`;},selection=>{root.querySelector('[data-brain-action="focus"]').disabled=selection?.type!=='neuron';});
+    root.addEventListener('click',event=>{const action=event.target.closest('[data-brain-action]')?.dataset.brainAction;if(action)this.scene.control(action);},{signal:this.abort.signal});
   }
   update(state = {}, life = null) {
     if (this.abort.signal.aborted) return;
@@ -52,6 +49,7 @@ export class DevelopmentView {
     this.root.querySelector('.development-network-empty').hidden = Boolean(data.nodes.length);
     this.root.querySelector('.development-network-empty span').textContent = data.neuronCount ? 'Saved neurons have no drawable positions.' : 'No saved neurons are available yet.';
     this.root.querySelector('[data-development-name]').textContent = data.name;
+    this.root.querySelector('[data-development-stage]').textContent=`${data.stage} · Stage ${String(data.stageNumber??'—').padStart(2,'0')}`;
     this.root.querySelector('[data-development-presence]').textContent = data.deceased ? 'Preserved architecture' : 'Living architecture';
     const metrics = this.root.querySelector('[data-development-metrics]'); metrics.replaceChildren();
     for (const [label, count] of [['Energy', data.energyText], ['Current memories', data.currentMemories], ['Knowledge areas', data.areaCount], ['Lifetime XP', data.lifetimeXP]]) { const row = element('div'); row.append(element('dt', label), element('dd', value(count))); metrics.append(row); }

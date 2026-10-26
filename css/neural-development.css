@@ -7,7 +7,7 @@
 }
 .development-view[hidden] { display: none; }
 .development-eyebrow { margin: 0 0 9px; color: var(--text-muted); font-size: 8px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; }
-.development-grid { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 58fr) minmax(0, 27fr) minmax(160px, 19fr); gap: 16px; }
+.development-grid { flex: 1; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr); gap: 16px; }
 .development-panel { min-height: 0; min-width: 0; border: 1px solid var(--border-subtle); border-radius: var(--radius); background: linear-gradient(135deg, rgba(16,18,20,.67), rgba(6,7,8,.55)); backdrop-filter: blur(22px) saturate(115%); -webkit-backdrop-filter: blur(22px) saturate(115%); overflow: auto; scrollbar-width: thin; }
 .development-panel-heading { padding: 20px 18px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex: none; }
 .development-view h3 { margin: 0; color: var(--text-primary); font-size: 16px; font-weight: 430; letter-spacing: -.025em; }
@@ -64,3 +64,14 @@
 .sandbox-origin-pathways legend { color: var(--text-secondary); font-size: 10px; }
 .sandbox-origin-pathways label { margin: 5px 0; }
 .sandbox-origin-pathways input[type=checkbox] { accent-color: var(--accent); flex: none; }
+.development-stage { margin: 0 18px; color: var(--text-secondary); font-size: 10px; }
+.development-zoom-tools { position: static; transform: none; align-self: center; max-width: calc(100% - 32px); margin: 8px 16px 12px; flex: none; flex-wrap: wrap; justify-content: center; }
+.development-zoom-tools [data-brain-zoom] { min-width: 42px; text-align: center; font-size: 8px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.development-progression { display: grid; grid-template-columns: minmax(0, 2fr) minmax(150px, 1fr); align-items: center; gap: 24px; padding: 12px 18px 18px; border-top: 1px solid var(--border-subtle); flex: none; }
+.development-progression .development-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 20px; }
+.development-progression .development-metrics > div { padding: 8px 0; }
+.development-progression .development-metrics dd { font-size: 14px; }
+.development-progression .development-xp h4 { margin: 0 0 8px; }
+@media(max-width:800px) { .development-grid { grid-template-columns: minmax(0,1fr); overflow-y: auto; } .development-evolution { min-height: 560px; } .development-pathways { overflow: visible; } .development-progression { grid-template-columns: minmax(0,1fr); gap: 14px; } }
+
+.development-progression > *, .development-progression .development-metrics > div { min-width: 0; }

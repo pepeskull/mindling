@@ -92,7 +92,7 @@ export class SandboxPreview extends EvolutionPreview {
         this.renderState();
         if(this.state.mind?.memories.length>memories){
           const edge=this.state.mind.synapses[(this.state.mind.memories.length-1)%4];
-          this.seed.signal({source:'origin',destination:edge.to,synapse:edge.id,outcome:'MEMORY_FORMATION'});
+          this.seed.signal({entry:false,source:'origin',destination:edge.to,synapse:edge.id,outcome:'MEMORY_FORMATION'});
         }
       }
     } finally { this.pendingMutations--; }
@@ -105,19 +105,24 @@ export class SandboxPreview extends EvolutionPreview {
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
     const activity=this.activity;
     const id=crypto.randomUUID();
-    const submittedContext=JSON.stringify(learningContext(text,m));
-    const assessment=await requestLearningAssessment(text,structuredClone(m));
-    if(this.disposed)throw Error('Preview was closed before learning completed. No Energy or XP changed.');
-    await this.change(s=>{
-      if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
-      if(JSON.stringify(learningContext(text,s.mind))!==submittedContext)throw Error('Relevant memories changed. Submit again. No Energy or XP changed.');
-      return learn(s,{id,text,mindId:m.id,activity,assessment});
-    });
-    const event=this.state.mind.history.find(item=>item.id===id);
-    const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered.',NO_MEMORY_CHANGE:'No memory change was needed.',FLAG_CONTRADICTION:'Conflicting claim recorded; existing knowledge was preserved.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.',BATCH:'Independent statements processed together; existing history was preserved.'};
-    const message=event?.kind==='reinforcement'?'Already learned. Memory reinforced.':messages[event?.operation]||'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.';
-    this.status(`${message} ${event?.energySpent?`${event.energySpent} Energy spent.`:'No Energy spent.'}${event?.xp?'':' No XP awarded.'}`);
-    document.querySelector('#mindling-input').value='';
+    if(text.trim())this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
+    try {
+      const submittedContext=JSON.stringify(learningContext(text,m));
+      const assessment=await requestLearningAssessment(text,structuredClone(m));
+      if(this.disposed)throw Error('Preview was closed before learning completed. No Energy or XP changed.');
+      await this.change(s=>{
+        if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
+        if(JSON.stringify(learningContext(text,s.mind))!==submittedContext)throw Error('Relevant memories changed. Submit again. No Energy or XP changed.');
+        return learn(s,{id,text,mindId:m.id,activity,assessment});
+      });
+      const event=this.state.mind.history.find(item=>item.id===id);
+      const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered.',NO_MEMORY_CHANGE:'No memory change was needed.',FLAG_CONTRADICTION:'Conflicting claim recorded; existing knowledge was preserved.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.',BATCH:'Independent statements processed together; existing history was preserved.'};
+      const message=event?.kind==='reinforcement'?'Already learned. Memory reinforced.':messages[event?.operation]||'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.';
+      this.status(`${message} ${event?.energySpent?`${event.energySpent} Energy spent.`:'No Energy spent.'}${event?.xp?'':' No XP awarded.'}`);
+      document.querySelector('#mindling-input').value='';
+      const operations=event?.operations||[event?.operation],refused=operations.every(operation=>['REJECT_UNSAFE_INSTRUCTION','VERIFY_BEFORE_STORAGE','ASK_FOR_CLARIFICATION'].includes(operation));
+      this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:refused?'cancel':'accepted',activity});
+    } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});throw error;}
   }
   async care(type){await this.change(s=>carePreview(s,type));}
   setActivity(type){
@@ -143,13 +148,12 @@ export class SandboxPreview extends EvolutionPreview {
   renderState(){
     this.cognition?.setActiveMindling(this.state.mind?.id || null);
     if(this.external?.locked)return;
-    const m=this.state.mind;if(!m){document.querySelector('.hero-copy h1').textContent='Create a test Mindling';document.querySelectorAll('[data-stat]').forEach(el=>el.textContent='0');return;}
+    const m=this.state.mind;if(!m){this.dashboard.stageChip.setStage('—',{enabled:false});document.querySelectorAll('[data-stat]').forEach(el=>el.textContent='0');return;}
     if(this.identityId!==m.id){this.identityId=m.id;this.countdown=new AutomaticNetworkCountdown();this.timeline.network.reset();}
     this.seed.update({nodes:m.nodes,synapses:m.synapses,stage:m.stage});
     const stage=m.stage;if(this.timeline.stage!==stage){this.timeline.select(stage);this.syncStage();this.host.dataset.stage=String(stage);}
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.
-    const subtitle=this.presentation.subtitle;document.querySelector('.hero-copy').append(subtitle);
-    this.dashboard.render({...m,developmentClock:'simulated',developmentNow:this.state.now,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString()});subtitle.remove();
+    this.dashboard.render({...m,developmentClock:'simulated',developmentNow:this.state.now,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString()});
     this.presentation.stage=null;
     this.refreshNetwork();
     const alive=m.life.lifeState==='ALIVE';
@@ -169,7 +173,6 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelector('[data-energy-progress]').hidden=false;
     document.querySelector('[data-neural-cycle]').textContent=`NC ${String(1+Math.floor((this.state.now-m.createdAt)/DAY)).padStart(4,'0')}`;
     document.querySelector('[data-neural-cycles]').textContent=`${1+Math.floor((this.state.now-m.createdAt)/DAY)} Neural Cycles`;
-    document.querySelector('.hero-copy h1').textContent=`${m.name} ${alive?'is learning.':'— Neural Collapse'}`;
     if(!this.panel)return;
     const gate=eligibility(this.state);
     this.panel.querySelector('[data-diagnostics]').textContent=`${STAGES[stage-1].name}\nStage XP: ${m.stageXP} / ${gate.required.xp} · Lifetime: ${m.lifetimeXP}\nStage entered: ${new Date(m.enteredAt).toISOString()}\nStage days: ${(gate.elapsed/DAY).toFixed(2)} / ${gate.required.days}\nLearning milestones: ${gate.concepts} / ${gate.required.concepts}\nEligible: ${gate.eligible}\nVirtual time: ${new Date(this.state.now).toISOString()}\nOffset: ${((this.state.now-this.state.origin)/DAY).toFixed(2)} days`;

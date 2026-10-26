@@ -1,3 +1,4 @@
+import { morphologyRadius } from './scene-framing.js';
 import { EvolutionScene } from '../preview/evolution-scene.js';
 import { NetworkSimulation } from '../preview/evolution-model.js';
 import { ThreeSeedScene } from './three-seed-scene.js';
@@ -13,7 +14,7 @@ export class StageBrainScene {
   }
   mount(host, model) {
     this.host=host;
-    if(!this.scene){this.scene=new EvolutionScene({three:this.three,interaction:this.interaction,fitDashboard:true,shareContext:true});this.scene.mount(host);}
+    if(!this.scene){this.scene=new EvolutionScene({three:this.three,interaction:this.interaction,fitDashboard:true,shareContext:true,allowZoomOverflow:Boolean(this.framing?.allowZoomOverflow)});this.scene.mount(host);}
     this.update(model);
   }
   update(model) {
@@ -21,9 +22,11 @@ export class StageBrainScene {
     this.data=stagePresentation(model);
     const {stage,canonicalNetwork,projection}=this.data;
     if(!previous||stage!==previous.stage){
+      this.resetFocus();
       // Hydration shows the saved stage immediately. Later committed changes morph.
       this.scene.morph.select(stage,!previous||this.reduced);
       this.scene.buffers.rebuild(this.scene.morph);this.scene.centralSegments=this.scene.buffers.segmentCount;
+      if(this.framing?.allowZoomOverflow)this.scene.framingRadius=morphologyRadius(this.scene.morph.target);
       this.network.configure(stage);
     }
     if(stage===1&&!this.seed){
@@ -44,6 +47,19 @@ export class StageBrainScene {
   selectAt(event){const hit=this.seed?this.seed.selectAt(event):this.scene.pickCanonicalElement(event);if(!this.seed){this.setSelection(hit);this.onSelection?.(hit);}return hit;}
   hoverAt(event){if(this.seed)return this.seed.hoverAt(event);this.scene.hoverCanonical=this.scene.pickCanonicalElement(event);return this.scene.hoverCanonical;}
   setSelection(selection){this.seed?.setSelection(selection);this.scene.selectedCanonical=selection?.type==='neuron'?selection.id:null;this.scene.selectedCanonicalEdge=selection?.type==='synapse'?selection.id:null;}
+  focusSelection(selection){
+    if(selection?.type!=='neuron')return false;
+    const index=this.data.canonicalNetwork.nodes.findIndex(node=>node.id===selection.id);if(index<0)return false;
+    const position=this.seed?this.data.canonicalNetwork.nodes[index].position:this.scene.canonicalPositions.subarray(index*3,index*3+3);
+    this.scene.focus=[...position];if(this.framing)this.framing.focus=[...position];return true;
+  }
+  resetFocus(){this.scene.focus=[0,0,0];if(this.framing)this.framing.focus=null;}
+  inputTarget(){
+    if(this.seed)return this.seed.inputTarget();
+    if(!this.scene.width||!this.scene.canonicalNetwork?.nodes.length)return null;
+    const point=new Float32Array(2);if(!this.scene.canonicalPoint(0,point))return null;const rect=this.scene.canvas.getBoundingClientRect();
+    return {x:rect.left+point[0]*rect.width/this.scene.width,y:rect.top+point[1]*rect.height/this.scene.height};
+  }
   signal(route){this.seed?.signal(route);this.scene.signalCanonical(route);}
   highlightRoute(route){this.seed?.highlightRoute(route);this.scene.canonicalRoute=route;}
   setReducedMotion(value){this.reduced=value;this.scene.reduced=value;this.seed?.setReducedMotion(value);if(value&&this.scene.morph.progress<1){this.scene.morph.select(this.data.stage,true);this.scene.buffers.rebuild(this.scene.morph);this.scene.centralSegments=this.scene.buffers.segmentCount;}}

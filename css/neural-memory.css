@@ -24,7 +24,7 @@
 .graph-view-tools{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:3;display:flex;align-items:center;gap:2px;padding:5px;border:1px solid var(--border-subtle);border-radius:9px;white-space:nowrap}
 .graph-view-tools button{font-size:9px;color:var(--text-primary);background:transparent;border:0;border-radius:5px;padding:7px 9px;transition:background .15s}
 .graph-view-tools button:hover:enabled{background:var(--border-subtle);color:var(--text-primary)}
-.graph-view-tools [data-graph-action="in"],.graph-view-tools [data-graph-action="out"]{font-size:17px;width:28px;line-height:16px;padding:6px}
+.graph-view-tools [data-graph-action="in"],.graph-view-tools [data-graph-action="out"],.graph-view-tools [data-brain-action="in"],.graph-view-tools [data-brain-action="out"]{font-size:17px;width:28px;line-height:16px;padding:6px}
 .graph-view-tools [data-zoom-level]{font-size:8px;color:var(--text-muted);min-width:30px;text-align:center}
 .graph-legend{display:flex;align-items:center;gap:15px;padding:16px 21px 9px;flex-wrap:wrap;border-top:1px solid var(--border-subtle)}
 .graph-legend>span{font-size:8px;color:var(--text-secondary);display:flex;gap:7px;align-items:center}
@@ -129,3 +129,6 @@
 .memory-inspector .inspector-memory-text{white-space:pre-wrap;max-height:28vh;overflow:auto;scrollbar-width:thin}
 .memory-inspector .memory-content-status{font-size:9px;color:var(--text-muted);line-height:1.7}
 .neural-memory-view .inspector-memory-text:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+.memory-browser li button { border-left: 2px solid var(--memory-area-color, var(--text-muted)); background: linear-gradient(90deg, color-mix(in srgb, var(--memory-area-color, var(--text-muted)) 10%, transparent), rgba(255,255,255,.025)); }
+.memory-browser li button[aria-pressed="true"] { border-color: var(--memory-area-color, var(--accent)); background: color-mix(in srgb, var(--memory-area-color, var(--accent)) 16%, transparent); }
+.coverage-values li > span::before { content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 7px; border-radius: 50%; background: var(--memory-area-color, var(--text-muted)); }

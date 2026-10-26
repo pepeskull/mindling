@@ -1,3 +1,4 @@
+import { NeuralInputFeedback } from '../ui/neural-input-feedback.js';
 import { ExternalView } from '../network/external-view.js';
 import { PreviewTimeline, smooth } from "./evolution-model.js";
 import { EvolutionScene } from "./evolution-scene.js";
@@ -6,7 +7,7 @@ import { BrainRenderer } from "../renderer/brain-renderer.js";
 import { createNeuralSeedState } from "../brain/neural-seed-state.js";
 
 import { Dashboard } from '../ui/dashboard.js';
-import { EventBus } from '../app/events.js';
+import { EventBus, EVENTS } from '../app/events.js';
 import { readDashboardSnapshot } from './dashboard-snapshot.js';
 import { presentationFor, PreviewDashboardPresentation } from './dashboard-presentation.js';
 import { AutomaticNetworkCountdown } from './automatic-playback.js';
@@ -32,7 +33,7 @@ export class EvolutionPreview {
     const snapshot = this.snapshotProvider ? await this.snapshotProvider() : null;
     if (this.disposed) return;
     if (snapshot) this.dashboard.showSnapshot(snapshot);
-    if (!this.interactive) this.presentation = new PreviewDashboardPresentation();
+    if (!this.interactive) this.presentation = new PreviewDashboardPresentation(document,this.dashboard.stageChip);
     this.host.setAttribute('aria-label', this.interactive ? 'Interactive Mindling neural network' : 'Development preview of neural evolution; saved gameplay is unchanged');
     this.host.innerHTML = `<div class="preview-layer preview-seed"></div><div class="preview-layer preview-growth"></div>`;
     this.sceneHost = this.host; this.seedHost = this.host.querySelector('.preview-seed'); this.growthHost = this.host.querySelector('.preview-growth');
@@ -52,10 +53,15 @@ export class EvolutionPreview {
       this.seed = new BrainRenderer(this.seedHost, null, { interaction:this.interaction, framing, mode:'dashboard', externallyScheduled:true,stageScene:this.canonicalBrain?this.view:null,seedOnly:!this.canonicalBrain }); this.seed.mount(this.canonicalBrain?this.growthHost:this.seedHost, seedModel);
     }
     this.external=new ExternalView(this);
+    this.inputFeedback=new NeuralInputFeedback(document.querySelector('#app'),document.querySelector('#interaction-form'),()=>this.seed.inputTarget(),()=>this.seed.receiveInput(),this.motion);
+    this.unsubscribeInput=this.events.on(EVENTS.NEURAL_INPUT,event=>{
+      if(this.external?.locked||document.hidden||['development','memories'].includes(this.primaryView))return;
+      this.inputFeedback.handle(event);this.schedule();
+    });
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
     this.motion.addEventListener('change', this.motionChanged);
     this.observer = new ResizeObserver(this.resize); this.observer.observe(this.sceneHost);
-    for (const node of document.querySelectorAll('.topbar, .left-stack, .right-panel, .hero-copy, #interaction-form')) this.observer.observe(node);
+    for (const node of document.querySelectorAll('.topbar, .left-stack, .right-panel, #interaction-form')) this.observer.observe(node);
     window.addEventListener('resize', this.resize);
     document.addEventListener('visibilitychange', this.visibility);
     if(!this.interactive && new URLSearchParams(location.search).get('preview-mode')==='demo'){
@@ -68,11 +74,11 @@ export class EvolutionPreview {
     if (this.disposed) return;
     const app = document.querySelector('#app').getBoundingClientRect();
     const bounds = selector => document.querySelector(selector).getBoundingClientRect();
-    const header = bounds('.topbar'), hero = bounds('.hero-copy'), input = bounds('#interaction-form');
+    const header = bounds('.topbar'), input = bounds('#interaction-form');
     const mobile = matchMedia('(max-width: 800px)').matches;
     const left = mobile ? 8 : bounds('.left-stack').right - app.left + 12;
     const right = mobile ? 8 : app.right - bounds('.right-panel').left + 12;
-    const top = Math.max(header.bottom, hero.bottom) - app.top + 12;
+    const top = header.bottom - app.top + 12;
     const bottom = Math.max(16, app.bottom - input.top + 12);
     if(this.external)this.external.notice.style.bottom=`${bottom+4}px`;
     this.host.style.inset = `${top}px ${right}px ${bottom}px ${left}px`;
@@ -106,6 +112,7 @@ export class EvolutionPreview {
   }
   primaryViewChanged = view => {
     this.primaryView = view;this.external?.refresh();
+    if(view!=='dashboard')this.inputFeedback?.clear();
     if (view === 'development' || view === 'memories') { cancelAnimationFrame(this.frame); this.frame = null; }
     else { this.lastTime = null; this.schedule(); }
   };
@@ -130,14 +137,16 @@ export class EvolutionPreview {
       if (this.seedWeight > 0) this.seed.render(now / 1000, delta);
       if (this.seedWeight < 1) this.view.render(this.elapsed, delta, this.timeline.network);
     }
+    if(this.external?.locked)this.inputFeedback?.clear();else this.inputFeedback?.render(now);
     this.refreshNetwork(); this.schedule();
   };
-  visibility = () => { if (document.hidden) { if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null; } else { this.lastTime = null; this.schedule(); } };
+  visibility = () => { if (document.hidden) { this.inputFeedback?.clear(); if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null; } else { this.lastTime = null; this.schedule(); } };
   destroy() {
     if (this.disposed) return; this.disposed = true;
     if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null;
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);
+    this.unsubscribeInput?.();this.inputFeedback?.destroy();
     this.external?.destroy();
     this.modeLink?.remove();this.presentation?.destroy(); this.dashboard?.destroy();
     this.timeline.pause(); this.timeline.network.reset(); this.interaction.disconnect(); this.seed?.destroy(); this.view?.destroy();

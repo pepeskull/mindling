@@ -110,8 +110,8 @@ export class RenderBuffers {
 }
 
 export class EvolutionScene {
-  constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage, fitDashboard = false, originalFraming = false, shareContext = false } = {}) {
-    this.shareContext=shareContext;
+  constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage, fitDashboard = false, originalFraming = false, shareContext = false, allowZoomOverflow = false } = {}) {
+    this.shareContext=shareContext;this.allowZoomOverflow=allowZoomOverflow;
     this.focus=[0,0,0];this.focusScale=1;
     this.fitDashboard = fitDashboard; this.three = three; this.interaction = interaction; this.reduced = reduced;
     this.useSharedFraming = fitDashboard && !originalFraming;
@@ -299,7 +299,7 @@ export class EvolutionScene {
   updateFraming(network) {
     const networkWeight=network ? smooth(network.elapsed/1.2)*network.fade : 0;
     const radius=this.framingRadius+(4.2-this.framingRadius)*networkWeight;
-    this.framing=previewFraming(this.width,this.height,(document.querySelector('#app')?.clientHeight||this.height),radius,this.interaction.zoom);
+    this.framing=previewFraming(this.width,this.height,(document.querySelector('#app')?.clientHeight||this.height),radius,this.interaction.zoom,{allowZoomOverflow:this.allowZoomOverflow});
     if(this.three){this.camera.left=-this.width/(2*this.framing.unit);this.camera.right=-this.camera.left;this.camera.top=this.height/(2*this.framing.unit);this.camera.bottom=-this.camera.top;this.camera.updateProjectionMatrix();}
   }
   projected = new Float32Array(4);

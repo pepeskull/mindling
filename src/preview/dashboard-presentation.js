@@ -28,9 +28,8 @@ export function presentationFor(timeline, morph) {
 // Presentation only: no app events, gameplay objects, storage, or independent clock.
 export class PreviewDashboardPresentation {
   stage = null; social = null;
-  constructor(root = document) {
-    this.root = root;
-    this.subtitle = root.querySelector(".hero-copy span"); this.subtitle?.remove();
+  constructor(root = document, stageChip) {
+    this.root = root;this.stageChip=stageChip;
     this.indicator = document.createElement('small'); this.indicator.className = 'preview-simulated';
     this.indicator.textContent = 'Simulated'; this.indicator.hidden = true;
     root.querySelector('.social-status').append(this.indicator);
@@ -45,8 +44,7 @@ export class PreviewDashboardPresentation {
         if (current) row.setAttribute('aria-current', 'step'); else row.removeAttribute('aria-current');
         row.querySelector('small').textContent = current ? 'Current' : index + 1 < this.stage ? 'Completed' : 'Locked';
       });
-      q('.hero-copy p').textContent = `${state.stage.name} · Stage ${String(this.stage).padStart(2, '0')}`;
-      q('[data-life-stage]').textContent = state.stage.name;
+      this.stageChip.setStage(state.stage.name,{enabled:state.life.lifeState!=='DECEASED'});
       for (const key of ['neurons', 'synapses', 'memories']) q(`[data-stat="${key}"]`).textContent = state[key];
       for (const [name, value] of Object.entries(state.life.attributes)) {
         const row = q(`[data-life-attribute="${name}"]`), progress = row.querySelector('progress');
@@ -64,5 +62,5 @@ export class PreviewDashboardPresentation {
     if (this.social !== state.social) { this.social = state.social; q('.social-status em').textContent = state.social; }
     if (this.indicator.hidden === state.active) this.indicator.hidden = !state.active;
   }
-  destroy() { this.indicator.remove(); if (this.subtitle) this.root.querySelector(".hero-copy").append(this.subtitle); }
+  destroy() { this.indicator.remove(); }
 }
