@@ -6,3 +6,4 @@
 
 .gameplay-mode .left-stack, .sandbox-mode .left-stack { max-height: calc(100% - 72px); min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .compact-neural-stats > span { min-width: 0; }
+.neural-input-feedback { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 3; pointer-events: none; }

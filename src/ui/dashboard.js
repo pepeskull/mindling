@@ -1,3 +1,4 @@
+import { StageChip } from './stage-chip.js';
 import { stageMorphologyCounts } from '../renderer/stage-presentation.js';
 import { LEARNING_INPUT_LIMIT } from '../memory/content-integrity.js';
 import { DevelopmentView } from '../development/development-view.js';
@@ -31,6 +32,8 @@ export class Dashboard {
   #eventUnsubscribes = [];
 
   constructor(events, { onInput, onCare, onNewMindling, onViewChange, readOnly = false } = {}) {
+    this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
+    this.primaryView='dashboard';
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"));
     this.#development = new DevelopmentView(document.querySelector("#development-view"));
     this.#onViewChange = onViewChange;
@@ -79,8 +82,8 @@ export class Dashboard {
     document.querySelector('[data-life-warning] span').textContent = 'No saved Life Status available.';
     document.querySelector('[data-life-status-title]').textContent = 'Mindling — Life Status';
     document.querySelector('.mindling-id').textContent = '';
-    document.querySelector('.hero-copy h1').textContent = snapshot.status === 'empty' ? 'No saved Mindling' : 'Saved data unavailable';
     document.querySelector('.pathways-copy').textContent = 'No saved pathways available.';
+    this.stageChip.setStage('—',{enabled:false});
     this.#memoryMap.update({memories:[]});
     this.#development.update({});
     document.querySelector('.stages .current small').textContent = snapshot.state ? 'Saved' : 'Preview';
@@ -110,9 +113,6 @@ export class Dashboard {
     }
     if (!state.name) return;
     document.querySelector("[data-life-status-title]").textContent = `${state.name} — Life Status`;
-    document.querySelector(".hero-copy h1").textContent = `${state.name} is awake.`;
-    const subtitle = document.querySelector(".hero-copy span");
-    if (subtitle) subtitle.textContent = "It starts with a few neurons. What it becomes is up to you.";
     document.querySelector(".pathways-copy").textContent = state.pathways.join(" · ");
     document.querySelector(".mindling-id").textContent = state.mindlingId;
     document.querySelector("[data-profile-filename]").textContent = safeProfileFilename(state.name);
@@ -135,6 +135,7 @@ export class Dashboard {
   }
 
   #setPrimaryView(view) {
+    this.primaryView=view;this.stageChip.setActive(view==='dashboard');
     const memory = view === "memories", development = view === "development";
     document.querySelector("#development-view").hidden = !development;
     this.#development.setVisible(development);
@@ -167,7 +168,7 @@ export class Dashboard {
     const cycles = neuralCycles(life.birthTimestamp, now, life.deathTimestamp);
     document.querySelector("[data-neural-cycle]").textContent = `NC ${String(cycles).padStart(4, "0")}`;
     document.querySelector("[data-neural-cycles]").textContent = `${cycles} Neural ${cycles === 1 ? "Cycle" : "Cycles"}`;
-    document.querySelector("[data-life-stage]").textContent = life.version === 2 && life.stage ? STAGES[life.stage - 1].name : lifeStageFor(cycles);
+    this.stageChip.setStage(life.version===2&&life.stage?STAGES[life.stage-1].name:lifeStageFor(cycles),{enabled:life.lifeState!=='DECEASED'});
     document.querySelector("[data-life-condition]").textContent = life.condition;
     document.querySelector("[data-life-condition]").dataset.condition = life.condition;
     for (const [name, value] of Object.entries(life.attributes)) {
@@ -206,8 +207,8 @@ export class Dashboard {
     const messages = { NOT_HUNGRY: "Your Mindling is not hungry.", ALREADY_RESTED: "Your Mindling is already resting.", CARE_COOLDOWN: "Your Mindling needs time before receiving more care.", CARE_NOT_NEEDED: "Your Mindling does not need care right now." };
     this.#showStatus(result.accepted ? "Care completed" : result.message || messages[result.reason] || "Care is unavailable");
   }
-  show() { document.querySelector(".dashboard-chrome").classList.remove("is-hidden"); }
-  hide() { document.querySelector(".dashboard-chrome").classList.add("is-hidden"); }
+  show() { this.stageChip.setActive(this.primaryView==='dashboard');document.querySelector(".dashboard-chrome").classList.remove("is-hidden"); }
+  hide() { this.stageChip.setActive(false);document.querySelector(".dashboard-chrome").classList.add("is-hidden"); }
 
   setStorageStatus(available) {
     const status = document.querySelector(".storage-status");
@@ -222,12 +223,15 @@ export class Dashboard {
     const text = input.value.trim();
     if (!text || this.#pending) return;
     this.#pending = true; const submit = this.#form.querySelector("button[type='submit']"); submit.disabled = true;
+    const id=crypto.randomUUID();
+    this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity:this.#mode});
     this.#showStatus("Processing signal");
     try {
-      const result = await this.#onInput(text, this.#mode, crypto.randomUUID());
+      const result = await this.#onInput(text, this.#mode, id);
+      this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:result.accepted?'accepted':'cancel',activity:this.#mode});
       if (result.accepted) { input.value = ""; this.#showStatus(result.message || `${LIFE_RULES.activity[this.#mode].label} completed`); }
       else this.#showStatus(result.message || (result.reason === "OUT_OF_ENERGY" ? "Out of energy" : result.reason === "MINDLING_DECEASED" ? "This Mindling is deceased" : "Activity was not accepted"));
-    } catch { this.#showStatus("Activity could not be saved"); }
+    } catch { this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});this.#showStatus("Activity could not be saved"); }
     finally { this.#pending = false; submit.disabled = this.#life?.lifeState === 'DECEASED'; if (!input.disabled) input.focus(); }
   }
 
@@ -237,6 +241,7 @@ export class Dashboard {
     this.#setPrimaryView("dashboard");
     this.#memoryMap.destroy();
     this.#development.destroy();
+    this.stageChip.destroy();
     this.#unsubscribe?.();
     this.#eventUnsubscribes.forEach(unsubscribe => unsubscribe());
     this.#form?.removeEventListener("submit", this.#handleSubmit);

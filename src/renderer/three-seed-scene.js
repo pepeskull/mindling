@@ -217,6 +217,12 @@ export class ThreeSeedScene {
     this.#activationPulses.push(pulse);
   }
 
+  inputTarget() {
+    const mesh=this.#nodeVisuals.get('origin')?.mesh||this.#nodeVisuals.values().next().value?.mesh;
+    if(!mesh||!this.width||!this.height)return null;
+    const point=mesh.getWorldPosition(new this.#three.Vector3()).project(this.#camera),rect=this.#renderer.domElement.getBoundingClientRect();
+    return {x:rect.left+(point.x+1)*rect.width/2,y:rect.top+(1-point.y)*rect.height/2};
+  }
   signal(route, ambient = false) {
     const pulseIndex = this.#activationPulses.findIndex(pulse => pulse.userData.route.synapse === route.synapse);
     if (pulseIndex < 0) return;
@@ -320,7 +326,7 @@ export class ThreeSeedScene {
       0
     );
     if (this.framing && (this.framing.active?.()??true)) {
-      const fit = previewFraming(this.width, this.height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom);
+      const fit = previewFraming(this.width, this.height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom,{allowZoomOverflow:this.framing.allowZoomOverflow});
       // Orthographic preview camera shares Canvas pixel projection, avoiding an
       // additional portrait perspective shrink. The production camera is unchanged.
       if (!this.#camera.isOrthographicCamera) this.#camera = new this.#three.OrthographicCamera(-1, 1, 1, -1, .1, 30);
@@ -333,6 +339,8 @@ export class ThreeSeedScene {
       this.#seedGroup.scale.setScalar(SEED_CAMERA.scale * this.#interaction.zoom);
     }
 
+    this.#seedGroup.position.set(0,0,0);
+    if(this.framing?.focus){const shift=new this.#three.Vector3(...this.framing.focus).applyEuler(this.#seedGroup.rotation).multiplyScalar(-this.#seedGroup.scale.x);this.#seedGroup.position.copy(shift);}
     for (const object of this.#nodeMeshes) {
       const breath = this.#reducedMotion
         ? 0
@@ -360,7 +368,7 @@ export class ThreeSeedScene {
       this.#nextAmbient = elapsed + 7 + (this.#ambientIndex % 3) * 1.7;
     }
     const signal = this.#signal;
-    this.#entryPulse.visible = Boolean(signal) && !signal.ambient;
+    this.#entryPulse.visible = Boolean(signal) && !signal.ambient && signal.route.entry!==false;
     for (const [index, pulse] of this.#activationPulses.entries()) {
       const active = signal && index === signal.pulseIndex;
       pulse.visible = active;

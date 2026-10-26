@@ -1,9 +1,14 @@
 export class SceneInteraction {
+  constructor({ minZoom=.72, maxZoom=1.48, wheelScale=null } = {}) {
+    this.minZoom=minZoom;this.maxZoom=maxZoom;this.wheelScale=wheelScale;
+  }
+  clampZoom(value){return Math.max(this.minZoom,Math.min(this.maxZoom,value));}
+  zoomTo(value){const zoom=this.clampZoom(value);this.restorePose({...this.capturePose(),zoom,targetZoom:zoom});}
   rotation = { x: -0.08, y: -0.2 };
   zoom = 1;
   locked = false;
   capturePose(){return {rotation:{...this.rotation},zoom:this.zoom,targetZoom:this.#targetZoom};}
-  restorePose(pose){this.rotation={...pose.rotation};this.zoom=pose.zoom;this.#targetZoom=pose.targetZoom;}
+  restorePose(pose){this.rotation={...pose.rotation};this.zoom=this.clampZoom(pose.zoom);this.#targetZoom=this.clampZoom(pose.targetZoom);this.onZoom?.(this.zoom);}
   #targetZoom = 1;
   #host;
   #dragOrigin = null;
@@ -50,7 +55,7 @@ export class SceneInteraction {
     this.#pointers.set(event.pointerId, { x: event.clientX, y: event.clientY, type: event.pointerType });
     if (this.#pointers.size > 1) {
       const distance = this.#distanceBetweenPointers();
-      if (this.#pinchDistance) this.#targetZoom = Math.max(0.72, Math.min(1.48, this.#targetZoom * distance / this.#pinchDistance));
+      if (this.#pinchDistance) this.#targetZoom = this.clampZoom(this.#targetZoom * distance / this.#pinchDistance);
       this.#pinchDistance = distance; return;
     }
     if (event.pointerId !== this.#pointerId) return;
@@ -92,13 +97,16 @@ export class SceneInteraction {
     if(this.locked)return;
     event.preventDefault();
     const normalizedDelta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
-    this.#targetZoom = Math.max(0.72, Math.min(1.48, this.#targetZoom - normalizedDelta * 0.0007));
+    this.#targetZoom = this.clampZoom(this.wheelScale?this.#targetZoom*Math.exp(-normalizedDelta*this.wheelScale):this.#targetZoom-normalizedDelta*.0007);
   };
 
   update(delta) {
     if(this.locked)return;
     const blend = 1 - Math.exp(-Math.min(delta, 0.1) * 14);
+    const previous=this.zoom;
     this.zoom += (this.#targetZoom - this.zoom) * blend;
+    if(Math.abs(this.zoom-this.#targetZoom)<.0001)this.zoom=this.#targetZoom;
+    if(this.zoom!==previous)this.onZoom?.(this.zoom);
   }
 
   disconnect() {

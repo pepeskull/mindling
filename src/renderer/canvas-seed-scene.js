@@ -104,13 +104,13 @@ export class CanvasSeedScene {
   #projectNodes(elapsed) {
     const centerX = this.#width / 2;
     const centerY = this.#height * (this.framing ? .5 : .52);
-    const fit = this.framing && (this.framing.active?.()??true) ? previewFraming(this.#width, this.#height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom) : null;
+    const fit = this.framing && (this.framing.active?.()??true) ? previewFraming(this.#width, this.#height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom,{allowZoomOverflow:this.framing.allowZoomOverflow}) : null;
     const scale = fit ? fit.unit * fit.zoom : Math.min(this.#width, this.#height) * 0.18 * this.#interaction.zoom;
     const angle = this.#interaction.rotation.y;
 
     return new Map(
       this.#model.nodes.map((node, index) => {
-        const [x, y, z] = node.position;
+        const [x, y, z] = node.position.map((value,axis)=>value-(this.framing?.focus?.[axis]||0));
         const breath = this.#reducedMotion ? 0 : Math.sin(elapsed + index) * 0.04;
         return [node.id, {
           id: node.id,
@@ -215,7 +215,7 @@ export class CanvasSeedScene {
     const end = points.get(synapse?.to);
     if(!start||!end){this.#signal=null;return;}
     const progress = Math.min((elapsed - this.#signal.startedAt) / this.#signal.duration, 1);
-    if (!this.#signal.ambient && progress < .2) {
+    if (!this.#signal.ambient && this.#signal.route.entry!==false && progress < .2) {
       const arrival = this.#reducedMotion ? 1 : progress / .2;
       const entryX = this.#width / 2 + (start.x - this.#width / 2) * arrival;
       const entryY = this.#height * .9 + (start.y - this.#height * .9) * arrival;
@@ -237,6 +237,10 @@ export class CanvasSeedScene {
     if (progress >= 1) this.#signal = null;
   }
 
+  inputTarget() {
+    const point=this.#points.get('origin')||this.#points.values().next().value,rect=this.#canvas.getBoundingClientRect();
+    return point&&this.#width&&this.#height?{x:rect.left+point.x*rect.width/this.#width,y:rect.top+point.y*rect.height/this.#height}:null;
+  }
   signal(route, ambient = false) { this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration: ambient ? 1.8 : 2.5 }; }
 
   setReducedMotion(value) { this.#reducedMotion = value; }

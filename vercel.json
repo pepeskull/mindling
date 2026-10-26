@@ -1,6 +1,7 @@
 {
   "version": 2,
   "routes": [
+    { "src": "/docs/?$", "dest": "/public-docs/index.html" },
     { "src": "/api/(?:learning|preview-learning)/?", "status": 410 },
     { "src": "/src/server(?:/.*)?", "status": 404 },
     { "src": "/(?:ai-lab|benchmarks|tools|tests|docs)(?:/.*)?", "status": 404 },
