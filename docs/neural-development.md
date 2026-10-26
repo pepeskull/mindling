@@ -35,3 +35,9 @@ An absolute workspace reserves `--top-height` and the existing 30px footer. A sh
 Automated tests and browser validation were intentionally not run at the user's request. No screenshots, images, fixtures, new test suites, production builds, dependencies or deployment runs were created. Validation is limited to source inspection and `git diff --check`; visual behavior, interaction and performance have not been browser-verified.
 
 Historical neural/memory/area snapshots and cognitive evaluations are unavailable, so those trends and demonstrated abilities are not presented. The visualization depicts stored canonical positions rather than the Dashboard's generated later-stage brain shape. Existing production and Stage Preview storage boundaries, learning behavior, Energy/XP rules and schema remain unchanged.
+
+## Preview event dates
+
+Stage Preview uses a virtual clock initially set to 1 January 2026. Its original event `at`, stage `leftAt` and stage-entry timestamps remain simulation times used by gameplay. New preview learning/stage-completion history entries receive optional `recordedAt` metadata from the browser clock inside the existing save transaction. Development displays that real save date. This is additive metadata in the existing state record, with no database-version change, migration or extra transaction.
+
+Older preview events without `recordedAt` display **Simulated date**; their real save date cannot be reconstructed reliably and is never replaced with the current date. Simulation stage-entry dates are labelled explicitly. Production continues to display its existing real event timestamps. Event ordering and XP calculations still use the original event clock; changing the preview clock does not rewrite a recorded save date.

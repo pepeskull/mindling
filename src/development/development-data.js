@@ -16,12 +16,14 @@ export function developmentData(state = {}, life = null) {
   const memories = graphData(state);
   const stageNumber = Number.isInteger(state.stage) ? state.stage : state.stage === 'NEURAL_SEED' ? 1 : life?.stage;
   const stage = STAGES.find(item => item.number === stageNumber);
+  const simulatedClock = state.developmentClock === 'simulated';
+  const eventTime = event => ({ recordedAt: timestamp(event.recordedAt), simulated: simulatedClock && timestamp(event.recordedAt) === null });
   const history = list(state.history).filter(event => event && timestamp(event.at) !== null)
-    .map(event => ({ at: timestamp(event.at), xp: number(event.xp), kind: text(event.kind), concept: text(event.concept) }))
+    .map(event => ({ at: timestamp(event.at), ...eventTime(event), xp: number(event.xp), kind: text(event.kind), concept: text(event.concept) }))
     .sort((a, b) => a.at - b.at);
   const stageHistory = list(state.stageHistory).filter(event => event && timestamp(event.leftAt) !== null)
-    .map(event => ({ at: timestamp(event.leftAt), title: `${STAGES.find(item => item.number === event.stage)?.name || 'Previous stage'} completed`, detail: number(event.xp) === null ? '' : `${event.xp} recorded stage XP` }));
-  const events = [...history.map(event => ({ at: event.at, title: event.kind === 'reinforcement' ? 'Memory reinforced' : event.kind === 'correction' ? 'Memory updated' : event.kind === 'decision' ? 'Learning response recorded' : 'Learning recorded', detail: event.concept || (event.kind === 'decision' ? 'A learning response was saved; this does not imply new knowledge.' : 'Saved learning event'), xp: event.xp })), ...stageHistory]
+    .map(event => ({ at: timestamp(event.leftAt), ...eventTime(event), title: `${STAGES.find(item => item.number === event.stage)?.name || 'Previous stage'} completed`, detail: number(event.xp) === null ? '' : `${event.xp} recorded stage XP` }));
+  const events = [...history.map(event => ({ at: event.at, recordedAt: event.recordedAt, simulated: event.simulated, title: event.kind === 'reinforcement' ? 'Memory reinforced' : event.kind === 'correction' ? 'Memory updated' : event.kind === 'decision' ? 'Learning response recorded' : 'Learning recorded', detail: event.concept || (event.kind === 'decision' ? 'A learning response was saved; this does not imply new knowledge.' : 'Saved learning event'), xp: event.xp })), ...stageHistory]
     .sort((a, b) => b.at - a.at).slice(0, 8);
   const plotted = nodes.filter(node => Array.isArray(node.position) && node.position.length === 3 && node.position.every(Number.isFinite))
     .map(node => ({ id: node.id, position: [...node.position], size: number(node.size) ?? 1 }));
@@ -42,7 +44,7 @@ export function developmentData(state = {}, life = null) {
     milestones: Array.isArray(state.milestones) ? state.milestones.length : null,
     pathways: [...new Set(list(state.pathways).filter(value => typeof value === 'string' && value.trim()))],
     xpEvents: history.filter(event => event.xp !== null).slice(-24), events,
-    enteredAt: timestamp(state.enteredAt),
+    enteredAt: timestamp(state.enteredAt), simulatedClock,
     // Knowledge, progression and demonstrated ability intentionally stay separate.
     ability: { available: false }
   };

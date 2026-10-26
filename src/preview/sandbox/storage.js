@@ -7,7 +7,16 @@ export class PreviewStore {
   async read() { return new Promise((resolve,reject)=>{const r=this.db.transaction('sandbox').objectStore('sandbox').get('state');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);}); }
   async change(reducer) {
     return new Promise((resolve,reject)=>{const tx=this.db.transaction('sandbox','readwrite'),store=tx.objectStore('sandbox'),r=store.get('state');let next,error;
-      r.onsuccess=()=>{try{if(r.result&&r.result.version!==1)throw Error('Unsupported preview schema; export before resetting');next=reducer(r.result);next.revision=(r.result?.revision||0)+1;store.put(next,'state');}catch(e){error=e;tx.abort();}};
+      r.onsuccess=()=>{try{if(r.result&&r.result.version!==1)throw Error('Unsupported preview schema; export before resetting');const previousMind=r.result?.mind;
+        const previousId=previousMind?.id;
+        const knownEvents=new Set((previousMind?.history||[]).map(event=>event.id));
+        const previousStages=previousMind?.stageHistory?.length||0;
+        next=reducer(r.result);
+        // Keep simulation timestamps for gameplay; add real save time only to new records.
+        const recordedAt=Date.now(),sameMind=next.mind?.id===previousId;
+        for(const event of next.mind?.history||[])if(!sameMind||!knownEvents.has(event.id))event.recordedAt=recordedAt;
+        for(const event of (next.mind?.stageHistory||[]).slice(sameMind?previousStages:0))event.recordedAt=recordedAt;
+        next.revision=(r.result?.revision||0)+1;store.put(next,'state');}catch(e){error=e;tx.abort();}};
       tx.oncomplete=()=>resolve(next);tx.onabort=tx.onerror=()=>reject(error||tx.error||Error('Preview save failed'));
     });
   }
