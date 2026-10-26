@@ -47,7 +47,6 @@ export class PreviewDashboardPresentation {
       });
       q('.hero-copy p').textContent = `${state.stage.name} · Stage ${String(this.stage).padStart(2, '0')}`;
       q('[data-life-stage]').textContent = state.stage.name;
-      for(const key of ['neurons','synapses'])q(`[data-stat-label="${key}"]`).textContent=`${state.countKind==='canonical'?'Canonical':'Visual'} ${key}`;
       for (const key of ['neurons', 'synapses', 'memories']) q(`[data-stat="${key}"]`).textContent = state[key];
       for (const [name, value] of Object.entries(state.life.attributes)) {
         const row = q(`[data-life-attribute="${name}"]`), progress = row.querySelector('progress');

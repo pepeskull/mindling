@@ -6,12 +6,10 @@ import { energyCapacityForStage } from '../src/economy/energy.js';
 import { generateStage, Morphology } from '../src/preview/evolution-model.js';
 import { stagePresentation } from '../src/renderer/stage-presentation.js';
 import { growCanonical, NEURAL_CAPACITY } from '../src/brain/canonical-growth.js';
-import { canonicalSelectionText } from '../src/renderer/canonical-selection.js';
 import { PreviewStore } from '../src/preview/sandbox/storage.js';
 import { MindlingDatabase } from '../src/storage/database.js';
 import { StageBrainScene } from '../src/renderer/stage-brain-scene.js';
 import { SceneInteraction } from '../src/renderer/scene-interaction.js';
-import { evolutionProgress } from '../src/ui/evolution-progress.js';
 import { applyMemoryDecision } from '../src/preview/sandbox/memory-mutation.js';
 import { acquireWebGL, releaseWebGL } from '../src/renderer/shared-webgl.js';
 
@@ -121,8 +119,6 @@ test('all Replay definitions are identical; primary counts remain canonical; map
  assert.equal(after.visualNeuronCount,24);assert.equal(after.canonicalNeuronCount,6);assert.deepEqual(after.projection.slice(0,5),before);
  assert.equal(new Set(after.projection.map(p=>p.visualIndex)).size,6);assert.equal(new Set(after.projection.map(p=>JSON.stringify(p.position))).size,6);
  assert.deepEqual(stagePresentation(JSON.parse(JSON.stringify(m))).projection,after.projection);
- assert.match(canonicalSelectionText({...m,memories:[{neuronIds:['learned-5']}]},{type:'neuron',id:'learned-5'}),/1 associated memories/);
- assert.doesNotMatch(canonicalSelectionText(m,{type:'neuron',id:'visual-23'}),/associated memories/);
  assert.deepEqual(NEURAL_CAPACITY,[5,12,20,30,42,54,64]);
 });
 function canvasEnvironment(){
@@ -180,8 +176,7 @@ test('initial/reloaded stage is immediate; later committed stages morph; XP-only
   scene.destroy();const restored=new StageBrainScene(null,null,new SceneInteraction(),null);restored.mount(env.host,JSON.parse(JSON.stringify(m)));assert.equal(restored.scene.morph.progress,1);assert.equal(restored.scene.canonicalSignal,undefined);restored.destroy();
  }finally{env.restore();}
 });
-test('remaining requirements are honest and all sixty-four canonical IDs retain distinct stable slots',()=>{
- const s=ready();s.now-=3600000;assert.match(evolutionProgress(s.mind,s.now).status,/minimum duration/);
+test('all sixty-four canonical IDs retain distinct stable slots',()=>{
  const m=fresh().mind;
  for(let stage=2;stage<=7;stage++){
   m.stage=stage;

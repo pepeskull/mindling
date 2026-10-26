@@ -1,5 +1,7 @@
 # M4.2.4: automatic evolution and full Replay morphology
 
+> Historical implementation description. M4.2.5 removes training and inspector UI, restores the compact XP bar, and uses Replay stage counts in the main interface. The cognitive engine and saved records remain intact. See [the current UI cleanup](ui-cleanup-replay-counts.md).
+
 ## What was wrong
 
 Production already called `progressGameplay` in controller reducers, while Preview offered an explicit Evolve button and never applied that check automatically. Eligibility was not a final invariant of the two persistence boundaries. A fully eligible Preview identity could therefore stay in Neural Seed indefinitely.

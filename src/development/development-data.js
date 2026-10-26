@@ -41,6 +41,6 @@ export function developmentData(state = {}, life = null) {
     pathways: [...new Set(list(state.pathways).filter(value => typeof value === 'string' && value.trim()))],
     events,
     enteredAt: timestamp(state.enteredAt), simulatedClock,
-    // Evaluations are loaded separately by TrainingPanel, never inferred here.
+    // Evaluation records and metrics remain separate; this view never initiates training.
   };
 }

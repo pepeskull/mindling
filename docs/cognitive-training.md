@@ -1,5 +1,7 @@
 # Cognitive Training & Reasoning Evaluation (M4.1)
 
+> Historical implementation description. M4.2.5 removes training and inspector UI, restores the compact XP bar, and uses Replay stage counts in the main interface. The cognitive engine and saved records remain intact. See [the current UI cleanup](ui-cleanup-replay-counts.md).
+
 Cognitive Training lives in Development and is separate from Teach/Talk/Deep Training. It evaluates support from stored claims, not objective truth or a general intelligence score. There is no automatic learning, XP, Energy change, life-stage change or canonical growth.
 
 ## Architecture and data flow

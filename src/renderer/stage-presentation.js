@@ -6,6 +6,14 @@ export function visualMorphologyFor(stage) {
   if (!VISUAL_MODELS.has(stage)) VISUAL_MODELS.set(stage, generateStage(stage));
   return VISUAL_MODELS.get(stage);
 }
+// Main-view counters describe the same generated geometry used by Replay.
+// This read-only projection never changes persisted learning topology.
+export function stageMorphologyCounts(stage) {
+  if (stage === 'NEURAL_SEED') stage = 1;
+  if (!Number.isInteger(stage) || stage < 1 || stage > 7) return { neurons:null, synapses:null };
+  const model = visualMorphologyFor(stage);
+  return { neurons:model.nodes.length, synapses:model.edges.length };
+}
 const FOUNDATION = ['origin','upper','right','lower','left'];
 // Fixed identity slots, never an active-set rank or modulo mapping. Adding learned-N
 // cannot remap an existing ID. Imported unknown IDs retain a separate saved-position
