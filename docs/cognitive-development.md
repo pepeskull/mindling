@@ -1,5 +1,7 @@
 # M4.2 — Cognitive Development & Autonomous Reasoning Foundation
 
+> Historical implementation description. M4.2.5 removes training and inspector UI, restores the compact XP bar, and uses Replay stage counts in the main interface. The cognitive engine and saved records remain intact. See [the current UI cleanup](ui-cleanup-replay-counts.md).
+
 This milestone makes cognition reusable and observable. It does **not** activate autonomous reasoning. Run Evaluation remains the only application entrypoint that requests provider work. There are no gameplay triggers, background schedules, polling, recursive reasoning or retries.
 
 ## Architecture

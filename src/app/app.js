@@ -1,3 +1,4 @@
+import { CognitiveEngine } from '../cognition/cognitive-engine.js';
 import { energyCapacityForStage } from '../economy/energy.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../preview/automatic-playback.js';
@@ -16,8 +17,13 @@ export class MindlingApp extends EvolutionPreview {
   constructor() {
     super({ interactive: true, autoPlay: false, autoNetwork: true, snapshotProvider: null, canonicalBrain:true });
     this.db = new MindlingDatabase(); this.listeners = new AbortController();
+    // Keep cognition available internally without mounting a training interface.
+    this.cognition = new CognitiveEngine({ events:this.events, store:{
+      load:id=>this.db.trainingHistory(id),
+      source:id=>{this.external?.assertWritable();return this.db.trainingSource(id);},
+      save:record=>{this.external?.assertWritable();return this.db.saveTraining(record);}
+    } });
     this.dashboardOptions = {
-      trainingStore: { load: id => this.db.trainingHistory(id), source: id => { this.external?.assertWritable(); return this.db.trainingSource(id); }, save: record => { this.external?.assertWritable(); return this.db.saveTraining(record); } },
       onInput: (text, activity, id) => this.submitInput(text, activity, id),
       onCare: type => this.performCare(type),
       onNewMindling: () => this.beginNewMindling()
@@ -140,6 +146,7 @@ export class MindlingApp extends EvolutionPreview {
   }
 
   renderState() {
+    this.cognition.setActiveMindling(this.state.mind?.id || null);
     if (this.external?.locked || !this.view || !this.dashboard || !this.state.mind) return;
     const m = this.state.mind;
     this.deceased = m.life.lifeState === 'DECEASED';
@@ -170,7 +177,7 @@ export class MindlingApp extends EvolutionPreview {
   destroy() {
     if (this.disposed) return;
     clearInterval(this.lifeTimer);clearInterval(this.energyTimer); this.listeners.abort(); this.stabilityRow?.remove();
-    this.onboarding?.hide(); this.db.close(); document.querySelector('#app')?.classList.remove('gameplay-mode');
+    this.cognition.destroy();this.onboarding?.hide(); this.db.close(); document.querySelector('#app')?.classList.remove('gameplay-mode');
     super.destroy();
     if (this.subtitle) document.querySelector('.hero-copy').append(this.subtitle);
   }

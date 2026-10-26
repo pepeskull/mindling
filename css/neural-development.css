@@ -17,22 +17,11 @@
 .development-scene { flex: 1 0 180px; min-height: 180px; position: relative; cursor: grab; touch-action: none; }
 .development-scene.dragging { cursor: grabbing; }
 .development-scene canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
-.development-scene-controls { display: flex; align-items: center; justify-content: center; gap: 6px; flex-wrap: wrap; margin: 0 16px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 9px; flex: none; }
-.development-view button, .development-view select { font: inherit; font-size: 9px; border-radius: 6px; border: 1px solid var(--border-subtle); background: rgba(255,255,255,.025); color: var(--text-secondary); padding: 7px 9px; transition: color .18s, background .18s, border-color .18s; }
-.development-view button { cursor: pointer; }
-.development-view button:hover:enabled, .development-view select:hover:enabled { border-color: var(--border-hover); color: var(--text-primary); background: rgba(255,255,255,.07); }
+.development-view button { font: inherit; font-size: 9px; border-radius: 6px; border: 1px solid var(--border-subtle); background: rgba(255,255,255,.025); color: var(--text-secondary); padding: 7px 9px; cursor: pointer; transition: color .18s, background .18s, border-color .18s; }
+.development-view button:hover:enabled { border-color: var(--border-hover); color: var(--text-primary); background: rgba(255,255,255,.07); }
 .development-view button:active:enabled { background: var(--accent-muted); }
 .development-view :disabled { opacity: .4; cursor: default; }
-.development-view :is(button,select,[tabindex]):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
-.development-view select { min-width: 0; max-width: 130px; }
-.development-view option { background: var(--surface-deep); color: var(--text-primary); }
-.development-scene-controls label { display: flex; align-items: center; gap: 8px; color: var(--text-muted); font-size: 8px; }
-.development-selection { min-height: 26px; padding: 0 18px; margin: 12px 0 0; font-size: 10px; line-height: 1.6; color: var(--text-secondary); flex: none; }
-.development-brain-stats { display: flex; flex-wrap: wrap; gap: 30px; padding: 18px; border-top: 1px solid var(--border-subtle); flex: none; }
-.development-brain-stats > div { display: flex; flex-direction: column; gap: 6px; }
-.development-brain-stats strong { font-size: 25px; font-weight: 430; letter-spacing: -.03em; }
-.development-brain-stats span { font-size: 9px; color: var(--text-muted); }
-.development-caption { margin: 0; padding: 0 18px 16px; color: var(--text-muted); font-size: 8px; line-height: 1.7; flex: none; }
+.development-view :is(button,[tabindex]):focus-visible { outline: 1px solid var(--accent); outline-offset: 3px; }
 .development-panel-body { padding: 0 18px 18px; overflow-wrap: anywhere; }
 .development-metrics { margin: 0; }
 .development-metrics > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border-subtle); }
@@ -45,10 +34,6 @@
 .development-xp progress::-webkit-progress-bar { background: var(--border-subtle); border-radius: 4px; }
 .development-xp progress::-webkit-progress-value { background: var(--accent); border-radius: 4px; transition: width .6s ease; }
 .development-xp progress::-moz-progress-bar { background: var(--accent); border-radius: 4px; }
-.development-training { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border-subtle); }
-.development-training h4 { margin-top: 0; line-height: 1.8; }
-.development-training h4 span { display: inline-block; margin-left: 5px; border: 1px solid var(--border-subtle); border-radius: 4px; padding: 1px 5px; color: var(--text-muted); font-size: 8px; }
-.development-training > p:not(.development-eyebrow) { color: var(--text-secondary); font-size: 9px; }
 .development-pathways h4:first-child { margin-top: 0; }
 .development-pathway-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .development-pathway-list > span { padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--accent); background: var(--accent-muted); font-size: 9px; }
@@ -70,35 +55,6 @@
 .development-network-empty[hidden] { display: none; }
 .development-network-empty p { margin: 0 0 10px; color: var(--text-secondary); font-size: 16px; font-weight: 430; }
 .development-network-empty span { color: var(--text-muted); font-size: 10px; }
-
-/* Training stays inside the existing scrollable cognition panel. */
-.development-view .development-training { min-width: 0; }
-.development-view .development-training h4 { font-size: 12px; }
-.development-view .development-training h5 { margin: 18px 0 8px; font-size: 10px; font-weight: 500; color: var(--text-primary); }
-.development-view .development-training h6 { margin: 14px 0 6px; font-size: 9px; font-weight: 500; color: var(--accent); }
-.development-training p, .development-training blockquote { font-size: 10px; line-height: 1.7; color: var(--text-secondary); overflow-wrap: anywhere; white-space: pre-wrap; }
-.development-training .training-disclosure { font-size: 9px; color: var(--text-muted); }
-.training-form { display: grid; gap: 10px; margin-top: 16px; min-width: 0; }
-.training-form label { display: grid; gap: 8px; font-size: 9px; color: var(--text-secondary); }
-.development-view .training-form textarea { width: 100%; min-width: 0; max-width: 100%; min-height: 85px; max-height: 220px; resize: vertical; border: 1px solid var(--border-subtle); border-radius: 7px; padding: 10px; background: rgba(255,255,255,.025); color: var(--text-primary); font: 10px var(--font); line-height: 1.7; }
-.development-view .training-form textarea:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-.training-form textarea::placeholder { color: var(--text-muted); }
-.training-form button { justify-self: start; }
-.training-status { padding-block: 10px; border-bottom: 1px solid var(--border-subtle); }
-.development-training .training-warning { padding: 8px 10px; border: 1px solid var(--border-hover); border-radius: 6px; color: var(--accent); }
-.development-training blockquote { margin: 8px 0; border-left: 1px solid var(--border-hover); padding: 0 0 0 10px; }
-.development-training details { border-top: 1px solid var(--border-subtle); margin-top: 16px; padding-top: 12px; }
-.development-training summary { color: var(--text-secondary); font-size: 9px; cursor: pointer; }
-.development-view .training-history-item { display: block; width: 100%; margin: 6px 0; text-align: left; line-height: 1.7; overflow-wrap: anywhere; }
-.development-view .development-training summary:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
-
-.cognitive-progress { margin-top: 16px; padding: 12px 0; border-block: 1px solid var(--border-subtle); }
-.development-training .cognitive-progress h4 { margin-top: 0; }
-.cognitive-progress dl { margin: 0; }
-.cognitive-progress dl > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 6px 0; }
-.cognitive-progress dt { color: var(--text-secondary); font-size: 9px; }
-.cognitive-progress dd { margin: 0; color: var(--text-primary); font-size: 12px; font-variant-numeric: tabular-nums; }
-.cognitive-record-metrics { display: block; padding-top: 5px; color: var(--text-muted); font-size: 8px; }
 
 [data-adaptive-pathways] details { border-top: 1px solid var(--border-subtle); margin-top: 12px; padding-top: 10px; }
 [data-adaptive-pathways] summary { cursor: pointer; color: var(--text-secondary); font-size: 9px; }

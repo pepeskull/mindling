@@ -1,5 +1,5 @@
+import { CognitiveEngine } from '../../cognition/cognitive-engine.js';
 import { EVENTS } from '../../app/events.js';
-import { canonicalBrain } from '../../renderer/canonical-brain.js';
 import { energyCapacityForStage } from '../../economy/energy.js';
 import { PATHWAYS, DEFAULT_ORIGINS } from '../../pathways/pathways.js';
 import { LEARNING_INPUT_LIMIT } from '../../memory/content-integrity.js';
@@ -21,7 +21,12 @@ export class SandboxPreview extends EvolutionPreview {
     if(new URLSearchParams(location.search).get('stage-preview')!=='1')throw Error('Sandbox requires explicit preview URL');
     const store=await new PreviewStore().open();
     if(this.disposed){store.close();return;}
-    this.dashboardOptions = { ...this.dashboardOptions, trainingStore: { load: id => store.trainingHistory(id), source: id => { this.external?.assertWritable(); return store.trainingSource(id); }, save: record => { this.external?.assertWritable(); return store.saveTraining(record); } } };
+    // Same isolated repository, with no mounted training UI or automatic requests.
+    this.cognition=new CognitiveEngine({events:this.events,store:{
+      load:id=>store.trainingHistory(id),
+      source:id=>{this.external?.assertWritable();return store.trainingSource(id);},
+      save:record=>{this.external?.assertWritable();return store.saveTraining(record);}
+    }});
     this.store=store;this.state=await this.store.change(s=>s?advanceSandbox(s):createSandbox());
     if(this.disposed){store.close();return;}
     this.stabilityRow=document.createElement('div');this.stabilityRow.className='life-attribute';this.stabilityRow.dataset.lifeAttribute='neuralStability';
@@ -136,6 +141,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.status('Deterministic fixture — no learning service request. Repeating it earns no XP.');
   }
   renderState(){
+    this.cognition?.setActiveMindling(this.state.mind?.id || null);
     if(this.external?.locked)return;
     const m=this.state.mind;if(!m){document.querySelector('.hero-copy h1').textContent='Create a test Mindling';document.querySelectorAll('[data-stat]').forEach(el=>el.textContent='0');return;}
     if(this.identityId!==m.id){this.identityId=m.id;this.countdown=new AutomaticNetworkCountdown();this.timeline.network.reset();}
@@ -166,7 +172,7 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelector('.hero-copy h1').textContent=`${m.name} ${alive?'is learning.':'— Neural Collapse'}`;
     if(!this.panel)return;
     const gate=eligibility(this.state);
-    this.panel.querySelector('[data-diagnostics]').textContent=`${STAGES[stage-1].name}\nStage XP: ${m.stageXP} / ${gate.required.xp} · Lifetime: ${m.lifetimeXP}\nStage entered: ${new Date(m.enteredAt).toISOString()}\nStage days: ${(gate.elapsed/DAY).toFixed(2)} / ${gate.required.days}\nLearning milestones: ${gate.concepts} / ${gate.required.concepts}\nEligible: ${gate.eligible}\nVirtual time: ${new Date(this.state.now).toISOString()}\nOffset: ${((this.state.now-this.state.origin)/DAY).toFixed(2)} days\n${m.nodes.length} canonical neurons · ${STAGES[stage-1].count} presentation-only visual neurons`;
+    this.panel.querySelector('[data-diagnostics]').textContent=`${STAGES[stage-1].name}\nStage XP: ${m.stageXP} / ${gate.required.xp} · Lifetime: ${m.lifetimeXP}\nStage entered: ${new Date(m.enteredAt).toISOString()}\nStage days: ${(gate.elapsed/DAY).toFixed(2)} / ${gate.required.days}\nLearning milestones: ${gate.concepts} / ${gate.required.concepts}\nEligible: ${gate.eligible}\nVirtual time: ${new Date(this.state.now).toISOString()}\nOffset: ${((this.state.now-this.state.origin)/DAY).toFixed(2)} days`;
     this.panel.querySelector('[data-history]').textContent=JSON.stringify(m.history.slice(-12).map(event=>({...event,source:event.source==='NATIVE'?'Local learning':event.source==='SERVICE'?'Mindling learning service':event.source?'Historical record':undefined})),null,2);
     const select=this.panel.querySelector('[data-node-selection]');const previous=select.value;select.replaceChildren(...m.nodes.map(n=>{const o=document.createElement('option');o.value=n.id;o.textContent=n.id;return o;}));if(m.nodes.some(n=>n.id===previous))select.value=previous;this.inspectNode(select.value);
 
@@ -176,7 +182,7 @@ export class SandboxPreview extends EvolutionPreview {
     if(this.external?.locked){this.external.refresh();return;}
     if(!this.view||!this.presentation)return;
     const state=presentationFor(this.timeline,this.view.morph),m=this.state?.mind;
-    if(m){const canonical=canonicalBrain(m);state.countKind='canonical';state.neurons=canonical.neuronCount;state.synapses=canonical.synapseCount;state.memories=m.memories.length;state.life={...m.life,condition:condition(m.life)};}
+    if(m){state.memories=m.memories.length;state.life={...m.life,condition:condition(m.life)};}
     if(!m)return;
     const changed=this.presentation.stage!==state.stage.number;
     this.presentation.update(state);
@@ -184,5 +190,5 @@ export class SandboxPreview extends EvolutionPreview {
     if(m.life.lifeState==='DECEASED'){this.view.reduced=true;this.seed.setReducedMotion(true);}
     this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;this.external?.refresh();
   }
-  destroy(){clearInterval(this.lifeTimer);clearInterval(this.energyTimer);this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
+  destroy(){clearInterval(this.lifeTimer);clearInterval(this.energyTimer);this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.cognition?.destroy();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }

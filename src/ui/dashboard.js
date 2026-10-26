@@ -1,6 +1,4 @@
-import { renderEvolutionProgress } from './evolution-progress.js';
-import { canonicalSelectionText } from '../renderer/canonical-selection.js';
-import { canonicalBrain } from '../renderer/canonical-brain.js';
+import { stageMorphologyCounts } from '../renderer/stage-presentation.js';
 import { LEARNING_INPUT_LIMIT } from '../memory/content-integrity.js';
 import { DevelopmentView } from '../development/development-view.js';
 import { NeuralMemoryView } from '../memory/neural-memory-view.js';
@@ -28,14 +26,13 @@ export class Dashboard {
   #onCare;
   #onNewMindling;
   #life;
-  #selection = null;
   #pending = false;
   #mode = "TALK";
   #eventUnsubscribes = [];
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, trainingStore, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, readOnly = false } = {}) {
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"));
-    this.#development = new DevelopmentView(document.querySelector("#development-view"), { trainingStore, events });
+    this.#development = new DevelopmentView(document.querySelector("#development-view"));
     this.#onViewChange = onViewChange;
     this.#readOnly = readOnly;
     this.#events = events;
@@ -48,7 +45,6 @@ export class Dashboard {
       events.on(EVENTS.MEMORY_REINFORCED, () => this.#showStatus("Memory reinforced")),
       events.on(EVENTS.LEARNING_FAILED, () => this.#showStatus("Learning could not be saved")),
       events.on(EVENTS.EVENT_HANDLER_FAILED, () => this.#showStatus("A dashboard update could not be completed")),
-      events.on(EVENTS.SCENE_SELECTION, selection => {this.#selection=selection;const node=document.querySelector('[data-canonical-selection]');if(node&&this.#state){node.hidden=!selection;node.textContent=canonicalSelectionText(this.#state,selection);}}),
       events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
     this.#form = document.querySelector("#interaction-form");
@@ -101,24 +97,17 @@ export class Dashboard {
   }
 
   render(state) {
-    if(this.#state?.mindlingId!==state.mindlingId)this.#selection=null;
     this.#state = state;
-    const selectionNote=document.querySelector('[data-canonical-selection]');selectionNote.hidden=!this.#selection;if(this.#selection)selectionNote.textContent=canonicalSelectionText(state,this.#selection);
-    const brain=canonicalBrain(state);
+    const brain=stageMorphologyCounts(state.stage);
     const stats = {
-      neurons: brain.neuronCount,
-      synapses: brain.synapseCount,
+      neurons: brain.neurons ?? '—',
+      synapses: brain.synapses ?? '—',
       memories: state.memories.length
     };
 
     for (const [key, value] of Object.entries(stats)) {
       document.querySelector(`[data-stat="${key}"]`).textContent = value;
     }
-    for(const key of ['neurons','synapses'])document.querySelector(`[data-stat-label="${key}"]`).textContent=`Canonical ${key}`;
-    renderEvolutionProgress(document.querySelector('[data-evolution-progress]'),state,state.developmentNow??Date.now());
-    const morphologyNote=document.querySelector('[data-morphology-note]');
-    const stage=STAGES.find(item=>item.number===state.stage);
-    if(stage){morphologyNote.hidden=false;morphologyNote.textContent=`Visual morphology: ${stage.count}-node ${stage.name} model. Bright cores mark canonical neurons; visual complexity is not learned knowledge.`;}
     if (!state.name) return;
     document.querySelector("[data-life-status-title]").textContent = `${state.name} — Life Status`;
     document.querySelector(".hero-copy h1").textContent = `${state.name} is awake.`;
