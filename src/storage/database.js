@@ -1,3 +1,4 @@
+import { loadTraining, saveTraining, trainingSource } from '../training/persistence.js';
 import { energyAt } from '../economy/energy.js';
 import { migrateGameplay, dashboardLife } from '../app/gameplay-state.js';
 
@@ -25,6 +26,9 @@ export class MindlingDatabase {
     this.#db.onversionchange = () => this.close();
     return this;
   }
+  trainingSource(mindId) { return trainingSource(this.#db, false, mindId); }
+  trainingHistory(mindId) { if (!this.#db) return Promise.reject(Error('Local storage is unavailable.')); return loadTraining(this.#db, false, mindId); }
+  saveTraining(record) { if (!this.#db) return Promise.reject(Error('Local storage is unavailable.')); return saveTraining(this.#db, false, record); }
   async get(store, id) { return this.#request(store, "readonly", target => target.get(id)); }
   async getAll(store) { return this.#request(store, "readonly", target => target.getAll()); }
   async put(store, value) { return this.#request(store, "readwrite", target => target.put(value)); }

@@ -28,9 +28,9 @@ export class Dashboard {
   #mode = "TALK";
   #eventUnsubscribes = [];
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, trainingStore, readOnly = false } = {}) {
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"));
-    this.#development = new DevelopmentView(document.querySelector("#development-view"));
+    this.#development = new DevelopmentView(document.querySelector("#development-view"), { trainingStore });
     this.#onViewChange = onViewChange;
     this.#readOnly = readOnly;
     this.#events = events;

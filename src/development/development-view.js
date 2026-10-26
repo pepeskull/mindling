@@ -1,3 +1,4 @@
+import { TrainingPanel } from '../training/training-panel.js';
 import { developmentData } from './development-data.js';
 import { NeuralDevelopmentScene } from './neural-development-scene.js';
 
@@ -7,7 +8,7 @@ const eventDate = event => `${event.simulated ? 'Simulated date: ' : ''}${date(e
 const value = number => number === null ? '—' : number.toLocaleString();
 
 export class DevelopmentView {
-  constructor(root) {
+  constructor(root, { trainingStore } = {}) {
     this.root = root; this.abort = new AbortController(); this.visible = false;
     root.innerHTML = `
       <div class="development-grid">
@@ -25,7 +26,7 @@ export class DevelopmentView {
             <dl class="development-metrics" data-development-metrics></dl>
             <div class="development-xp" data-development-xp></div>
             <p class="development-muted">Memory, knowledge-area and neural growth trends need historical snapshots. Current totals are shown above.</p>
-            <div class="development-training"><p class="development-eyebrow">DEMONSTRATED ABILITY</p><h4>Cognitive Training <span>Coming Soon</span></h4><p>Stored knowledge is a starting point. Future evaluations will test how your Mindling applies it to unfamiliar problems.</p><p>No cognitive evaluations are recorded.</p></div>
+            <div class="development-training" data-cognitive-training></div>
           </div>
         </section>
         <section class="development-pathways development-panel" aria-labelledby="pathways-title">
@@ -37,18 +38,24 @@ export class DevelopmentView {
         </section>
       </div>`;
     this.scene = new NeuralDevelopmentScene(root.querySelector('.development-scene'), id => this.showSelection(id));
+    this.training = new TrainingPanel(root.querySelector('[data-cognitive-training]'), { store: trainingStore, onComplete: ids => {
+      const references = new Set(ids);
+      const neuronIds = (this.state?.memories || []).filter(memory => references.has(memory.id)).flatMap(memory => Array.isArray(memory.neuronIds) ? memory.neuronIds : []);
+      this.scene.activate(neuronIds);
+    } });
     root.addEventListener('click', event => { const action = event.target.closest('[data-development-camera]')?.dataset.developmentCamera; if (action) this.scene.control(action); }, { signal: this.abort.signal });
     root.querySelector('[data-development-neuron]').addEventListener('change', event => this.scene.select(event.target.value || null), { signal: this.abort.signal });
   }
   update(state = {}, life = null) {
     if (this.abort.signal.aborted) return;
-    this.state = state; this.life = life; this.dirty = true;
+    this.state = state; this.life = life; this.training.update(state); this.dirty = true;
     if (this.visible) this.refresh();
   }
   setVisible(visible) {
     this.visible = visible;
     if (visible && this.dirty) this.refresh();
     this.scene.setVisible(visible);
+    this.training.setVisible(visible);
   }
   refresh() {
     this.dirty = false;
@@ -90,5 +97,5 @@ export class DevelopmentView {
     this.root.querySelector('[data-development-selection]').textContent = text;
     this.root.querySelector('[data-development-neuron]').value = index < 0 ? '' : id;
   }
-  destroy() { if (this.abort.signal.aborted) return; this.abort.abort(); this.scene.destroy(); this.state = null; this.life = null; this.data = null; this.root.replaceChildren(); }
+  destroy() { if (this.abort.signal.aborted) return; this.abort.abort(); this.training.destroy(); this.scene.destroy(); this.state = null; this.life = null; this.data = null; this.root.replaceChildren(); }
 }
