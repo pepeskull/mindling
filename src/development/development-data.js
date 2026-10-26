@@ -45,7 +45,6 @@ export function developmentData(state = {}, life = null) {
     pathways: [...new Set(list(state.pathways).filter(value => typeof value === 'string' && value.trim()))],
     events,
     enteredAt: timestamp(state.enteredAt), simulatedClock,
-    // Knowledge, progression and demonstrated ability intentionally stay separate.
-    ability: { available: false }
+    // Evaluations are loaded separately by TrainingPanel, never inferred here.
   };
 }

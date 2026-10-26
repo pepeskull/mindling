@@ -12,7 +12,7 @@ Invalid/missing optional data uses unavailable or empty states. Identified node 
 
 The redundant page heading and learning-XP chart have been removed; stage and lifetime XP remain in the progression panel, and the shared header retains the life stage. Recent activity uses actual timestamps from learning and stage-completion history, including zero-XP decisions without claiming new knowledge. No synthetic baselines or growth snapshots are created.
 
-Selected pathways are displayed as directions. Current knowledge areas are shown separately because no stored mapping links them to individual pathways. No proficiency, pathway levels, unlocks or demonstrated cognitive abilities are inferred. Cognitive Training is a coming-soon section with no action button; no evaluation mechanism/results were found in the inspected models.
+Selected pathways are displayed as directions. Current knowledge areas are shown separately because no stored mapping links them to individual pathways. No proficiency, pathway levels, unlocks or demonstrated cognitive abilities are inferred from memory counts. M4.1 replaces the initial training placeholder with a separate real reasoning/evaluation workflow; see [cognitive-training.md](./cognitive-training.md).
 
 ## Rendering and lifecycle
 
@@ -34,7 +34,7 @@ An absolute workspace reserves `--top-height` and the existing 30px footer. A sh
 
 Automated tests and browser validation were intentionally not run at the user's request. No screenshots, images, fixtures, new test suites, production builds, dependencies or deployment runs were created. Validation is limited to source inspection and `git diff --check`; visual behavior, interaction and performance have not been browser-verified.
 
-Historical neural/memory/area snapshots and cognitive evaluations are unavailable, so those trends and demonstrated abilities are not presented. Dashboard’s old neuron/synapse popover has been removed in favor of the dedicated Development selection and Memory inspector. The visualization depicts stored canonical positions rather than the Dashboard's generated later-stage brain shape. Existing production and Stage Preview storage boundaries, learning behavior, Energy/XP rules and schema remain unchanged.
+Historical neural/memory/area snapshots are unavailable, so those growth trends are not presented. Cognitive evaluations now have their own explicit, scoped history rather than inferred proficiency scores. Dashboard’s old neuron/synapse popover has been removed in favor of the dedicated Development selection and Memory inspector. The visualization depicts stored canonical positions rather than the Dashboard's generated later-stage brain shape. Existing production and Stage Preview storage boundaries, learning behavior, Energy/XP rules and schema remain unchanged.
 
 ## Preview event dates
 

@@ -9,7 +9,7 @@ export class NeuralDevelopmentScene {
     this.canvas = document.createElement('canvas'); this.canvas.setAttribute('aria-hidden', 'true'); host.append(this.canvas);
     this.ctx = this.canvas.getContext('2d'); this.camera = new SceneInteraction();
     this.frame = null; this.visible = false; this.points = new Map(); this.nodes = []; this.edges = [];
-    this.selected = null; this.hovered = null; this.focusLevels = new Map(); this.elapsed = 0; this.last = null;
+    this.activeNodes = new Set(); this.activeUntil = 0; this.selected = null; this.hovered = null; this.focusLevels = new Map(); this.elapsed = 0; this.last = null;
     this.motion = matchMedia('(prefers-reduced-motion: reduce)');
     this.camera.connect(host, { onTap: event => this.select(this.hit(event)), onHover: event => {
       this.hovered = event ? this.hit(event) : null; host.style.cursor = this.hovered ? 'pointer' : 'grab'; this.request();
@@ -39,7 +39,8 @@ export class NeuralDevelopmentScene {
     if (!this.nodes.some(node => node.id === this.selected)) this.selected = null;
     this.request();
   }
-  setVisible(value) { this.visible = value; this.pause(); if (value) this.request(); }
+  activate(ids) { this.activeNodes = new Set(ids.filter(id => this.nodes.some(node => node.id === id))); this.activeUntil = this.elapsed + 2.4; this.request(); }
+  setVisible(value) { if (!value) { this.activeNodes.clear(); this.activeUntil = 0; } this.visible = value; this.pause(); if (value) this.request(); }
   pause() { cancelAnimationFrame(this.frame); this.frame = null; this.last = null; }
   request() { if (!this.visible || document.hidden || this.abort.signal.aborted || this.frame !== null) return; this.frame = requestAnimationFrame(time => this.render(time)); }
   control(action) {
@@ -89,7 +90,8 @@ export class NeuralDevelopmentScene {
     for (const [index, point] of points.entries()) {
       const selected = point.id === this.selected, hover = point.id === this.hovered;
       const pulse = ambient ? Math.max(0, Math.sin(this.elapsed * 1.2 + index * .9)) : 0;
-      const target = selected ? 1 : hover ? .5 : 0;
+      const trained = this.activeNodes.has(point.id) && this.elapsed < this.activeUntil;
+      const target = selected || trained ? 1 : hover ? .5 : 0;
       const previous = this.focusLevels.get(point.id) || 0;
       const focus = this.motion.matches ? target : previous + (target - previous) * (1 - Math.exp(-delta * 12));
       this.focusLevels.set(point.id, focus);
@@ -100,9 +102,9 @@ export class NeuralDevelopmentScene {
       ctx.beginPath();
       for (let vertex = 0; vertex < 10; vertex++) { const angle = vertex / 10 * Math.PI * 2, r = radius * (.85 + seededValue(index * 31 + vertex) * .15), x = point.x + Math.cos(angle) * r, y = point.y + Math.sin(angle) * r; if (vertex) ctx.lineTo(x,y); else ctx.moveTo(x,y); }
       ctx.closePath(); ctx.fillStyle = selected ? '#b7d8d1' : 'rgba(183,216,209,.55)'; ctx.strokeStyle = hover || selected ? '#f2f2f2' : 'rgba(183,216,209,.7)'; ctx.fill(); ctx.stroke();
-      if (selected) { ctx.beginPath(); ctx.arc(point.x, point.y, radius + 6, 0, Math.PI*2); ctx.strokeStyle = 'rgba(183,216,209,.5)'; ctx.stroke(); }
+      if (selected || trained) { ctx.beginPath(); ctx.arc(point.x, point.y, radius + 6, 0, Math.PI*2); ctx.strokeStyle = 'rgba(183,216,209,.5)'; ctx.stroke(); }
     }
     if (ambient && this.nodes.length) this.request();
   }
-  destroy() { if (this.abort.signal.aborted) return; this.visible = false; this.pause(); this.abort.abort(); this.observer.disconnect(); this.camera.disconnect(); this.canvas.remove(); this.points.clear(); this.focusLevels.clear(); this.nodes = []; this.edges = []; }
+  destroy() { if (this.abort.signal.aborted) return; this.visible = false; this.pause(); this.abort.abort(); this.observer.disconnect(); this.camera.disconnect(); this.canvas.remove(); this.points.clear(); this.focusLevels.clear(); this.activeNodes.clear(); this.nodes = []; this.edges = []; }
 }

@@ -16,6 +16,7 @@ export class MindlingApp extends EvolutionPreview {
     super({ interactive: true, autoPlay: false, autoNetwork: true, snapshotProvider: null });
     this.db = new MindlingDatabase(); this.listeners = new AbortController();
     this.dashboardOptions = {
+      trainingStore: { load: id => this.db.trainingHistory(id), source: id => { this.external?.assertWritable(); return this.db.trainingSource(id); }, save: record => { this.external?.assertWritable(); return this.db.saveTraining(record); } },
       onInput: (text, activity, id) => this.submitInput(text, activity, id),
       onCare: type => this.performCare(type),
       onNewMindling: () => this.beginNewMindling()

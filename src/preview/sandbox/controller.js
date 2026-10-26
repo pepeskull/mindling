@@ -16,6 +16,7 @@ export class SandboxPreview extends EvolutionPreview {
     if(new URLSearchParams(location.search).get('stage-preview')!=='1')throw Error('Sandbox requires explicit preview URL');
     const store=await new PreviewStore().open();
     if(this.disposed){store.close();return;}
+    this.dashboardOptions = { ...this.dashboardOptions, trainingStore: { load: id => store.trainingHistory(id), source: id => { this.external?.assertWritable(); return store.trainingSource(id); }, save: record => { this.external?.assertWritable(); return store.saveTraining(record); } } };
     this.store=store;this.state=await this.store.change(s=>s?advanceSandbox(s):createSandbox());
     if(this.disposed){store.close();return;}
     this.stabilityRow=document.createElement('div');this.stabilityRow.className='life-attribute';this.stabilityRow.dataset.lifeAttribute='neuralStability';

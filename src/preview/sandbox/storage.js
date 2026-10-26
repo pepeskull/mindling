@@ -1,9 +1,13 @@
+import { loadTraining, saveTraining, trainingSource } from '../../training/persistence.js';
 export const PREVIEW_DB='mindling-preview-m4';
 export class PreviewStore {
   async open() {
     this.db=await new Promise((resolve,reject)=>{let abandoned=false;const r=indexedDB.open(PREVIEW_DB,1);r.onupgradeneeded=()=>r.result.createObjectStore('sandbox');r.onsuccess=()=>{if(abandoned)r.result.close();else resolve(r.result);};r.onerror=()=>reject(r.error);r.onblocked=()=>{abandoned=true;reject(Error('Close other preview tabs to upgrade'));};});
     this.db.onversionchange=()=>this.close();return this;
   }
+  trainingSource(mindId) { return trainingSource(this.db, true, mindId); }
+  trainingHistory(mindId) { return loadTraining(this.db, true, mindId); }
+  saveTraining(record) { return saveTraining(this.db, true, record); }
   async read() { return new Promise((resolve,reject)=>{const r=this.db.transaction('sandbox').objectStore('sandbox').get('state');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);}); }
   async change(reducer) {
     return new Promise((resolve,reject)=>{const tx=this.db.transaction('sandbox','readwrite'),store=tx.objectStore('sandbox'),r=store.get('state');let next,error;
