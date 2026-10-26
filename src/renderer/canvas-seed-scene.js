@@ -29,17 +29,17 @@ export class CanvasSeedScene {
   #ambientIndex = 0;
   #routeHighlight = { neuronIds: [], synapseIds: [] };
 
-  constructor(onSelection, interaction = null, framing = null) { this.framing = framing; this.#onSelection = onSelection; if (interaction) { this.#interaction = interaction; this.#ownsInteraction = false; } }
+  constructor(onSelection, interaction = null, framing = null, sharedCanvas = null) { this.sharedCanvas = sharedCanvas; this.framing = framing; this.#onSelection = onSelection; if (interaction) { this.#interaction = interaction; this.#ownsInteraction = false; } }
 
   mount(host, model) {
     this.#host = host;
     this.#model = model;
-    this.#canvas = document.createElement("canvas");
+    this.#canvas = this.sharedCanvas || document.createElement("canvas");
     this.#canvas.className = "webgl-fallback";
     this.#canvas.setAttribute("aria-hidden", "true");
     this.#context = this.#canvas.getContext("2d");
     if(!this.#context)throw Error("Canvas is unavailable");
-    host.append(this.#canvas);
+    if (!this.sharedCanvas) host.append(this.#canvas);
     if (this.#ownsInteraction) this.#interaction.connect(host, { onTap: event => this.#pick(event) });
   }
 
@@ -243,6 +243,6 @@ export class CanvasSeedScene {
 
   destroy() {
     if (this.#ownsInteraction) this.#interaction.disconnect();
-    this.#canvas?.remove();
+    if (!this.sharedCanvas) this.#canvas?.remove();
   }
 }

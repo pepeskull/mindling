@@ -1,4 +1,5 @@
 import { loadTraining, saveTraining, trainingSource } from '../training/persistence.js';
+import { reconcileEvolution } from '../preview/sandbox/engine.js';
 import { energyAt } from '../economy/energy.js';
 import { migrateGameplay, dashboardLife } from '../app/gameplay-state.js';
 
@@ -46,7 +47,7 @@ export class MindlingDatabase {
             const saved = data.gameplay.find(item => item.id === 'primary');
             if (saved && saved.state?.version !== 1) throw Error('Unsupported gameplay data; existing records have been preserved.');
             const initial = saved ? saved.state : migrateGameplay(data, Date.now());
-            next = reducer(structuredClone(initial));
+            next = reconcileEvolution(reducer(structuredClone(initial)));
             next.revision = (initial.revision || 0) + 1;
             if (initial.mind && next.mind?.id !== initial.mind.id && initial.mind.life.lifeState !== 'DECEASED') throw Error('A living identity cannot be replaced.');
             if (next.mind && next.tombstones.some(item => item.id === next.mind.id) && next.mind.life.lifeState !== 'DECEASED') throw Error('A deceased identity cannot be revived.');

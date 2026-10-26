@@ -1,3 +1,5 @@
+import { renderEvolutionProgress } from '../ui/evolution-progress.js';
+import { canonicalSelectionText } from '../renderer/canonical-selection.js';
 import { AdaptivePathwaysView } from '../pathways/pathway-view.js';
 import { TrainingPanel } from '../training/training-panel.js';
 import { developmentData } from './development-data.js';
@@ -62,6 +64,7 @@ export class DevelopmentView {
   refresh() {
     this.dirty = false;
     const data = developmentData(this.state, this.life), signature = JSON.stringify(data);
+    renderEvolutionProgress(this.root.querySelector('[data-development-xp]'),this.state,this.state.developmentNow??Date.now());
     if (signature === this.signature) return;
     this.signature = signature; this.data = data; this.scene.update(data);
     this.root.querySelector('.development-network-empty').hidden = Boolean(data.nodes.length);
@@ -69,20 +72,13 @@ export class DevelopmentView {
     this.root.querySelector('[data-development-name]').textContent = data.name;
     this.root.querySelector('[data-development-presence]').textContent = data.deceased ? 'Preserved architecture' : 'Living architecture';
     const stats = this.root.querySelector('[data-development-brain-stats]'); stats.replaceChildren();
-    for (const [count, label] of [[data.neuronCount, 'Neurons'], [data.synapseCount, 'Synapses'], [data.memoryCount, 'Memories']]) { const item = element('div'); item.append(element('strong', value(count)), element('span', label)); stats.append(item); }
+    for (const [count, label] of [[data.neuronCount, 'Canonical neurons'], [data.synapseCount, 'Canonical synapses'], [data.memoryCount, 'Memories']]) { const item = element('div'); item.append(element('strong', value(count)), element('span', label)); stats.append(item); }
     const select = this.root.querySelector('[data-development-neuron]');
     select.replaceChildren(new Option('Choose a neuron', ''), ...data.nodes.map((node, index) => new Option(`Neuron ${String(index + 1).padStart(2, '0')}`, node.id)));
     select.disabled = !data.nodes.length; this.showSelection(this.scene.selection);
-    this.root.querySelector('[data-development-scene-note]').textContent = !data.neuronCount ? 'No saved neural network yet. Your Mindling’s network will appear here.' : data.unplottedNodes || data.unplottedEdges ? `${data.unplottedNodes} neurons lack saved positions; ${data.unplottedEdges} connections cannot be drawn. Totals preserve all identified records.` : 'Drag to rotate · Scroll to zoom. Ambient pulses are decorative, not learning events.';
+    this.root.querySelector('[data-development-scene-note]').textContent = !data.neuronCount ? 'No saved neural network yet. Your Mindling’s network will appear here.' : data.unplottedNodes || data.unplottedEdges ? `${data.unplottedNodes} neurons lack saved positions; ${data.unplottedEdges} connections cannot be drawn. Totals preserve all identified records.` : `Stage ${data.stageNumber} — ${data.stage}. Visual morphology: ${data.visualNeuronCount} presentation-only nodes. Bright cores mark canonical neurons; ambient pulses are decorative. Drag to rotate · Scroll to zoom.`;
     const metrics = this.root.querySelector('[data-development-metrics]'); metrics.replaceChildren();
     for (const [label, count] of [['Energy', data.energyText], ['Current memories', data.currentMemories], ['Knowledge areas', data.areaCount], ['Lifetime XP', data.lifetimeXP], ['Stage milestones', data.milestones]]) { const row = element('div'); row.append(element('dt', label), element('dd', value(count))); metrics.append(row); }
-    const xp = this.root.querySelector('[data-development-xp]'); xp.replaceChildren(element('h4', 'Stage progression'));
-    if (data.stageXP !== null && data.targetXP !== null) {
-      xp.append(element('p', `${value(data.stageXP)} / ${value(data.targetXP)} stage XP`));
-      const progress = element('progress'); progress.max = data.targetXP; progress.value = Math.min(data.stageXP, data.targetXP); progress.setAttribute('aria-label', 'XP toward the next stage requirement'); progress.textContent = `${data.stageXP} of ${data.targetXP} XP`; xp.append(progress);
-      xp.append(element('p', 'Evolution also requires time and learning milestones.', 'development-muted'));
-    } else xp.append(element('p', data.stageNumber === 7 ? `${value(data.stageXP)} stage XP · Final recorded stage` : 'Stage XP is not available in this record.', 'development-muted'));
-    if (data.enteredAt !== null) xp.append(element('p', `${data.simulatedClock ? 'Simulation stage entered' : 'Current stage entered'} ${date(data.enteredAt)}`, 'development-muted'));
     const areas = this.root.querySelector('[data-development-areas]'); areas.replaceChildren();
     for (const area of data.areas) { const item = element('li'); item.append(element('span', area.label), element('strong', String(area.count))); areas.append(item); }
     if (!data.areas.length) areas.append(element('li', 'No current knowledge areas yet.', 'development-muted'));
@@ -92,15 +88,9 @@ export class DevelopmentView {
   }
   showSelection(selection) {
     const id=typeof selection==='string'?selection:selection?.id;
-    if(selection?.type==='synapse'){
-      const edge=this.data?.edges.find(edge=>edge.id===id);
-      this.root.querySelector('[data-development-selection]').textContent=edge?`Saved synapse · ${edge.strength>=0&&edge.strength<=1?Math.round(edge.strength*100)+'% recorded connection strength':'strength unavailable'}`:'Select a neuron or synapse.';
-      this.root.querySelector('[data-development-neuron]').value='';return;
-    }
-    const index = this.data?.nodes.findIndex(node => node.id === id) ?? -1;
-    const text = index < 0 ? 'Select a neuron to explore its saved connections.' : `Neuron ${String(index + 1).padStart(2, '0')} · ${this.data.edges.filter(edge => edge.from === id || edge.to === id).length} drawable saved connections`;
-    this.root.querySelector('[data-development-selection]').textContent = text;
-    this.root.querySelector('[data-development-neuron]').value = index < 0 ? '' : id;
+    this.root.querySelector('[data-development-selection]').textContent=canonicalSelectionText(this.state,typeof selection==='string'?{type:'neuron',id}:selection);
+    this.root.querySelector('[data-development-neuron]').value=selection?.type==='synapse'?'':id||'';
   }
+
   destroy() { if (this.abort.signal.aborted) return; this.abort.abort(); this.training.destroy(); this.pathways.destroy(); this.scene.destroy(); this.state = null; this.life = null; this.data = null; this.root.replaceChildren(); }
 }

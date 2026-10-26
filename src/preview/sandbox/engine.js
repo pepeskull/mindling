@@ -41,7 +41,7 @@ export function newMindling(state,{name='Test Mindling',pathway=null,pathways=nu
 export function eligibility(state) {
   const m=state.mind;if(!m)return {eligible:false,reason:'Create a test Mindling'};
   const rule=RULES[m.stage-1], elapsed=Math.max(0,state.now-m.enteredAt), concepts=new Set(m.milestones).size;
-  return {eligible:m.stage<7 && m.life.lifeState==='ALIVE' && elapsed>=rule.days*DAY && m.stageXP>=rule.xp && concepts>=rule.concepts,elapsed,required:rule,concepts};
+  return {eligible:m.stage<7 && m.life.lifeState==='ALIVE' && !state.tombstones.some(t=>t.id===m.id) && m.life.attributes.health>0 && m.life.attributes.neuralStability>0 && elapsed>=rule.days*DAY && m.stageXP>=rule.xp && concepts>=rule.concepts,elapsed,required:rule,concepts};
 }
 export function evolve(state) {
   if(!eligibility(state).eligible)throw Error('Time, XP, learning milestones and a living Mindling are required');
@@ -49,6 +49,8 @@ export function evolve(state) {
   m.stageHistory.push({stage:m.stage,enteredAt:m.enteredAt,leftAt:next.now,xp:m.stageXP,concepts:new Set(m.milestones).size});
   m.stage++;m.energy=setEnergyStage(m.energy,m.stage,next.now);m.enteredAt=next.now;m.stageXP=0;m.milestones=[];return next;
 }
+// Pure final transaction reducer: exactly one eligible transition; new-stage counters reset.
+export function reconcileEvolution(state) { return eligibility(state).eligible ? evolve(state) : state; }
 export function cosine(a,b) { if(!a?.length||!b?.length||a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return x&&y?dot/Math.sqrt(x*y):-1; }
 // Native analysis runs synchronously inside the caller's existing IndexedDB transaction.
 export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',assessment=null}) {
@@ -135,5 +137,4 @@ export function advanceTime(state,hours) {
 }
 // Reset the displayed offset, never rewind physiological time or award/cooldown history.
 export function resetClock(state) { const next=structuredClone(state);next.origin=next.now;next.clockResets++;return next; }
-export function visualMapping(mind,count) { return Array.from({length:count},(_,i)=>mind.nodes[i%mind.nodes.length].id); }
 export function stageName(state) { return STAGES[(state.mind?.stage||1)-1].name; }

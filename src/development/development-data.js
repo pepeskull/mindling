@@ -26,7 +26,7 @@ export function developmentData(state = {}, life = null) {
     .sort((a, b) => b.at - a.at).slice(0, 8);
   return {
     id: text(state.mindlingId || state.id), name: text(state.name) || 'Your Mindling',
-    stage: stage?.name || 'Stage unavailable', stageNumber: stage?.number ?? null,
+    stage: stage?.name || 'Stage unavailable', stageNumber: stage?.number ?? null, visualNeuronCount:stage?.count??0,
     deceased: (state.life?.lifeState || life?.lifeState) === 'DECEASED',
     nodes: brain.nodes, edges: brain.synapses,
     neuronCount: brain.neuronCount, synapseCount: brain.synapseCount,
@@ -37,7 +37,7 @@ export function developmentData(state = {}, life = null) {
     energyText:state.energy?`${state.energy.remaining-(state.energy.bonus||0)} / ${energyCapacityForStage(stageNumber)}${state.energy.bonus?` + ${state.energy.bonus} bonus`:''}`:'—',
     stageXP: number(state.stageXP), lifetimeXP: number(state.lifetimeXP),
     targetXP: stage && stage.number < 7 ? RULES[stage.number - 1].xp : null,
-    milestones: Array.isArray(state.milestones) ? state.milestones.length : null,
+    milestones: Array.isArray(state.milestones) ? new Set(state.milestones).size : null,
     pathways: [...new Set(list(state.pathways).filter(value => typeof value === 'string' && value.trim()))],
     events,
     enteredAt: timestamp(state.enteredAt), simulatedClock,

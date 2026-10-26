@@ -1,3 +1,4 @@
+import { acquireWebGL, releaseWebGL } from '../renderer/shared-webgl.js';
 import { BrainIdentities } from '../network/brain-identity.js';
 import { SceneInteraction } from "../renderer/scene-interaction.js";
 import { NEURAL_SEED_MORPHOLOGY, seededValue } from "../renderer/neural-morphology.js";
@@ -109,7 +110,8 @@ export class RenderBuffers {
 }
 
 export class EvolutionScene {
-  constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage, fitDashboard = false, originalFraming = false } = {}) {
+  constructor({ three = null, interaction = new SceneInteraction(), reduced = false, provider = generateStage, fitDashboard = false, originalFraming = false, shareContext = false } = {}) {
+    this.shareContext=shareContext;
     this.focus=[0,0,0];this.focusScale=1;
     this.fitDashboard = fitDashboard; this.three = three; this.interaction = interaction; this.reduced = reduced;
     this.useSharedFraming = fitDashboard && !originalFraming;
@@ -126,7 +128,7 @@ export class EvolutionScene {
   }
   mountThree() {
     const T = this.three;
-    this.renderer = new T.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    this.renderer = this.shareContext?acquireWebGL(T):new T.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75)); this.canvas = this.renderer.domElement; this.host.append(this.canvas);
     this.scene = new T.Scene(); this.root = new T.Group(); this.scene.add(this.root);
     this.camera = this.useSharedFraming ? new T.OrthographicCamera(-1,1,1,-1,.1,40) : new T.PerspectiveCamera(36, 1, .1, 40); this.camera.position.z = 9;
@@ -144,6 +146,104 @@ export class EvolutionScene {
     const T = this.three, geometry = new T.BufferGeometry(); geometry.setAttribute('position', new T.BufferAttribute(array, 3).setUsage(T.DynamicDrawUsage));
     const object = new T.LineSegments(geometry, new T.LineBasicMaterial({ color, transparent: true, opacity, depthWrite: false })); object.frustumCulled = false; this.root.add(object); return object;
   }
+  setCanonicalNetwork(network, projection, animateGrowth = false) {
+    const previous = new Set((this.canonicalNetwork?.synapses || []).map(edge=>edge.id));
+    const signature = JSON.stringify([network.nodes.map(node=>node.id),network.synapses.map(edge=>[edge.id,edge.from,edge.to])]);
+    this.canonicalNetwork=network;this.canonicalProjection=projection;
+    if(signature!==this.canonicalSignature){
+      this.canonicalSignature=signature;
+      this.canonicalIndices=new Map(network.nodes.map((node,i)=>[node.id,i]));
+      this.canonicalPositions=new Float32Array(network.nodes.length*3);
+      this.canonicalLines=new Float32Array(network.synapses.length*6);
+      if(this.three){
+        const T=this.three;
+        for(const object of [this.canonicalCores,this.canonicalFibers])if(object){this.root.remove(object);object.geometry.dispose();object.material.dispose();}
+        const geometry=new T.BufferGeometry();geometry.setAttribute('position',new T.BufferAttribute(this.canonicalPositions,3).setUsage(T.DynamicDrawUsage));
+        geometry.setAttribute('color',new T.BufferAttribute(new Float32Array(network.nodes.length*3),3).setUsage(T.DynamicDrawUsage));
+        this.canonicalCores=new T.Points(geometry,new T.PointsMaterial({size:.065,vertexColors:true,transparent:true,opacity:.95,depthTest:false,depthWrite:false}));
+        this.canonicalCores.frustumCulled=false;this.canonicalCores.renderOrder=2;this.root.add(this.canonicalCores);
+        this.canonicalFibers=this.lineObject(this.canonicalLines,0xcbe8e1,.65);this.canonicalFibers.renderOrder=1;
+      }
+      const added=network.synapses.find(edge=>!previous.has(edge.id));
+      if(animateGrowth&&added)this.signalCanonical({source:added.from,destination:added.to,synapse:added.id,outcome:'MEMORY_FORMATION'});
+    }
+    this.updateCanonicalBuffers();
+  }
+  updateCanonicalBuffers() {
+    if(!this.canonicalNetwork)return;
+    const indices=this.canonicalIndices;
+    this.canonicalProjection.forEach((node,i)=>{
+      const position=node.visualIndex===null?node.position:this.morph.positions.subarray(node.visualIndex*3,node.visualIndex*3+3);
+      this.canonicalPositions.set(position,i*3);
+    });
+    this.canonicalNetwork.synapses.forEach((edge,i)=>{
+      this.canonicalLines.set(this.canonicalPositions.subarray(indices.get(edge.from)*3,indices.get(edge.from)*3+3),i*6);
+      this.canonicalLines.set(this.canonicalPositions.subarray(indices.get(edge.to)*3,indices.get(edge.to)*3+3),i*6+3);
+    });
+  }
+  signalCanonical(route){
+    if(!this.canonicalNetwork?.synapses.some(edge=>edge.id===route.synapse))return;
+    this.canonicalSignal={...route,startedAt:performance.now()/1000};
+  }
+  canonicalVisible(){return Boolean(this.canonicalNetwork)&&!this.buffers.focusedId&&this.focusScale===1;}
+  canonicalPoint(index,out){
+    if(this.three){const v=new this.three.Vector3().fromArray(this.canonicalPositions,index*3).applyMatrix4(this.root.matrixWorld).project(this.camera);out[0]=(v.x+1)*this.width/2;out[1]=(1-v.y)*this.height/2;return v.z>=-1&&v.z<=1;}
+    this.project(this.canonicalPositions,index*3,out);return true;
+  }
+  pickCanonicalElement(event){
+    if(!event||!this.canonicalVisible()||!this.width||!this.height)return null;
+    const rect=this.canvas.getBoundingClientRect(),x=(event.clientX-rect.left)*this.width/rect.width,y=(event.clientY-rect.top)*this.height/rect.height;
+    const projected=new Map();let best=null,distance=13;
+    this.canonicalNetwork.nodes.forEach((node,i)=>{
+      const p=new Float32Array(2);if(!this.canonicalPoint(i,p))return;projected.set(node.id,p);
+      const d=Math.hypot(x-p[0],y-p[1]);if(d<distance){distance=d;best={type:'neuron',id:node.id};}
+    });
+    if(best)return best;
+    distance=4;
+    for(const edge of this.canonicalNetwork.synapses){
+      const a=projected.get(edge.from),b=projected.get(edge.to);if(!a||!b)continue;
+      const dx=b[0]-a[0],dy=b[1]-a[1],length=dx*dx+dy*dy;if(!length)continue;
+      const t=Math.max(0,Math.min(1,((x-a[0])*dx+(y-a[1])*dy)/length));
+      const d=Math.hypot(x-a[0]-t*dx,y-a[1]-t*dy);if(d<distance){distance=d;best={type:'synapse',id:edge.id};}
+    }
+    return best;
+  }
+  drawCanonicalThree(elapsed){
+    if(!this.canonicalCores)return;
+    this.canonicalCores.visible=this.canonicalFibers.visible=this.canonicalVisible();
+    const colors=this.canonicalCores.geometry.attributes.color;
+    this.canonicalNetwork.nodes.forEach((node,i)=>{
+      const selected=node.id===this.selectedCanonical||this.canonicalRoute?.neuronIds?.includes(node.id)||this.hoverCanonical?.id===node.id;
+      colors.setXYZ(i,selected?1:.72,selected?1:.94,selected?1:.88);
+    });
+    colors.needsUpdate=true;this.canonicalCores.geometry.attributes.position.needsUpdate=true;
+    this.canonicalFibers.geometry.attributes.position.needsUpdate=true;
+    if(this.canonicalSignal&&this.canonicalVisible()&&!this.reduced){
+      const t=(elapsed-this.canonicalSignal.startedAt)/2.4;
+      const a=this.canonicalIndices.get(this.canonicalSignal.source),b=this.canonicalIndices.get(this.canonicalSignal.destination);
+      if(t>=0&&t<1&&a!==undefined&&b!==undefined&&this.buffers.pulseCount<BUDGET.impulses){
+        const offset=this.buffers.pulseCount++*3;
+        for(let axis=0;axis<3;axis++)this.buffers.pulses[offset+axis]=this.canonicalPositions[a*3+axis]*(1-t)+this.canonicalPositions[b*3+axis]*t;
+      }else if(t>=1)this.canonicalSignal=null;
+    }
+  }
+  drawCanonicalCanvas(elapsed){
+    if(!this.canonicalVisible())return;
+    const c=this.context,points=new Map();
+    this.canonicalNetwork.nodes.forEach((node,i)=>{const p=new Float32Array(2);this.canonicalPoint(i,p);points.set(node.id,p);});
+    for(const edge of this.canonicalNetwork.synapses){
+      const a=points.get(edge.from),b=points.get(edge.to);if(!a||!b)continue;
+      c.strokeStyle=this.selectedCanonicalEdge===edge.id||this.canonicalRoute?.synapseIds?.includes(edge.id)?'#ffffff':'rgba(203,232,225,.65)';c.lineWidth=1;c.beginPath();c.moveTo(...a);c.lineTo(...b);c.stroke();
+    }
+    for(const [id,p] of points){const selected=id===this.selectedCanonical||this.canonicalRoute?.neuronIds?.includes(id)||this.hoverCanonical?.id===id;c.fillStyle=selected?'#ffffff':'#b8efdf';c.beginPath();c.arc(...p,selected?3.5:2.5,0,Math.PI*2);c.fill();c.strokeStyle='rgba(225,255,249,.65)';c.beginPath();c.arc(...p,selected?6:4.5,0,Math.PI*2);c.stroke();}
+    if(this.canonicalSignal&&!this.reduced){
+      const t=(elapsed-this.canonicalSignal.startedAt)/2.4,a=points.get(this.canonicalSignal.source),b=points.get(this.canonicalSignal.destination);
+      if(t>=0&&t<1&&a&&b){c.fillStyle='#ffffff';c.beginPath();c.arc(a[0]*(1-t)+b[0]*t,a[1]*(1-t)+b[1]*t,3,0,Math.PI*2);c.fill();}else if(t>=1)this.canonicalSignal=null;
+    }
+  }
+  claimRenderer(){
+    if(this.three&&this.canvas.parentElement!==this.host){this.host.append(this.canvas);if(this.width&&this.height)this.renderer.setSize(this.width,this.height,false);}
+  }
   focusBrain(id){
     if(id)this.buffers.identities.get(id);
     this.buffers.focusedId=id;
@@ -153,7 +253,7 @@ export class EvolutionScene {
   resize(width, height) {
     if (!width || !height) return; this.width = width; this.height = height;
     if (this.useSharedFraming) this.updateFraming();
-    if (this.three) { this.renderer.setSize(width, height, false); this.camera.aspect = width / height;
+    if (this.three) { if(!this.shareContext||this.canvas.parentElement===this.host)this.renderer.setSize(width, height, false); this.camera.aspect = width / height;
       if(this.fitDashboard&&!this.useSharedFraming){
         // Original preview perspective/portrait framing, before Life System 2.0.
         const framing=width<height?Math.min(1,width/height*1.3):1;
@@ -165,10 +265,12 @@ export class EvolutionScene {
   render(elapsed, delta, network) {
     if (this.morph.progress < 1) { this.morph.tick(delta); this.buffers.rebuild(this.morph); this.centralSegments = this.buffers.segmentCount; }
     this.buffers.segmentCount = this.centralSegments; this.buffers.animate(this.morph, network, elapsed, this.reduced, this.hideCanonicalCenter);
+    this.updateCanonicalBuffers();
     if(this.useSharedFraming)this.updateFraming(network);
     if (this.three) this.renderThree(elapsed, network); else this.renderCanvas(elapsed, network);
   }
   renderThree(elapsed, network) {
+    this.claimRenderer();
     const b = this.buffers;
     this.root.rotation.set(this.interaction.rotation.x, this.interaction.rotation.y, 0);
     const framing = this.width < this.height ? Math.min(1, this.width / this.height * 1.3) : 1;
@@ -176,8 +278,9 @@ export class EvolutionScene {
     const shift=new this.three.Vector3(...this.focus).applyEuler(this.root.rotation).multiplyScalar(-this.root.scale.x);this.root.position.copy(shift);
     for (let i = 0; i < MAX_NODES; i++) {
       this.matrix.position.fromArray(b.positions, i * 3); this.matrix.scale.setScalar(b.radii[i]); this.matrix.updateMatrix(); this.soma.setMatrixAt(i, this.matrix.matrix);
-      this.color.setHex(this.selectedCanonical && this.canonicalMapping?.[i] === this.selectedCanonical ? 0xffffff : COLORS[b.regions[i]]); this.soma.setColorAt(i, this.color);
+      this.color.setHex(COLORS[b.regions[i]]); this.soma.setColorAt(i, this.color);
     }
+    this.drawCanonicalThree(elapsed);
     this.soma.instanceMatrix.needsUpdate = true; this.soma.instanceColor.needsUpdate = true;
     for (const [object, count] of [[this.fibers, b.segmentCount * 2], [this.links, b.networkCount * 2], [this.pulses, b.pulseCount]]) { object.geometry.setDrawRange(0, count); object.geometry.attributes.position.needsUpdate = true; }
     this.discovery.visible = network.state === 'DISCOVERING' && !this.reduced;
@@ -196,7 +299,7 @@ export class EvolutionScene {
   updateFraming(network) {
     const networkWeight=network ? smooth(network.elapsed/1.2)*network.fade : 0;
     const radius=this.framingRadius+(4.2-this.framingRadius)*networkWeight;
-    this.framing=previewFraming(this.width,this.height,document.querySelector('#app').clientHeight,radius,this.interaction.zoom);
+    this.framing=previewFraming(this.width,this.height,(document.querySelector('#app')?.clientHeight||this.height),radius,this.interaction.zoom);
     if(this.three){this.camera.left=-this.width/(2*this.framing.unit);this.camera.right=-this.camera.left;this.camera.top=this.height/(2*this.framing.unit);this.camera.bottom=-this.camera.top;this.camera.updateProjectionMatrix();}
   }
   projected = new Float32Array(4);
@@ -208,24 +311,16 @@ export class EvolutionScene {
       for (let i = 0; i < count; i++) { this.project(array, i * 6, p); this.project(array, i * 6 + 3, p, 2); c.moveTo(p[0], p[1]); c.lineTo(p[2], p[3]); } c.stroke();
     }
     for (let i = 0; i < MAX_NODES; i++) if (b.radii[i] > .001) {
-      const scale = this.project(b.positions, i * 3, p); c.fillStyle = this.selectedCanonical && this.canonicalMapping?.[i] === this.selectedCanonical ? "#ffffff" : `#${COLORS[b.regions[i]].toString(16)}`;
+      const scale = this.project(b.positions, i * 3, p); c.fillStyle = `#${COLORS[b.regions[i]].toString(16)}`;
       const breath = this.reduced || b.focusedId || i>=BUDGET.neurons ? 1 : 1 + .04 * Math.sin(elapsed + i);
       c.beginPath(); c.arc(p[0], p[1], Math.max(.5, b.radii[i] * scale * breath), 0, Math.PI * 2); c.fill();
       c.strokeStyle = 'rgba(170,225,210,.15)'; c.beginPath(); c.arc(p[0], p[1], b.radii[i] * scale * 1.7, 0, Math.PI * 2); c.stroke();
     }
     c.fillStyle = '#e1fff4'; for (let i = 0; i < b.pulseCount; i++) { this.project(b.pulses, i * 3, p); c.beginPath(); c.arc(p[0], p[1], 2.2, 0, Math.PI * 2); c.fill(); }
+    this.drawCanonicalCanvas(elapsed);
     if (network.state === 'DISCOVERING' && !this.reduced) { c.strokeStyle = `rgba(145,199,223,${Math.max(0,.4-network.elapsed*.2)})`; c.beginPath(); c.arc(this.width / 2, this.height / 2, (1 + network.elapsed) * Math.min(this.width, this.height) * .18, 0, Math.PI * 2); c.stroke(); }
   }
-  pickCanonical(event) {
-    const rect=this.canvas.getBoundingClientRect(), pointer={x:event.clientX-rect.left,y:event.clientY-rect.top};
-    let best=null,distance=18;const p=new Float32Array(2);
-    for(let i=0;i<this.morph.target.nodes.length;i++){
-      if(this.three){const v=new this.three.Vector3().fromArray(this.buffers.positions,i*3).applyMatrix4(this.root.matrixWorld).project(this.camera);if(v.z< -1||v.z>1)continue;p[0]=(v.x+1)*this.width/2;p[1]=(1-v.y)*this.height/2;}
-      else this.project(this.buffers.positions,i*3,p);
-      const d=Math.hypot(pointer.x-p[0],pointer.y-p[1]);if(d<distance){distance=d;best=this.canonicalMapping?.[i]||null;}
-    }
-    return best;
-  }
+  pickCanonical(event) { const hit=this.pickCanonicalElement(event);return hit?.type==='neuron'?hit.id:null; }
   // Project the same remote geometry used for rendering, including camera/root transforms.
   projectRemote(index) {
     const remote = this.buffers.remote[index], point = new Float32Array(2);
@@ -273,9 +368,10 @@ export class EvolutionScene {
     });
   }
   destroy() {
-    if (this.scene) { this.scene.traverse(object => { object.geometry?.dispose(); if (object.material) object.material.dispose(); }); this.renderer?.dispose(); this.renderer?.forceContextLoss(); }
+    if(this.disposed)return;this.disposed=true;
+    if (this.scene) { this.scene.traverse(object => { if(object.isInstancedMesh)object.dispose(); object.geometry?.dispose(); if (object.material) object.material.dispose(); }); if(this.shareContext)releaseWebGL(this.renderer);else{this.renderer?.dispose(); this.renderer?.forceContextLoss();} }
     this.buffers.identities.clear();
     this.labels?.forEach(label => label.remove()); this.labels = null;
-    this.canvas?.remove();
+    if(this.canvas?.parentElement===this.host)this.canvas.remove();
   }
 }
