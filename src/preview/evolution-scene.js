@@ -86,12 +86,13 @@ export class RenderBuffers {
     for(let k=0;k<lines.length;k+=6)this.segment(center[0]+lines[k]*scale,center[1]+lines[k+1]*scale,center[2]+lines[k+2]*scale,
       center[0]+(lines[k]+(lines[k+3]-lines[k])*visibility)*scale,center[1]+(lines[k+1]+(lines[k+4]-lines[k+1])*visibility)*scale,center[2]+(lines[k+2]+(lines[k+5]-lines[k+2])*visibility)*scale);
   }
-  animate(morph, network, elapsed, reduced) {
+  animate(morph, network, elapsed, reduced, hideCenter = false) {
     this.pulseCount=0;this.networkCount=0;
     const focused=this.focusedId?this.identities.get(this.focusedId):null;
     if(focused){this.segmentCount=0;this.radii.fill(0,0,BUDGET.neurons);this.writeBrain(focused,0,[0,0,0],1,1,elapsed,reduced);}
+    if(hideCenter&&!focused){this.segmentCount=0;this.radii.fill(0,0,BUDGET.neurons);}
     const edges=focused?focused.edges:morph.target.edges;
-    if(!focused&&!reduced&&edges.length)for(let i=0;i<Math.min(24,morph.stage*3);i++){
+    if(!focused&&!reduced&&!hideCenter&&edges.length)for(let i=0;i<Math.min(24,morph.stage*3);i++){
       const [a,b,bend]=edges[(Math.floor(elapsed/3)*13+i*17)%edges.length],k=a*3,j=b*3;
       curve(this.pulses,this.pulseCount++*3,this.positions[k],this.positions[k+1],this.positions[k+2],this.positions[j],this.positions[j+1],this.positions[j+2],(elapsed/3+i/7)%1,bend??(.13+(a%4)*.055));
     }
@@ -163,7 +164,7 @@ export class EvolutionScene {
   }
   render(elapsed, delta, network) {
     if (this.morph.progress < 1) { this.morph.tick(delta); this.buffers.rebuild(this.morph); this.centralSegments = this.buffers.segmentCount; }
-    this.buffers.segmentCount = this.centralSegments; this.buffers.animate(this.morph, network, elapsed, this.reduced);
+    this.buffers.segmentCount = this.centralSegments; this.buffers.animate(this.morph, network, elapsed, this.reduced, this.hideCanonicalCenter);
     if(this.useSharedFraming)this.updateFraming(network);
     if (this.three) this.renderThree(elapsed, network); else this.renderCanvas(elapsed, network);
   }

@@ -12,7 +12,7 @@ const clean = (value, maximum) => typeof value === 'string' && value === value.t
 export function learningContext(text, mind) {
   validateText(text,{allowQuestion:true});
   const active = (mind.memories || []).filter(memory => typeof memory.content === 'string');
-  const ranked = retrievePreviewMemories(text, active, { limit: 8 }).map(item => item.memory);
+  const ranked = retrievePreviewMemories(text, active, { limit: 8, mind }).map(item => item.memory);
   if(ranked.some(m=>typeof m.id!=='string'||!m.id||m.id.length>100))throw Error('Saved memory identifiers are invalid. No Energy or XP changed.');
   const candidates = ranked.map(memory => ({
     id: memory.id,

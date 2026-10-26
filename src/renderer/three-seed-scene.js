@@ -59,6 +59,7 @@ export class ThreeSeedScene {
     this.#scene.add(this.#seedGroup);
     this.#addLighting();
     this.#buildSeed(model);
+    this.structure = this.#structure(model);
     this.#addDepthParticles();
     if (this.#ownsInteraction) this.#interaction.connect(host, { onTap: event => this.#pick(event, true), onHover: event => this.#pick(event, false) });
   }
@@ -127,6 +128,7 @@ export class ThreeSeedScene {
       this.#nodeVisuals.set(node.id, { mesh, halo, core });
     });
 
+    if(!model.nodes.length)coreGeometry.dispose();
     const dendriteGeometry = new T.BufferGeometry();
     dendriteGeometry.setAttribute("position", new T.Float32BufferAttribute(dendriteVertices, 3));
     this.#seedGroup.add(new T.LineSegments(dendriteGeometry, this.#dendriteMaterial));
@@ -280,7 +282,20 @@ export class ThreeSeedScene {
     return new this.#three.CanvasTexture(canvas);
   }
 
+  #structure(model) { return JSON.stringify([model.nodes.map(node => [node.id,node.position,node.size]),model.synapses.map(edge => [edge.id,edge.from,edge.to])]); }
+  setSelection(selection) { this.#selected = selection; }
+  #disposeObjects(root) {
+    const geometries=new Set(),materials=new Set([this.#somaMaterial,this.#dendriteMaterial,this.#synapseMaterial].filter(Boolean)),textures=new Set();
+    root?.traverse(object=>{if(object.geometry)geometries.add(object.geometry);for(const material of Array.isArray(object.material)?object.material:[object.material])if(material){materials.add(material);if(material.map)textures.add(material.map);}});
+    textures.forEach(texture=>texture.dispose());materials.forEach(material=>material.dispose());geometries.forEach(geometry=>geometry.dispose());
+  }
   update(model) {
+    const structure=this.#structure(model);
+    if(structure!==this.structure){
+      this.#disposeObjects(this.#seedGroup);this.#seedGroup.clear();
+      this.#nodeMeshes=[];this.#interactiveObjects=[];this.#activationPulses=[];this.#nodeVisuals.clear();this.#synapseVisuals.clear();this.#signal=null;
+      this.#buildSeed(model);this.structure=structure;
+    }
     for (const synapse of model.synapses) {
       const mesh = this.#synapseVisuals.get(synapse.id);
       if (mesh) { mesh.userData.strength = synapse.strength ?? 0.2; mesh.material.opacity = 0.22 + mesh.userData.strength * 0.2; }
@@ -304,7 +319,7 @@ export class ThreeSeedScene {
       0
     );
     if (this.framing) {
-      const fit = previewFraming(this.width, this.height, this.framing.referenceHeight(), 1.5, this.#interaction.zoom);
+      const fit = previewFraming(this.width, this.height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom);
       // Orthographic preview camera shares Canvas pixel projection, avoiding an
       // additional portrait perspective shrink. The production camera is unchanged.
       if (!this.#camera.isOrthographicCamera) this.#camera = new this.#three.OrthographicCamera(-1, 1, 1, -1, .1, 30);
@@ -325,7 +340,7 @@ export class ThreeSeedScene {
         object.scale.setScalar(object.userData.baseSize * (1 + breath) * (focused ? 1.1 : hovered ? 1.05 : 1));
       }
     }
-    for (const [id, mesh] of this.#synapseVisuals) mesh.material.opacity = (0.22 + (mesh.userData.strength ?? .2) * .2) * (this.#routeHighlight.synapseIds.includes(id) ? 1.8 : 1);
+    for (const [id, mesh] of this.#synapseVisuals) mesh.material.opacity = (0.22 + (mesh.userData.strength ?? .2) * .2) * (this.#routeHighlight.synapseIds.includes(id) || this.#selected?.type === "synapse" && this.#selected.id === id ? 1.8 : this.#hovered?.type === "synapse" && this.#hovered.id === id ? 1.3 : 1);
     this.#updateSignal(elapsed);
     if (!this.#reducedMotion) this.#particles.rotation.y = elapsed * 0.012;
     this.#renderer.render(this.#scene, this.#camera);
@@ -333,7 +348,7 @@ export class ThreeSeedScene {
 
   #updateSignal(elapsed) {
     for (const visual of this.#nodeVisuals.values()) visual.core.material.opacity = 0.06;
-    if (!this.#signal && !this.#reducedMotion && elapsed >= this.#nextAmbient) {
+    if (!this.#signal && !this.#reducedMotion && this.#activationPulses.length && elapsed >= this.#nextAmbient) {
       const pulse = this.#activationPulses[this.#ambientIndex % this.#activationPulses.length];
       this.#ambientIndex += 1;
       this.signal(pulse.userData.route, true);
@@ -372,18 +387,7 @@ export class ThreeSeedScene {
 
   destroy() {
     if (this.#ownsInteraction) this.#interaction.disconnect();
-    this.#scene?.traverse((object) => {
-      object.geometry?.dispose();
-      if (Array.isArray(object.material)) {
-        object.material.forEach((item) => {
-          item.map?.dispose();
-          item.dispose();
-        });
-      } else {
-        object.material?.map?.dispose();
-        object.material?.dispose();
-      }
-    });
+    this.#disposeObjects(this.#scene);
     this.#renderer?.dispose();
     this.#renderer?.forceContextLoss();
     this.#renderer?.domElement.remove();

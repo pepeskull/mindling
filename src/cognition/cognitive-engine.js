@@ -1,3 +1,4 @@
+import { pathwayContext } from '../pathways/pathways.js';
 import { EVENTS, EventBus } from '../app/events.js';
 import { trainingContext, assertTrainingContext } from '../training/retrieval.js';
 import { validateContext } from '../training/contract.js';
@@ -25,6 +26,12 @@ export class CognitiveEngine {
   }
   setActiveMindling(mindlingId) { if (mindlingId !== this.#identity) { this.cancel(); this.#identity = mindlingId; } }
   cancel() { this.#active?.controller.abort(); this.#active = null; }
+  async pathwayContext() {
+    if(!this.store||!this.#identity||this.#disposed)throw Error('Pathway context is unavailable.');
+    const identity=this.#identity,source=await this.store.source(identity);
+    if(this.#disposed||identity!==this.#identity)throw new DOMException('Identity changed','AbortError');
+    return pathwayContext(source);
+  }
   async history() {
     if (!this.store || !this.#identity || this.#disposed) throw Error('Cognitive history is unavailable.');
     const identity = this.#identity, history = await this.store.load(identity);
@@ -88,7 +95,7 @@ export class CognitiveEngine {
       if (globalThis.navigator?.locks?.request) completion = await navigator.locks.request(`mindling-training:${event.mindlingId}:${id}`, { ifAvailable: true }, async lock => { live(); if (!lock) throw Error('This evaluation is running in another tab. Wait, then try again.'); return execute(); });
       else completion = await execute();
       live();
-      const result = { ...completion, metrics: cognitiveMetrics(completion.history), evaluationMetrics: evaluationMetrics(completion.record) };
+      const result = { ...completion, pathwayContext:pathwayContext(completion.source), metrics: cognitiveMetrics(completion.history), evaluationMetrics: evaluationMetrics(completion.record) };
       // Keep active until after emission: immediate recursive requests fail busy.
       emit(EVENTS.COGNITIVE_REASONING_COMPLETED, { evaluationId: completion.record.id, cached: completion.cached, metrics: result.evaluationMetrics, result: completion.record.result, referencedMemoryIds: completion.record.result.reasoning.memoryIds });
       return result;

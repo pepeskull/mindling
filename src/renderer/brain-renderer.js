@@ -1,107 +1,69 @@
-import { CanvasSeedScene } from "./canvas-seed-scene.js";
-import { ThreeSeedScene } from "./three-seed-scene.js";
+import { CanvasSeedScene } from './canvas-seed-scene.js';
+import { ThreeSeedScene } from './three-seed-scene.js';
+import { SceneInteraction } from './scene-interaction.js';
+import { canonicalBrain } from './canonical-brain.js';
 
-const THREE_MODULE_URL =
-  "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js";
+const THREE_MODULE_URL = 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.min.js';
 
+// One morphology implementation per backend. Modes change framing/scheduling,
+// not geometry, materials, palette, dendrites or the canonical brain model.
 export class BrainRenderer {
-  #host;
-  #sceneView;
-  #frameId = null;
-  #resizeObserver;
-  #paused = false;
-  #lastTime = 0;
-  #renderModel; #onSelection;
-
-  constructor(host, onSelection) {
-    if (!host) throw new Error("Brain renderer host is required");
-    this.#host = host;
-    this.#onSelection = onSelection;
+  constructor(host, onSelection, { mode = 'dashboard', three = null, interaction = null, framing = null, externallyScheduled = false } = {}) {
+    this.host = host; this.onSelection = onSelection; this.mode = mode; this.three = three;
+    this.interaction = interaction || new SceneInteraction(); this.ownsInteraction = !interaction;
+    this.external = externallyScheduled; this.framing = framing; this.model = canonicalBrain({});
+    this.abort = new AbortController(); this.motion = matchMedia('(prefers-reduced-motion: reduce)');
+    this.visible = mode === 'dashboard'; this.frame = null; this.lastTime = null; this.disposed = false;
   }
-
-  async initialize(renderModel) {
-    this.#validateModel(renderModel);
-    this.#renderModel = structuredClone(renderModel);
-    this.#sceneView = await this.#createSceneView();
-    try {
-      this.#sceneView.mount(this.#host, this.#renderModel);
-    } catch {
-      this.#sceneView.destroy?.();
-      this.#host.replaceChildren();
-      this.#sceneView = new CanvasSeedScene(this.#onSelection);
-      this.#sceneView.mount(this.#host, this.#renderModel);
-    }
-
-    this.#resizeObserver = new ResizeObserver(() => this.#resize());
-    this.#resizeObserver.observe(this.#host);
-    document.addEventListener("visibilitychange", this.#handleVisibility);
-    this.#resize();
-    this.#start();
+  async initialize(model) {
+    this.model = canonicalBrain(model);
+    try { this.three = await import(THREE_MODULE_URL); } catch { this.three = null; }
+    if (this.disposed) return;
+    this.mount(this.host, this.model);
   }
-
-  update(renderModel) {
-    this.#validateModel(renderModel);
-    this.#renderModel = structuredClone(renderModel);
-    this.#sceneView?.update(this.#renderModel);
-  }
-
-  signal(route) { this.#sceneView?.signal(route); }
-  highlightRoute(route) { this.#sceneView?.highlightRoute(route); }
-
-  async #createSceneView() {
-    try {
-      const three = await import(THREE_MODULE_URL);
-      return new ThreeSeedScene(three, this.#onSelection);
-    } catch {
-      return new CanvasSeedScene(this.#onSelection);
+  mount(host, model) {
+    this.host = host; this.model = canonicalBrain(model);
+    const framing = this.framing || (this.mode === 'development' ? { referenceHeight: () => this.host.clientHeight, radius: () => Math.max(1.5, ...this.model.nodes.map(node => Math.hypot(...node.position) + node.size * .7)) } : null);
+    const create = () => this.three ? new ThreeSeedScene(this.three, this.onSelection, this.interaction, framing) : new CanvasSeedScene(this.onSelection, this.interaction, framing);
+    this.view = create();
+    try { this.view.mount(host, this.model); }
+    catch { this.view.destroy(); this.three = null; this.view = create(); this.view.mount(host, this.model); }
+    this.reduced=Boolean(this.motion.matches||this.deceased);this.view.setReducedMotion(this.reduced);
+    this.host.querySelector('canvas')?.setAttribute('aria-hidden','true');
+    host.dataset.brainBackend = this.three ? 'three' : 'canvas';
+    if (this.ownsInteraction) this.interaction.connect(host, { onTap: event => { this.selectAt(event); this.request(); }, onHover: event => { this.hoverAt(event); this.request(); } });
+    if (!this.external) {
+      for (const type of ['pointermove','wheel']) host.addEventListener(type, () => this.request(), { signal: this.abort.signal });
+      document.addEventListener('visibilitychange', () => { this.pause(); this.request(); }, { signal: this.abort.signal });
+      this.motion.addEventListener('change', () => { this.setReducedMotion(this.motion.matches || this.deceased); }, { signal: this.abort.signal });
+      this.observer = new ResizeObserver(() => this.resize(host.clientWidth, host.clientHeight)); this.observer.observe(host);
+      this.resize(host.clientWidth, host.clientHeight); this.request();
     }
   }
-
-  #validateModel(model) {
-    if (model?.stage !== "NEURAL_SEED") {
-      throw new Error(`Unsupported renderer stage: ${model?.stage ?? "unknown"}`);
-    }
-    if (!Array.isArray(model.nodes) || !Array.isArray(model.synapses)) {
-      throw new TypeError("Renderer model must contain nodes and synapses");
-    }
+  update(model) { this.model = canonicalBrain(model); this.view?.update(this.model); this.request(); }
+  resize(width, height) { this.view?.resize(width, height); this.request(); }
+  selectAt(event) { return this.view?.selectAt(event) || null; }
+  hoverAt(event) { return this.view?.hoverAt?.(event) || null; }
+  setSelection(selection) { this.view?.setSelection(selection); this.request(); }
+  signal(route) { this.view?.signal(route); this.request(); }
+  highlightRoute(route) { this.view?.highlightRoute(route); this.request(); }
+  activate(ids) { this.highlightRoute({ neuronIds: ids, synapseIds: [] }); this.highlightUntil = performance.now() / 1000 + 2.4; }
+  setReducedMotion(value) { this.reduced = Boolean(value); this.view?.setReducedMotion(this.reduced); this.pause(); this.request(); }
+  setVisible(value) { this.visible = value; this.pause(); if (!value) { this.view?.highlightRoute(null); this.highlightUntil = 0; } this.request(); }
+  pause() { cancelAnimationFrame(this.frame); this.frame = null; this.lastTime = null; }
+  request() {
+    if (this.external || this.disposed || !this.view || !this.visible || document.hidden || this.frame !== null) return;
+    this.frame = requestAnimationFrame(time => {
+      this.frame = null; if (this.disposed || !this.visible || document.hidden) return;
+      const delta = this.lastTime === null ? 0 : Math.min(.1, (time - this.lastTime) / 1000); this.lastTime = time;
+      if (this.reduced) { const pose = this.interaction.capturePose(); this.interaction.restorePose({ ...pose, zoom: pose.targetZoom }); }
+      this.interaction.update(delta); this.render(time / 1000, delta);
+      if (!this.reduced && this.model.nodes.length) this.request();
+    });
   }
-
-  #start() {
-    if (!this.#frameId && !this.#paused) {
-      this.#frameId = requestAnimationFrame(this.#renderFrame);
-    }
-  }
-
-  #renderFrame = (time) => {
-    this.#frameId = null;
-    if (this.#paused) return;
-
-    const delta = Math.min((time - this.#lastTime) / 1000 || 0, 0.1);
-    this.#lastTime = time;
-    this.#sceneView.render(time / 1000, delta);
-    this.#start();
-  };
-
-  #resize() {
-    this.#sceneView?.resize(this.#host.clientWidth, this.#host.clientHeight);
-  }
-
-  #handleVisibility = () => {
-    this.#paused = document.hidden;
-    if (this.#paused && this.#frameId) {
-      cancelAnimationFrame(this.#frameId);
-      this.#frameId = null;
-    } else {
-      this.#lastTime = performance.now();
-      this.#start();
-    }
-  };
-
+  render(elapsed, delta) { if (this.highlightUntil && elapsed >= this.highlightUntil) { this.view?.highlightRoute(null); this.highlightUntil = 0; } this.view?.render(elapsed, delta); }
   destroy() {
-    if (this.#frameId) cancelAnimationFrame(this.#frameId);
-    this.#resizeObserver?.disconnect();
-    document.removeEventListener("visibilitychange", this.#handleVisibility);
-    this.#sceneView?.destroy();
-    this.#host.replaceChildren();
+    if (this.disposed) return; this.disposed = true; this.visible = false; this.pause(); this.abort.abort(); this.observer?.disconnect();
+    if (this.ownsInteraction) this.interaction.disconnect(); this.view?.destroy(); this.view = null; this.model = null; delete this.host.dataset.brainBackend;
   }
 }

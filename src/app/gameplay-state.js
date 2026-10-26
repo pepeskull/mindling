@@ -85,8 +85,7 @@ export function progressGameplay(state) { return eligibility(state).eligible ? e
 
 export function createGameplayMindling(state, draft, identity) {
   if (state.mind && state.mind.life.lifeState !== 'DECEASED') throw Error('A living Mindling cannot be replaced.');
-  const pathway = draft.pathways.find(item => ['Researcher', 'Developer', 'Social'].includes(item)) || 'Researcher';
-  const next = newMindling(state, { name: draft.name, pathway, id: identity.mindlingId, confirmed: true });
+  const next = newMindling(state, { name: draft.name, pathways:draft.pathways, id: identity.mindlingId, confirmed: true });
   next.mind.pathways = [...draft.pathways]; next.mind.traits = { ...draft.traits };
   next.mind.mindlingId = identity.mindlingId;
   return next;

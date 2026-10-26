@@ -22,6 +22,7 @@ export class CanvasSeedScene {
   #reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
   #points = new Map();
   #selected = null;
+  #hovered = null;
   #onSelection;
   #signal = null;
   #nextAmbient = 7;
@@ -37,6 +38,7 @@ export class CanvasSeedScene {
     this.#canvas.className = "webgl-fallback";
     this.#canvas.setAttribute("aria-hidden", "true");
     this.#context = this.#canvas.getContext("2d");
+    if(!this.#context)throw Error("Canvas is unavailable");
     host.append(this.#canvas);
     if (this.#ownsInteraction) this.#interaction.connect(host, { onTap: event => this.#pick(event) });
   }
@@ -78,7 +80,10 @@ export class CanvasSeedScene {
     return this.#pick({clientX:b.left+(event.clientX-b.left)*this.#width/b.width,clientY:b.top+(event.clientY-b.top)*this.#height/b.height});
   }
 
-  #pick(event) {
+  setSelection(selection) { this.#selected = selection; }
+  hoverAt(event) { if(!event)return this.#pick(null,false);const b=this.#host.getBoundingClientRect();return this.#pick({clientX:b.left+(event.clientX-b.left)*this.#width/b.width,clientY:b.top+(event.clientY-b.top)*this.#height/b.height},false); }
+  #pick(event, select = true) {
+    if(!event){this.#hovered=null;return null;}
     const bounds = this.#host.getBoundingClientRect();
     const x = event.clientX - bounds.left; const y = event.clientY - bounds.top;
     let hit = null;
@@ -86,19 +91,20 @@ export class CanvasSeedScene {
     if (!hit) {
       for (const synapse of this.#model.synapses) {
         const a = this.#points.get(synapse.from); const b = this.#points.get(synapse.to);
+        if(!a||!b)continue;
         const lengthSquared = (b.x-a.x) ** 2 + (b.y-a.y) ** 2;
         const t = Math.max(0, Math.min(1, ((x-a.x)*(b.x-a.x)+(y-a.y)*(b.y-a.y))/lengthSquared));
         if (Math.hypot(x-(a.x+t*(b.x-a.x)), y-(a.y+t*(b.y-a.y))) < 8) hit = { type: "synapse", id: synapse.id };
       }
     }
-    this.#selected = hit; this.#onSelection?.(hit);
+    if(select){this.#selected = hit; this.#onSelection?.(hit);}else this.#hovered=hit;
     return hit;
   }
 
   #projectNodes(elapsed) {
     const centerX = this.#width / 2;
     const centerY = this.#height * (this.framing ? .5 : .52);
-    const fit = this.framing ? previewFraming(this.#width, this.#height, this.framing.referenceHeight(), 1.5, this.#interaction.zoom) : null;
+    const fit = this.framing ? previewFraming(this.#width, this.#height, this.framing.referenceHeight(), this.framing.radius?.() || 1.5, this.#interaction.zoom) : null;
     const scale = fit ? fit.unit * fit.zoom : Math.min(this.#width, this.#height) * 0.18 * this.#interaction.zoom;
     const angle = this.#interaction.rotation.y;
 
@@ -123,7 +129,7 @@ export class CanvasSeedScene {
     gradient.addColorStop(0.5, "rgba(199,236,229,.55)");
     gradient.addColorStop(1, "rgba(174,218,209,.12)");
     this.#context.strokeStyle = gradient;
-    this.#context.lineWidth = 0.55 + (synapse.strength ?? .2) * 1.2 + (this.#routeHighlight.synapseIds.includes(synapse.id) ? 0.8 : 0);
+    this.#context.lineWidth = 0.55 + (synapse.strength ?? .2) * 1.2 + (this.#routeHighlight.synapseIds.includes(synapse.id)||this.#selected?.type==='synapse'&&this.#selected.id===synapse.id ? 0.8 : 0);
     this.#context.beginPath();
     this.#context.moveTo(start.x, start.y);
     this.#context.quadraticCurveTo(
@@ -161,7 +167,7 @@ export class CanvasSeedScene {
       const angle = (vertex / 12) * Math.PI * 2;
       const irregularity = 0.84 + seededValue(point.index * 101 + vertex) * 0.24;
       const highlighted = this.#selected?.type === "neuron" && this.#selected.id === point.id || this.#routeHighlight.neuronIds.includes(point.id);
-      const radius = point.radius * irregularity * (highlighted ? 1.08 : 1);
+      const radius = point.radius * irregularity * (highlighted ? 1.08 : this.#hovered?.type==='neuron'&&this.#hovered.id===point.id ? 1.04 : 1);
       const x = point.x + Math.cos(angle) * radius;
       const y = point.y + Math.sin(angle) * radius * 0.9;
       if (vertex === 0) context.moveTo(x, y); else context.lineTo(x, y);
@@ -198,15 +204,16 @@ export class CanvasSeedScene {
   }
 
   #drawActivationPulse(points, elapsed) {
-    if (!this.#signal && !this.#reducedMotion && elapsed >= this.#nextAmbient) {
+    if (!this.#signal && !this.#reducedMotion && this.#model.synapses.length && elapsed >= this.#nextAmbient) {
       const synapse = this.#model.synapses[this.#ambientIndex % this.#model.synapses.length];
       this.#ambientIndex += 1; this.signal({ source: synapse.from, synapse: synapse.id, destination: synapse.to }, true);
       this.#signal.startedAt = elapsed; this.#nextAmbient = elapsed + 7 + (this.#ambientIndex % 3) * 1.7;
     }
     if (!this.#signal) return;
     const synapse = this.#model.synapses.find(item => item.id === this.#signal.route.synapse);
-    const start = points.get(synapse.from);
-    const end = points.get(synapse.to);
+    const start = points.get(synapse?.from);
+    const end = points.get(synapse?.to);
+    if(!start||!end){this.#signal=null;return;}
     const progress = Math.min((elapsed - this.#signal.startedAt) / this.#signal.duration, 1);
     if (!this.#signal.ambient && progress < .2) {
       const arrival = this.#reducedMotion ? 1 : progress / .2;

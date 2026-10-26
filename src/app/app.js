@@ -13,7 +13,7 @@ import { advanceGameplay, progressGameplay, createGameplayMindling, dashboardLif
 // Share rendering and pure gameplay rules, never preview fixtures, time or wallets.
 export class MindlingApp extends EvolutionPreview {
   constructor() {
-    super({ interactive: true, autoPlay: false, autoNetwork: true, snapshotProvider: null });
+    super({ interactive: true, autoPlay: false, autoNetwork: true, snapshotProvider: null, canonicalBrain:true });
     this.db = new MindlingDatabase(); this.listeners = new AbortController();
     this.dashboardOptions = {
       trainingStore: { load: id => this.db.trainingHistory(id), source: id => { this.external?.assertWritable(); return this.db.trainingSource(id); }, save: record => { this.external?.assertWritable(); return this.db.saveTraining(record); } },
@@ -28,7 +28,7 @@ export class MindlingApp extends EvolutionPreview {
     if (this.disposed) { this.db.close(); return; }
     this.state = await this.db.changeGameplay(s => progressGameplay(advanceGameplay(s)));
     if (this.disposed) { this.db.close(); return; }
-    this.seedModel = this.state.mind ? { nodes: this.state.mind.nodes.slice(0, 5), synapses: this.state.mind.synapses.slice(0, 4) } : null;
+    this.seedModel = this.state.mind ? { nodes: this.state.mind.nodes, synapses: this.state.mind.synapses } : null;
     this.stabilityRow = document.createElement('div');
     this.stabilityRow.className = 'life-attribute'; this.stabilityRow.dataset.lifeAttribute = 'neuralStability';
     this.stabilityRow.innerHTML = '<svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><label>Neural Stability</label><strong>—</strong><progress aria-label="Neural Stability" max="100" value="100">100%</progress>';
@@ -42,12 +42,12 @@ export class MindlingApp extends EvolutionPreview {
       onTap: event => {
         if(this.external?.tap(event))return;
         if (!this.state.mind) return;
-        const hit = this.timeline.stage === 1 ? this.seed.selectAt(event) : { type: 'neuron', id: this.view.pickCanonical(event) };
+        const hit = this.seed.selectAt(event);
         if (!hit?.id) return;
         this.view.selectedCanonical = hit.type === 'neuron' ? hit.id : null;
         this.events.emit(EVENTS.SCENE_SELECTION, hit);
       },
-      onHover: event => { if (this.timeline.stage === 1) this.seed.hoverAt?.(event); }
+      onHover: event => { this.seed.hoverAt?.(event); }
     });
     this.events.on(EVENTS.MEMORY_SELECTED, route => { this.seed.highlightRoute(route); this.view.selectedCanonical = route?.neuronIds?.[0] || null; });
     for (const button of document.querySelectorAll('[data-care]')) button.querySelector('small').textContent = `Free · ${LIFE_RULES.care[button.dataset.care].cooldownHours}h`;
@@ -144,7 +144,7 @@ export class MindlingApp extends EvolutionPreview {
     if (this.identityId !== m.id) { this.identityId = m.id; this.countdown = new AutomaticNetworkCountdown(); this.timeline.network.reset(); this.view.selectedCanonical = null; }
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);
-    this.seed.update({ nodes: m.nodes.slice(0, 5), synapses: m.synapses.slice(0, 4) });
+    this.seed.update({ nodes: m.nodes, synapses: m.synapses });
     this.dashboard.render(dashboardState(m));
     this.events.emit(EVENTS.LIFE_UPDATED, dashboardLife(this.state));
     document.querySelector('.hero-copy h1').textContent = `${m.name} ${this.deceased ? '— Neural Collapse' : 'is learning.'}`;
