@@ -8,7 +8,7 @@ const eventDate = event => `${event.simulated ? 'Simulated date: ' : ''}${date(e
 const value = number => number === null ? '—' : number.toLocaleString();
 
 export class DevelopmentView {
-  constructor(root, { trainingStore } = {}) {
+  constructor(root, { trainingStore, events } = {}) {
     this.root = root; this.abort = new AbortController(); this.visible = false;
     root.innerHTML = `
       <div class="development-grid">
@@ -38,7 +38,7 @@ export class DevelopmentView {
         </section>
       </div>`;
     this.scene = new NeuralDevelopmentScene(root.querySelector('.development-scene'), id => this.showSelection(id));
-    this.training = new TrainingPanel(root.querySelector('[data-cognitive-training]'), { store: trainingStore, onComplete: ids => {
+    this.training = new TrainingPanel(root.querySelector('[data-cognitive-training]'), { store: trainingStore, events, onComplete: ids => {
       const references = new Set(ids);
       const neuronIds = (this.state?.memories || []).filter(memory => references.has(memory.id)).flatMap(memory => Array.isArray(memory.neuronIds) ? memory.neuronIds : []);
       this.scene.activate(neuronIds);

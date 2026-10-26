@@ -88,3 +88,7 @@ Static syntax checks (`node --check`), relative-import existence checks, focused
 ## M4.1.1 integrity clarification
 
 New requests use context version 2 to separate recorded source capture from excerpt shortening and distinguish missing linked records from targets outside context. Original version 1 evaluation snapshots remain valid/readable. The input clipping root cause, full lifecycle audit, exact metadata and manual verification are documented in [memory-integrity-audit.md](./memory-integrity-audit.md). Selected context and directly cited premises are now explicit inputs to evaluation; they are not interchangeable evidence.
+
+## M4.2 engine and descriptive development
+
+The explicit Run Evaluation action now delegates orchestration to `CognitiveEngine`; the existing endpoint, retrieval/evidence contracts and persistence remain unchanged. A compact Cognitive Progress section derives descriptive measurements from saved results and exact lifetime counters, with no automatic gameplay triggers. See [cognitive-development.md](./cognitive-development.md) for the scoped event/cost boundary, metric definitions and manual checklist.
