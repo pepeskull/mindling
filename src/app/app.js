@@ -1,3 +1,4 @@
+import { knowledgeTalk } from '../cognition/talk-response.js';
 import { CognitiveEngine } from '../cognition/cognitive-engine.js';
 import { energyCapacityForStage } from '../economy/energy.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
@@ -93,11 +94,13 @@ export class MindlingApp extends EvolutionPreview {
       if (m.energy.remaining < rule.energyCost) return { accepted: false, reason: 'OUT_OF_ENERGY' };
       if (typeof text !== 'string' || text.length > 2000) throw Error('Share a short, readable claim.');
       if (activity === 'TALK') {
-        await this.change(s => {
-          if (s.mind?.id !== m.id) throw Error('Mindling identity changed. Submit again.');
-          return talk(s, text, {id});
-        }, { journal: { id, type: activity } });
+        const reply=await knowledgeTalk(this,text,id,{journal:true});
+        const memory=m.memories.find(item=>item.id===reply.memoryIds[0]);
+        if(memory)this.seed.highlightRoute({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});
+        return {accepted:true,message:'Talk completed · 1 Energy spent.',talkResponse:reply};
       } else {
+        learn(this.state,{id,text,mindId:m.id,activity}); // Pure immediate preflight, no write.
+        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
         await this.change(s => {
           if (s.mind?.id !== m.id) throw Error('Mindling identity changed. Submit again.');
           return learn(s, {id, text, mindId:m.id, activity});
@@ -108,10 +111,6 @@ export class MindlingApp extends EvolutionPreview {
         if (edge) this.seed.signal({entry:false,source:edge.from,destination:edge.to,synapse:edge.id,outcome:event?.kind==='reinforcement'?'REINFORCEMENT':'MEMORY_FORMATION'});
         return {accepted:true,message:event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned locally; the claim is stored as player-provided and is not fact-checked.'};
       }
-      const recalled = this.state.mind.nativeRecall?.memoryIds || [];
-      const memory = this.state.mind.memories.find(item => item.id === recalled[0]);
-      if (memory) this.seed.highlightRoute({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});
-      return { accepted: true, message: memory ? `Related stored claim (unverified): ${String(memory.content).slice(0,240)}` : 'Thought shared locally. No related stored claim found.' };
     } catch (error) {
       if (!this.disposed) await this.refreshState();
       return { accepted: false, reason: 'ACTIVITY_UNAVAILABLE', message: error.message?.replaceAll('virtual time', 'time').replaceAll('virtual day', 'UTC day').replaceAll('test Mindling', 'Mindling').replace('Sandbox memory capacity', 'Local memory capacity') || 'Activity is unavailable. No Energy or rewards changed.' };

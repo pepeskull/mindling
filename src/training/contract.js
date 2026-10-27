@@ -86,3 +86,10 @@ export function validateResult(value, context) {
   if (value.outcome !== evaluationOutcome(value.reasoning, value.evaluation)) fail();
   return value;
 }
+
+// Talk reuses the bounded evidence/quote contract, without an evaluation record.
+export function validateTalkResult(value, context) {
+  if (!object(value, ['service','kind','reasoning']) || value.service !== SERVICE || value.kind !== 'talk') fail();
+  validateReasoning(value.reasoning, context.candidates);
+  return value;
+}

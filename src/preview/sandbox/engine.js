@@ -15,7 +15,7 @@ import { LIFE_RULES } from '../../life/life-system.js';
 import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
 import { STAGES } from '../evolution-model.js';
 export const HOUR = 3600000, DAY = 24 * HOUR;
-export const RULES = Object.freeze([ [1,30,6], [2,50,10], [3,75,15], [4,100,20], [5,125,25], [7,150,30], [0,0,0] ].map(([days,xp,concepts]) => Object.freeze({days,xp,concepts})));
+export const RULES = Object.freeze([ [1,75,6], [2,125,10], [3,175,15], [4,225,20], [5,300,25], [7,400,30], [0,0,0] ].map(([days,xp,concepts]) => Object.freeze({days,xp,concepts})));
 export const XP = Object.freeze({ concept:5, understanding:12, correction:3, daily:100 });
 export function learningReward(kind,{independentlyVerified=false}={}){return kind==='understanding'?(independentlyVerified?XP.understanding:XP.concept):XP[kind]??0;}
 export function upgradeGrowth(mind,now){repairCanonicalPositions(mind,now);reclassifyPathwayEvidence(mind,now);mind.energy=setEnergyStage(mind.energy,mind.stage,now);}

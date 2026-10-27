@@ -49,3 +49,6 @@
 .compatibility-neurons{position:relative;width:160px;height:110px;margin:auto;background:linear-gradient(25deg,transparent 48%,#83b5ad55 49%,transparent 51%),linear-gradient(-25deg,transparent 48%,#83b5ad55 49%,transparent 51%);filter:drop-shadow(0 0 18px #79c8bb66)}
 .compatibility-neurons i{position:absolute;width:12px;height:12px;border:1px solid #b7ded4;border-radius:50%;background:#83b5ad;box-shadow:0 0 18px #83b5ad77}
 .compatibility-neurons i:nth-child(1){left:74px;top:49px}.compatibility-neurons i:nth-child(2){left:12px;top:20px}.compatibility-neurons i:nth-child(3){right:12px;top:20px}.compatibility-neurons i:nth-child(4){left:12px;bottom:20px}.compatibility-neurons i:nth-child(5){right:12px;bottom:20px}
+/* Public navigation remains usable on the mobile compatibility screen. */
+.desktop-required .compatibility-links { display: flex; justify-content: center; gap: 12px; margin-top: 20px; }
+.desktop-required .compatibility-links a { display: inline-flex; align-items: center; justify-content: center; min-width: 64px; min-height: 44px; padding: 8px; color: var(--accent); text-decoration: none; font-size: 11px; }
