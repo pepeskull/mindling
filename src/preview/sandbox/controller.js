@@ -1,3 +1,4 @@
+import { knowledgeTalk } from '../../cognition/talk-response.js';
 import { CognitiveEngine } from '../../cognition/cognitive-engine.js';
 import { EVENTS } from '../../app/events.js';
 import { energyCapacityForStage } from '../../economy/energy.js';
@@ -37,7 +38,7 @@ export class SandboxPreview extends EvolutionPreview {
     await super.start();if(this.disposed)return;
     this.timeline.pause();
     this.panel=document.createElement('details');this.panel.className='sandbox-controls glass-panel';this.panel.open=true;
-    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Talk, Teach and Deep Training use the Mindling learning service. Your message and up to eight relevant sandbox memories are sent to an external service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><fieldset class="sandbox-origin-pathways"><legend>Origin pathways · choose at least three</legend>${PATHWAYS.map(id=>`<label><input type="checkbox" data-test-pathway value="${id}" ${DEFAULT_ORIGINS.includes(id)?'checked':''}>${id}</label>`).join('')}</fieldset><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
+    this.panel.innerHTML=`<summary>Development sandbox · isolated test data</summary><div class="sandbox-body"><a href="?stage-preview=1&preview-mode=demo">Replay automatic demonstration</a><p>Talk generates a knowledge-grounded response; Teach and Deep Training use the learning service. Your message and relevant selected memories may be sent to an external service. Claims are not fact-checked. Production data stays separate.</p><label>Test name <input data-test-name maxlength="40" value="Test Mindling"></label><fieldset class="sandbox-origin-pathways"><legend>Origin pathways · choose at least three</legend>${PATHWAYS.map(id=>`<label><input type="checkbox" data-test-pathway value="${id}" ${DEFAULT_ORIGINS.includes(id)?'checked':''}>${id}</label>`).join('')}</fieldset><button data-sandbox="new">Create new test Mindling…</button><div class="time-controls">${[1,12,24,168].map(h=>`<button data-hours="${h}">+${h===24?'1 day':h===168?'7 days':h+' hours'}</button>`).join('')}<button data-sandbox="clock">Reset simulated time offset</button></div><button data-sandbox="fixture">Run labelled learning fixture</button><button data-sandbox="reset">Reset preview gameplay…</button><pre data-diagnostics></pre><label>Inspect neuron <select data-node-selection></select></label><p data-node-info></p><p data-sandbox-status role="status">Create an isolated test Mindling to begin.</p><details><summary>XP history and recent learning</summary><pre data-history></pre></details></div>`;
     document.querySelector('#app').append(this.panel);
     this.listen(this.panel,'click',e=>{const button=e.target.closest('button');if(!button)return;this.action(async()=>{
       if(button.dataset.hours)return this.change(s=>advanceTime(s,Number(button.dataset.hours)));
@@ -80,7 +81,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.listen(document,'visibilitychange',()=>{if(!document.hidden&&!this.busy)this.change(s=>s).catch(error=>this.status(error.message));});
   }
   listen(node,type,fn){node.addEventListener(type,event=>{if(!this.external?.locked)fn(event);},{signal:this.listeners.signal});}
-  async action(fn){if(this.busy||this.external?.locked)return;this.busy=true;this.updateInputAvailability();this.status('Working…');try{await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;this.updateInputAvailability();}}
+  async action(fn){if(this.busy||this.external?.locked)return;this.busy=true;document.querySelector('#interaction-form').classList.add('processing');this.updateInputAvailability();this.status('Working…');try{await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;document.querySelector('#interaction-form').classList.remove('processing');this.updateInputAvailability();}}
   status(text){if(this.disposed)return;const el=this.panel?.querySelector('[data-sandbox-status]');if(el)el.textContent=text;const inline=document.querySelector('#interaction-form .interaction-status');if(inline){inline.textContent=text;inline.classList.add('visible');}}
   async change(reducer,{preserveGameplay=false}={}) {
     this.external?.assertWritable();
@@ -105,9 +106,17 @@ export class SandboxPreview extends EvolutionPreview {
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
     const activity=this.activity;
     const id=crypto.randomUUID();
-    if(text.trim())this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
+    if(activity==='TALK')this.dashboard.showTalkResponse({id,state:'processing'});
     try {
+      if(activity==='TALK'){
+        const reply=await knowledgeTalk(this,text,id);
+        this.dashboard.showTalkResponse({id,state:'ready',reply});
+        this.status('Talk completed · 1 Energy spent.');
+        document.querySelector('#mindling-input').value='';
+        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return;
+      }
       const submittedContext=JSON.stringify(learningContext(text,m));
+      this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
       const assessment=await requestLearningAssessment(text,structuredClone(m));
       if(this.disposed)throw Error('Preview was closed before learning completed. No Energy or XP changed.');
       await this.change(s=>{
@@ -122,7 +131,7 @@ export class SandboxPreview extends EvolutionPreview {
       document.querySelector('#mindling-input').value='';
       const operations=event?.operations||[event?.operation],refused=operations.every(operation=>['REJECT_UNSAFE_INSTRUCTION','VERIFY_BEFORE_STORAGE','ASK_FOR_CLARIFICATION'].includes(operation));
       this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:refused?'cancel':'accepted',activity});
-    } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});throw error;}
+    } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});if(activity==='TALK')this.dashboard.showTalkResponse({id,state:'error',message:error.message});throw error;}
   }
   async care(type){await this.change(s=>carePreview(s,type));}
   setActivity(type){
@@ -137,7 +146,7 @@ export class SandboxPreview extends EvolutionPreview {
     const m=this.state?.mind,alive=m?.life?.lifeState==='ALIVE',cost=LIFE_RULES.activity[this.activity]?.energyCost??Infinity,locked=Boolean(this.busy||this.external?.locked);
     const input=document.querySelector('#mindling-input'),submit=document.querySelector('#interaction-form button[type=submit]');
     if(input)input.disabled=!alive||locked;
-    if(submit){submit.disabled=!alive||locked;submit.title=!alive?'Create a living test Mindling first':locked?'Wait for the current message to finish':`Meaningful changes cost ${cost} Energy; duplicates and no-change decisions are free`;}
+    if(submit){submit.disabled=!alive||locked;submit.title=!alive?'Create a living test Mindling first':locked?'Wait for the current message to finish':this.activity==='TALK'?'Talk costs 1 Energy when a response is accepted':`Meaningful changes cost ${cost} Energy; duplicates and no-change decisions are free`;}
   }
 
   async runFixture(){

@@ -14,5 +14,7 @@ export function showCompatibility(result){
   const screen=document.createElement('main');screen.className='desktop-required';
   screen.innerHTML='<section aria-labelledby="compatibility-title"><div class="compatibility-neurons" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><p class="compatibility-brand">PLAY MINDLING</p><h1 id="compatibility-title">Your Mindling needs a bigger world.</h1><p>Play Mindling is currently designed for desktop and laptop computers.</p><p>Visit us from your computer to raise, train and evolve your own AI.</p><strong>DESKTOP EXPERIENCE REQUIRED</strong><p data-device-explanation></p></section>';
   screen.querySelector('[data-device-explanation]').textContent=result.reason==='desktop-capabilities-unconfirmed'?'We could not confirm desktop pointer and hover support in this browser. Your saved Mindling remains untouched.':'Mobile and tablet gameplay is unavailable. Your saved Mindling remains untouched.';
+  const links=document.querySelector('.site-footer .footer-links')?.cloneNode(true);
+  if(links){links.classList.add('compatibility-links');screen.querySelector('section').append(links);}
   document.body.append(screen);document.title='Desktop experience required · Play Mindling';
 }

@@ -20,7 +20,7 @@ export class EvolutionPreview {
   constructor({ forceCanvas = false, snapshotProvider = readDashboardSnapshot, originalFraming = true, interactive = false, autoPlay = true, autoNetwork = true, canonicalBrain = false } = {}) {
     this.canonicalBrain = canonicalBrain; this.forceCanvas = forceCanvas; this.snapshotProvider = snapshotProvider; this.originalFraming = originalFraming;
     this.interactive = interactive; this.autoPlay = autoPlay; this.autoNetwork = autoNetwork;
-    this.events = new EventBus(); this.dashboardOptions = {};
+    this.talkAbort=new AbortController();this.events = new EventBus(); this.dashboardOptions = {};
   }
   countdown = new AutomaticNetworkCountdown();
   async start() {
@@ -112,7 +112,7 @@ export class EvolutionPreview {
   }
   primaryViewChanged = view => {
     this.primaryView = view;this.external?.refresh();
-    if(view!=='dashboard')this.inputFeedback?.clear();
+    if(view!=='dashboard'){this.inputFeedback?.clear();this.talkAbort.abort();this.talkAbort=new AbortController();}
     if (view === 'development' || view === 'memories') { cancelAnimationFrame(this.frame); this.frame = null; }
     else { this.lastTime = null; this.schedule(); }
   };
@@ -146,6 +146,7 @@ export class EvolutionPreview {
     if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null;
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);
+    this.talkAbort.abort();
     this.unsubscribeInput?.();this.inputFeedback?.destroy();
     this.external?.destroy();
     this.modeLink?.remove();this.presentation?.destroy(); this.dashboard?.destroy();

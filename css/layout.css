@@ -6,3 +6,12 @@ footer.site-footer{/* height:44px; *//* padding-bottom:14px; */backdrop-filter:b
 .site-footer .footer-tagline{position:absolute;/* bottom:2px; */left:3.2vw;right:3.2vw;margin:0;text-align:center;font-size:inherit;line-height:12px;color:var(--text-muted);text-transform:none}
 .stage-chip { inline-size: 178px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .stage-chip b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The decorative full-width tagline must never intercept footer navigation. */
+.site-footer { z-index: 10; pointer-events: auto; }
+.site-footer .footer-tagline { pointer-events: none; }
+.site-footer .footer-links { position: relative; z-index: 1; pointer-events: auto; }
+.site-footer .footer-links a { display: inline-flex; align-items: center; justify-content: center; min-width: 36px; min-height: 28px; padding: 4px 6px; }
+.site-footer .footer-links a:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.stage-chip-learning { animation: stage-chip-pulse 1.25s ease-in-out infinite; }
+@keyframes stage-chip-pulse { 0%,100% { opacity: 1; } 50% { opacity: .48; } }
+@media(prefers-reduced-motion:reduce) { .stage-chip-learning { animation: none; opacity: 1; } }

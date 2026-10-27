@@ -2,7 +2,7 @@
 export class StageChip {
   constructor(node) {
     this.node=node;this.stage=node.textContent;this.enabled=false;this.active=true;this.elapsed=0;this.last=performance.now();
-    this.motion=matchMedia('(prefers-reduced-motion: reduce)');this.abort=new AbortController();
+    this.abort=new AbortController();
     document.addEventListener('visibilitychange',()=>this.reconcile(),{signal:this.abort.signal});
   }
   setStage(stage,{enabled=true}={}) {
@@ -15,8 +15,9 @@ export class StageChip {
     const now=performance.now();if(this.running)this.elapsed+=Math.max(0,now-this.last);this.last=now;
     this.running=this.active&&this.enabled&&!document.hidden;clearTimeout(this.timer);
     const phase=this.elapsed%40000,text=this.running&&phase>=30000?'Demo is learning.':this.stage;
-    if(this.node.textContent!==text){this.animation?.cancel();this.node.textContent=text;if(!this.motion.matches)this.animation=this.node.animate([{opacity:.4},{opacity:1}],{duration:250});}
+    this.node.classList.toggle('stage-chip-learning',text==='Demo is learning.');
+    if(this.node.textContent!==text)this.node.textContent=text;
     if(this.running)this.timer=setTimeout(()=>this.reconcile(),(phase<30000?30000:40000)-phase);
   }
-  destroy(){clearTimeout(this.timer);this.animation?.cancel();this.abort.abort();this.running=false;}
+  destroy(){clearTimeout(this.timer);this.abort.abort();this.running=false;this.node.classList.remove('stage-chip-learning');}
 }

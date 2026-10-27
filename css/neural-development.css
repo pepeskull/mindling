@@ -56,10 +56,6 @@
 .development-network-empty p { margin: 0 0 10px; color: var(--text-secondary); font-size: 16px; font-weight: 430; }
 .development-network-empty span { color: var(--text-muted); font-size: 10px; }
 
-[data-adaptive-pathways] details { border-top: 1px solid var(--border-subtle); margin-top: 12px; padding-top: 10px; }
-[data-adaptive-pathways] summary { cursor: pointer; color: var(--text-secondary); font-size: 9px; }
-[data-adaptive-pathways] details p { font-size: 9px; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
-.pathway-ledger-controls { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .sandbox-origin-pathways { border: 1px solid var(--border-subtle); border-radius: var(--radius); min-width: 0; }
 .sandbox-origin-pathways legend { color: var(--text-secondary); font-size: 10px; }
 .sandbox-origin-pathways label { margin: 5px 0; }

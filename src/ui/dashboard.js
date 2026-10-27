@@ -65,6 +65,7 @@ export class Dashboard {
     this.#listen(document.querySelector("[data-close-network]"), "click", () => { document.querySelector("#network-view").hidden = true; });
     document.querySelectorAll("[data-mobile-view]").forEach(button => this.#listen(button, "click", () => this.#openMobileView(button.dataset.mobileView)));
     this.#listen(document.querySelector("[data-download-profile]"), "click", () => { if (this.#state) downloadMindlingProfile(this.#state, this.#life); });
+    this.#listen(document.querySelector('[data-dismiss-talk]'),'click',()=>{this.talkDismissed=true;document.querySelector('[data-talk-response]').hidden=true;if(this.talkOpenedPanel)document.querySelector('.right-panel').classList.remove('mobile-open');this.talkOpenedPanel=false;});
     this.#listen(document.querySelector("#mindling-input"), "focus", () => document.documentElement.classList.add("input-active"));
     this.#listen(document.querySelector("#mindling-input"), "blur", () => document.documentElement.classList.remove("input-active"));
   }
@@ -100,6 +101,7 @@ export class Dashboard {
   }
 
   render(state) {
+    if(this.#state?.mindlingId!==state.mindlingId){document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
@@ -224,15 +226,33 @@ export class Dashboard {
     if (!text || this.#pending) return;
     this.#pending = true; const submit = this.#form.querySelector("button[type='submit']"); submit.disabled = true;
     const id=crypto.randomUUID();
-    this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity:this.#mode});
+    this.#form.classList.add('processing');
+    if(this.#mode==='TALK')this.showTalkResponse({id,state:'processing'});
     this.#showStatus("Processing signal");
     try {
       const result = await this.#onInput(text, this.#mode, id);
       this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:result.accepted?'accepted':'cancel',activity:this.#mode});
+      if(this.#mode==='TALK')this.showTalkResponse({id,state:result.accepted?'ready':'error',reply:result.talkResponse,message:result.message||'Talk was not accepted. No Energy was spent.'});
       if (result.accepted) { input.value = ""; this.#showStatus(result.message || `${LIFE_RULES.activity[this.#mode].label} completed`); }
       else this.#showStatus(result.message || (result.reason === "OUT_OF_ENERGY" ? "Out of energy" : result.reason === "MINDLING_DECEASED" ? "This Mindling is deceased" : "Activity was not accepted"));
-    } catch { this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});this.#showStatus("Activity could not be saved"); }
-    finally { this.#pending = false; submit.disabled = this.#life?.lifeState === 'DECEASED'; if (!input.disabled) input.focus(); }
+    } catch { if(this.#mode==='TALK')this.showTalkResponse({id,state:'error',message:'Talk could not complete. No response was generated.'});this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});this.#showStatus("Activity could not be saved"); }
+    finally { this.#form.classList.remove('processing');this.#pending = false; submit.disabled = this.#life?.lifeState === 'DECEASED'; if (!input.disabled) input.focus(); }
+  }
+
+  showTalkResponse({id,state,reply,message}) {
+    if(this.#listeners.signal.aborted)return;
+    if(state==='processing'){this.talkRequest=id;this.talkDismissed=false;}
+    if(this.talkRequest!==id||this.talkDismissed)return;
+    const panel=document.querySelector('[data-talk-response]'),status=panel.querySelector('[data-talk-status]'),content=panel.querySelector('[data-talk-content]');
+    panel.hidden=false;panel.dataset.state=state;content.replaceChildren();
+    const container=panel.closest('.right-panel');
+    if(matchMedia('(max-width:800px)').matches&&container&&!container.classList.contains('mobile-open')){container.classList.add('mobile-open');this.talkOpenedPanel=true;}
+    if(container)container.scrollTop=Math.max(0,panel.offsetTop-container.clientHeight/2);
+    if(state==='processing'){status.textContent='Preparing a response from your stored knowledge…';return;}
+    if(state==='error'){status.textContent=message||'A valid Talk response is unavailable. No Energy was spent.';return;}
+    if(!reply){status.textContent='No validated response was returned.';return;}
+    status.textContent=reply.memoryIds.length?`${reply.memoryIds.length} stored memories referenced · ${reply.uncertainty} uncertainty${reply.insufficientInformation?' · Limited supporting knowledge':''}`:'No relevant stored knowledge available';
+    const answer=document.createElement('p');answer.textContent=reply.answer;content.append(answer);
   }
 
   destroy() {

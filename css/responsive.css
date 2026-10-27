@@ -15,3 +15,14 @@
 @media(max-width:380px){.stage-chip{max-width:105px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mobile-nav button{font-size:7px}.interaction{width:calc(100% - 16px);grid-template-columns:16px minmax(0,1fr) 38px}.side-panel{left:8px;right:8px}}
 @media(max-height:520px) and (orientation:landscape){.scene{inset:50px 0 82px}.interaction{bottom:4px;left:12px;transform:none;width:min(460px,65vw)}.mobile-nav{left:auto;width:35vw}.side-panel{bottom:8px;max-height:calc(100dvh - 70px);left:auto;width:min(330px,42vw)}}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;animation-duration:.01ms!important;animation-iteration-count:1!important}}
+@media(max-width:800px) {
+  .site-footer { display: flex; height: 44px; bottom: calc(58px + env(safe-area-inset-bottom)); padding: 0 12px; }
+  .site-footer > span:first-child, .site-footer .footer-tagline { display: none; }
+  .site-footer .footer-links { margin-left: auto; gap: 12px; }
+  .site-footer .footer-links a { min-width: 44px; min-height: 44px; }
+  .interaction { bottom: calc(110px + env(safe-area-inset-bottom)); }
+  .mobile-sheet { bottom: calc(112px + env(safe-area-inset-bottom)); }
+  .development-view, .memory-view.neural-memory-view { bottom: calc(106px + env(safe-area-inset-bottom)); }
+  .input-active .site-footer { bottom: env(safe-area-inset-bottom); }
+  .input-active .interaction { bottom: calc(52px + env(safe-area-inset-bottom)); }
+}

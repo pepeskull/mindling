@@ -15,7 +15,7 @@ export class ExternalView {
     this.notice=document.createElement('nav');this.notice.className='network-visits';this.notice.setAttribute('aria-label','Demo Agent Mind connections');this.root.append(this.notice);
     this.buttons=Array.from({length:3},()=>{const button=document.createElement('button');button.type='button';button.addEventListener('click',()=>this.enter(button.dataset.id));this.notice.append(button);return button;});
     this.caption=document.createElement('small');this.caption.textContent='Demo network · no live player discovery';this.notice.prepend(this.caption);
-    this.block=event=>{if(this.locked&&!this.panel.contains(event.target)&&!this.notice.contains(event.target)&&!app.host.contains(event.target)){event.preventDefault();event.stopImmediatePropagation();}};
+    this.block=event=>{if(event.target.closest?.('.site-footer a'))return;if(this.locked&&!this.panel.contains(event.target)&&!this.notice.contains(event.target)&&!app.host.contains(event.target)){event.preventDefault();event.stopImmediatePropagation();}};
     for(const event of ['click','submit','keydown','change'])document.addEventListener(event,this.block,true);
     app.view.onVisit=id=>this.enter(id);
   }
@@ -29,7 +29,7 @@ export class ExternalView {
     this.memoryMode=this.root.classList.contains('memory-mode');this.root.classList.remove('memory-mode');
     this.overlays=[...this.root.querySelectorAll('#memory-view,#network-view')].map(node=>[node,node.hidden]);
     for(const [node] of this.overlays)node.hidden=true;
-    this.controls=[...this.root.children].filter(node=>![this.panel,this.notice,this.app.host].includes(node)).map(node=>[node,node.inert]);
+    this.controls=[...this.root.children].filter(node=>![this.panel,this.notice,this.app.host].includes(node)&&!node.matches('.site-footer')).map(node=>[node,node.inert]);
     for(const [node] of this.controls){node.inert=true;node.classList.add('external-dim');}
     this.disabled=[...this.root.querySelectorAll('button,input,select,textarea')].filter(node=>!this.panel.contains(node)&&!this.notice.contains(node)&&!this.app.host.contains(node)).map(node=>[node,node.disabled]);
     for(const [node] of this.disabled)node.disabled=true;
@@ -40,6 +40,7 @@ export class ExternalView {
     const peers=presentationFor(a.timeline,a.view.morph).peers;
     const first=!this.locked, source=this.visit.selected;
     if(!this.visit.enter(id,{owner:this.owner(),connectedIds:peers.filter(p=>p.connected).map(p=>p.id),busy:Boolean(a.busy||a.pendingMutations||document.querySelector('dialog[open]'))}))return false;
+    a.talkAbort?.abort();a.talkAbort=new AbortController();a.inputFeedback?.clear();
     this.source=source;
     if(first){
       this.savedNetwork=structuredClone({ownerStage:n.ownerStage,state:n.state,elapsed:n.elapsed,fade:n.fade,stopping:n.stopping,peers:n.peers});
