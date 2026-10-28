@@ -1,6 +1,7 @@
 import { energyCapacityForStage } from '../economy/energy.js';
 import { canonicalBrain } from '../renderer/canonical-brain.js';
 import { graphData } from '../memory/graph-data.js';
+import { livePathways } from '../pathways/live-pathways.js';
 import { STAGES } from '../preview/evolution-model.js';
 import { RULES } from '../preview/sandbox/engine.js';
 
@@ -33,6 +34,7 @@ export function developmentData(state = {}, life = null) {
     unplottedNodes: brain.unplottedNodes, unplottedEdges: brain.unplottedEdges,
     memoryCount: memories.stats.canonical, currentMemories: memories.stats.current,
     areas: memories.coverage.map(area => ({ label: area.label, count: area.count })),
+    livePathways: livePathways(memories.distribution),
     areaCount: memories.areas.length,
     energyText:state.energy?`${state.energy.remaining-(state.energy.bonus||0)} / ${energyCapacityForStage(stageNumber)}${state.energy.bonus?` + ${state.energy.bonus} bonus`:''}`:'—',
     stageXP: number(state.stageXP), lifetimeXP: number(state.lifetimeXP),

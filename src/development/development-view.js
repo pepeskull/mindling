@@ -22,7 +22,7 @@ export class DevelopmentView {
         <section class="development-pathways development-panel" aria-labelledby="pathways-title">
           <div class="development-panel-heading"><div><p class="development-eyebrow">02 / DIRECTION</p><h3 id="pathways-title">Pathways & Learning</h3></div></div>
           <div class="development-panel-body"><div data-adaptive-pathways></div>
-            <h4>Acquired knowledge</h4><ul class="development-areas" data-development-areas></ul><p class="development-muted">Current memory counts by area. Pathway-specific knowledge links are not recorded.</p>
+            <h4>Acquired knowledge</h4><ul class="development-areas" data-development-areas></ul><p class="development-muted">Current memory counts by area. Specialization evidence is tracked separately.</p>
             <h4>Recent development</h4><ol class="development-events" data-development-events></ol>
           </div>
         </section>
@@ -33,7 +33,7 @@ export class DevelopmentView {
   }
   update(state = {}, life = null) {
     if (this.abort.signal.aborted) return;
-    this.state = state; this.life = life; this.pathways.update(state); this.dirty = true;
+    this.state = state; this.life = life; this.dirty = true;
     if (this.visible) this.refresh();
   }
   setVisible(visible) {
@@ -44,6 +44,7 @@ export class DevelopmentView {
   refresh() {
     this.dirty = false;
     const data = developmentData(this.state, this.life), signature = JSON.stringify(data);
+    this.pathways.update(this.state, data.livePathways);
     if (signature === this.signature) return;
     this.signature = signature; this.data = data; this.scene.update(data);
     this.root.querySelector('.development-network-empty').hidden = Boolean(data.nodes.length);

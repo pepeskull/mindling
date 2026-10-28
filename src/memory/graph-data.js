@@ -47,11 +47,14 @@ export function graphData(state={}) {
   const areas=[...categories.values()].sort((a,b)=>compare(a.label,b.label)||compare(a.id,b.id));
   const topicNodes=[...topics.values()].sort((a,b)=>compare(a.id,b.id));
   for(const area of areas)for(const topicId of area.topicIds)edges.push({from:area.id,to:topicId,kind:'hierarchy'});
-  const current=nodes.filter(node=>!node.historical),totals=new Map();
+  // Keep unreadable records inspectable in the graph, but exclude them from
+  // acquired-knowledge counts alongside historical and superseded records.
+  const current=nodes.filter(node=>!node.historical&&string(node.raw.content)),totals=new Map();
   for(const node of current)totals.set(node.areaId,(totals.get(node.areaId)||0)+1);
   const counts=areas.map(area=>({id:area.id,label:area.label,count:totals.get(area.id)||0})).filter(axis=>axis.count).sort((a,b)=>b.count-a.count||compare(a.id,b.id));
+  const distribution=counts.map(area=>({...area,share:current.length?area.count/current.length:0}));
   const axes=counts.length>6?[...counts.slice(0,5),{id:'other',label:'Other areas',count:counts.slice(5).reduce((sum,axis)=>sum+axis.count,0),members:counts.slice(5)}]:counts;
-  return {nodes:[...areas,...topicNodes,...nodes],edges,areas,memories:nodes,stats:{canonical:records.size,areas:areas.length,associations:pairs.size,current:current.length,ignoredRecords,dangling},coverage:axes.map(axis=>({...axis,share:current.length?axis.count/current.length:0}))};
+  return {nodes:[...areas,...topicNodes,...nodes],edges,areas,memories:nodes,distribution,stats:{canonical:records.size,areas:areas.length,associations:pairs.size,current:current.length,ignoredRecords,dangling},coverage:axes.map(axis=>({...axis,share:current.length?axis.count/current.length:0}))};
 }
 export function filterGraph(graph,{area='all',query=''}={}) {
   const needle=fold(string(query)),byId=new Map(graph.nodes.map(node=>[node.id,node]));

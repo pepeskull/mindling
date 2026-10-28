@@ -37,6 +37,18 @@
 .development-pathways h4:first-child { margin-top: 0; }
 .development-pathway-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .development-pathway-list > span { padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--accent); background: var(--accent-muted); font-size: 9px; }
+.development-live-pathways { display: grid; gap: 8px; margin: 12px 0; padding: 0; list-style: none; }
+.development-live-pathways li { min-width: 0; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 5px 10px; padding: 10px 12px; border: 1px solid var(--border-subtle); border-left: 2px solid var(--accent); border-radius: 6px; background: rgba(255,255,255,.025); }
+.development-live-title { color: var(--text-primary); font-size: 10px; font-weight: 500; overflow-wrap: anywhere; }
+.development-live-share { color: var(--accent); font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
+.development-live-area, .development-live-count { color: var(--text-muted); font-size: 9px; overflow-wrap: anywhere; }
+.development-live-count { text-align: right; font-variant-numeric: tabular-nums; }
+.development-live-pathways .development-live-emerging { grid-template-columns: minmax(0,1fr); border-left-color: var(--border-hover); }
+.development-live-emerging .development-live-title { color: var(--text-secondary); }
+.development-origin-dna { padding: 10px 0; border-top: 1px solid var(--border-subtle); border-bottom: 1px solid var(--border-subtle); }
+.development-origin-dna summary { width: fit-content; color: var(--text-secondary); font-size: 9px; cursor: pointer; }
+.development-origin-dna .development-pathway-list { margin-top: 10px; }
+.development-origin-dna + section > h4:first-child { margin-top: 22px; }
 .development-areas, .development-events { margin: 0; padding: 0; list-style: none; }
 .development-areas li { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; color: var(--text-secondary); font-size: 9px; border-bottom: 1px solid var(--border-subtle); }
 .development-areas strong { font-weight: 500; color: var(--accent); }
