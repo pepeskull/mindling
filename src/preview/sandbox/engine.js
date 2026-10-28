@@ -14,6 +14,7 @@ import { applyMemoryDecision } from './memory-mutation.js';
 import { LIFE_RULES } from '../../life/life-system.js';
 import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
 import { STAGES } from '../evolution-model.js';
+import { validateResearchClaim } from '../../autonomous/tasks.js';
 export const HOUR = 3600000, DAY = 24 * HOUR;
 export const RULES = Object.freeze([ [1,75,6], [2,125,10], [3,175,15], [4,225,20], [5,300,25], [7,400,30], [0,0,0] ].map(([days,xp,concepts]) => Object.freeze({days,xp,concepts})));
 export const XP = Object.freeze({ concept:5, understanding:12, correction:3, daily:100 });
@@ -53,21 +54,24 @@ export function evolve(state) {
 export function reconcileEvolution(state) { return eligibility(state).eligible ? evolve(state) : state; }
 export function cosine(a,b) { if(!a?.length||!b?.length||a.length!==b.length)return -1;let dot=0,x=0,y=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];x+=a[i]**2;y+=b[i]**2;}return x&&y?dot/Math.sqrt(x*y):-1; }
 // Native analysis runs synchronously inside the caller's existing IndexedDB transaction.
-export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',assessment=null}) {
+export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',assessment=null,autonomous=null}) {
   const m=state.mind,key=normalize(text);
   if(!m||m.id!==mindId||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
+  const research=autonomous?validateResearchClaim(state,autonomous):null;
+  if(research&&(assessment||text!==autonomous.quote))throw Error('Research must use the evaluated source excerpt.');
   const a=assessment ? serviceLearningAnalysis(text,m,assessment) : analyzeNative(text,m);
   if(a.decision)return applyMemoryDecision(state,{id,text,mindId,activity},a.decision,{XP});
-  if(a.relationship==='repeated')return reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
-  const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=learningReward(a.kind);
-  if(earned+award>XP.daily)throw Error('Daily XP limit reached');
+  if(a.relationship==='repeated')return research?structuredClone(state):reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
+  const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=research?0:learningReward(a.kind);
+  if(award>0&&earned+award>XP.daily)throw Error('Daily XP limit reached');
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
-  const cost=LIFE_RULES.activity[activity].energyCost;
+  const cost=research?0:LIFE_RULES.activity[activity].energyCost;
   const energy=energyAt(m.energy,state.now);if(energy.remaining<cost)throw Error('Not enough Energy; wait for regeneration');
   if(m.memories.length>=1000)throw Error('Sandbox memory capacity reached');
-  const next=structuredClone(state),n=next.mind;stimulatePreviewLife(n.life,activity,next.now);n.energy=spendEnergy(energy,cost,next.now);n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);n.milestones.push(a.concept);
-  n.history.push({id,day,at:next.now,xp:award,kind:a.kind==='understanding'?'concept':a.kind,assessmentKind:a.kind,source:a.service?'SERVICE':'NATIVE',concept:a.concept});
+  const next=structuredClone(state),n=next.mind;if(!research)stimulatePreviewLife(n.life,activity,next.now);n.energy=cost?spendEnergy(energy,cost,next.now):energy;n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);if(!research)n.milestones.push(a.concept);
+  if(research)a.memory=autonomous.content;
+  n.history.push({id,day,at:next.now,xp:award,kind:research?'research':a.kind==='understanding'?'concept':a.kind,assessmentKind:a.kind,source:research?'AUTONOMOUS':a.service?'SERVICE':'NATIVE',concept:a.concept,...(research?{taskId:research.id}:{})});
   const associations=growCanonical(n,id);
   const related=a.relatedMemoryIds.filter(id=>n.memories.some(memory=>memory.id===id&&!memory.supersededBy));
   n.memories.push({id,content:a.memory,contentIntegrity:capturedContent(a.memory),concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:associations.neuronIds,synapseIds:associations.synapseIds,relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
@@ -75,6 +79,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
   if(a.native)memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
   if(a.service)memory.analysis={...a.service,activity,learnedAt:memory.createdAt};
+  if(research){memory.source='AUTONOMOUS';memory.research={taskId:research.id,sourceURL:autonomous.url,sourceHash:autonomous.sourceHash,quoteHash:autonomous.quoteHash,observedAt:autonomous.observedAt,validAt:autonomous.validAt,verification:'attributed-source-excerpt'};memory.native.provenance={...memory.native.provenance,source:'authorized-document',method:'extractive-source-attribution'};}
   recordPathwayLearning(n,memory,{eventId:id,activity,at:next.now});
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];

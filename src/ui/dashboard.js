@@ -33,10 +33,10 @@ export class Dashboard {
   #mode = "TALK";
   #eventUnsubscribes = [];
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, readOnly = false } = {}) {
     this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
     this.primaryView='dashboard';
-    this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"));
+    this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask});
     this.#development = new DevelopmentView(document.querySelector("#development-view"));
     this.#onViewChange = onViewChange;
     this.#readOnly = readOnly;
@@ -235,7 +235,7 @@ export class Dashboard {
     const id=crypto.randomUUID();
     this.#form.classList.add('processing');
     if(this.#mode==='TALK')this.showTalkResponse({id,state:'processing'});
-    this.#showStatus("Processing signal");
+    this.#showStatus("Understanding request");
     try {
       const result = await this.#onInput(text, this.#mode, id);
       this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:result.accepted?'accepted':'cancel',activity:this.#mode});
@@ -253,7 +253,7 @@ export class Dashboard {
     const panel=document.querySelector('[data-talk-response]'),status=panel.querySelector('[data-talk-status]'),content=panel.querySelector('[data-talk-content]');
     panel.hidden=false;panel.dataset.state=state;content.replaceChildren();
     const container=panel.closest('.right-panel');
-    if(matchMedia('(max-width:800px)').matches&&container&&!container.classList.contains('mobile-open')){container.classList.add('mobile-open');this.talkOpenedPanel=true;}
+    if(this.primaryView==='dashboard'&&matchMedia('(max-width:800px)').matches&&container&&!container.classList.contains('mobile-open')){container.classList.add('mobile-open');this.talkOpenedPanel=true;}
     if(container)container.scrollTop=Math.max(0,panel.offsetTop-container.clientHeight/2);
     if(state==='processing'){status.textContent='Preparing a response from your stored knowledge…';return;}
     if(state==='error'){status.textContent=message||'A valid Talk response is unavailable. No Energy was spent.';return;}
