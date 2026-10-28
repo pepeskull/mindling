@@ -132,3 +132,18 @@
 .memory-browser li button { border-left: 2px solid var(--memory-area-color, var(--text-muted)); background: linear-gradient(90deg, color-mix(in srgb, var(--memory-area-color, var(--text-muted)) 10%, transparent), rgba(255,255,255,.025)); }
 .memory-browser li button[aria-pressed="true"] { border-color: var(--memory-area-color, var(--accent)); background: color-mix(in srgb, var(--memory-area-color, var(--accent)) 16%, transparent); }
 .coverage-values li > span::before { content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 7px; border-radius: 50%; background: var(--memory-area-color, var(--text-muted)); }
+
+/* Research is a separate, bounded layer; canonical category styles stay intact. */
+.graph-legend .legend-research { border-top: 1px dashed var(--text-muted); }
+.neural-memory-view .research-task-browser { flex-shrink: 1; min-height: 30px; max-height: 30%; overflow: auto; padding: 12px 21px; border-top: 1px solid var(--border-subtle); color: var(--text-secondary); font-size: 9px; }
+.research-task-browser summary { cursor: pointer; }
+.research-task-browser ul { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.research-task-browser button { width: 100%; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 5px; background: rgba(255,255,255,.025); color: var(--text-secondary); text-align: left; font-size: 9px; overflow-wrap: anywhere; }
+.research-task-browser button[aria-pressed="true"] { border-color: var(--text-muted); color: var(--text-primary); }
+.memory-inspector .research-status { color: var(--text-secondary); border-color: var(--border-subtle); }
+.memory-inspector progress { display: block; width: 100%; accent-color: var(--text-muted); }
+.learning-source-label { display: grid; gap: 8px; margin: 14px 0; font-size: 10px; color: var(--text-secondary); }
+.learning-source-label input { width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--border-subtle); }
+.learning-task-feedback { color: var(--text-secondary); overflow-wrap: anywhere; }
+.learning-source-label textarea { width: 100%; min-width: 0; resize: vertical; max-height: 120px; padding: 8px 10px; background: rgba(255,255,255,.025); color: var(--text-primary); border: 1px solid var(--border-subtle); border-radius: 7px; font-family: var(--font); font-size: 10px; }
+.learning-source-label textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }

@@ -1,4 +1,6 @@
 import { knowledgeTalk } from '../../cognition/talk-response.js';
+import { understandInput } from '../../learning/input-understanding.js';
+import { learningEngine, stopLearning, learningSession } from '../../autonomous/learning-engine.js';
 import { CognitiveEngine } from '../../cognition/cognitive-engine.js';
 import { EVENTS } from '../../app/events.js';
 import { energyCapacityForStage } from '../../economy/energy.js';
@@ -108,10 +110,19 @@ export class SandboxPreview extends EvolutionPreview {
     const id=crypto.randomUUID();
     if(activity==='TALK')this.dashboard.showTalkResponse({id,state:'processing'});
     try {
+      const interpretation=understandInput(text,activity);
+      if(interpretation.intent==='CLARIFICATION')throw Error(interpretation.clarification);
+      if(interpretation.requiresResearch){
+        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
+        const task=await learningEngine(this).prepare(interpretation,id);
+        this.status(`${task.message} No XP awarded. No additional Energy spent.`);
+        document.querySelector('#mindling-input').value='';
+        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return;
+      }
       if(activity==='TALK'){
-        const reply=await knowledgeTalk(this,text,id);
+        const reply=await knowledgeTalk(this,text,id,{interpretation});
         this.dashboard.showTalkResponse({id,state:'ready',reply});
-        this.status('Talk completed · 1 Energy spent.');
+        this.status(reply.energySpent===0?'Existing research task reused · no Energy spent.':'Talk completed · 1 Energy spent.');
         document.querySelector('#mindling-input').value='';
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return;
       }
@@ -162,7 +173,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.seed.update({nodes:m.nodes,synapses:m.synapses,stage:m.stage});
     const stage=m.stage;if(this.timeline.stage!==stage){this.timeline.select(stage);this.syncStage();this.host.dataset.stage=String(stage);}
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.
-    this.dashboard.render({...m,developmentClock:'simulated',developmentNow:this.state.now,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString()});
+    this.dashboard.render({...m,developmentClock:'simulated',developmentNow:this.state.now,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString(),learningSession:learningSession(this)});
     this.presentation.stage=null;
     this.refreshNetwork();
     const alive=m.life.lifeState==='ALIVE';
@@ -202,5 +213,5 @@ export class SandboxPreview extends EvolutionPreview {
     if(m.life.lifeState==='DECEASED'){this.view.reduced=true;this.seed.setReducedMotion(true);}
     this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;this.external?.refresh();
   }
-  destroy(){clearInterval(this.lifeTimer);clearInterval(this.energyTimer);this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.cognition?.destroy();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
+  destroy(){stopLearning(this);clearInterval(this.lifeTimer);clearInterval(this.energyTimer);this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.cognition?.destroy();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }

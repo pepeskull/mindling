@@ -1,4 +1,6 @@
 import { knowledgeTalk } from '../cognition/talk-response.js';
+import { understandInput } from '../learning/input-understanding.js';
+import { learningEngine, stopLearning, learningSession } from '../autonomous/learning-engine.js';
 import { CognitiveEngine } from '../cognition/cognitive-engine.js';
 import { energyCapacityForStage } from '../economy/energy.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
@@ -93,11 +95,18 @@ export class MindlingApp extends EvolutionPreview {
       if (!rule) throw Error('Unknown activity');
       if (m.energy.remaining < rule.energyCost) return { accepted: false, reason: 'OUT_OF_ENERGY' };
       if (typeof text !== 'string' || text.length > 2000) throw Error('Share a short, readable claim.');
+      const interpretation=understandInput(text,activity);
+      if(interpretation.intent==='CLARIFICATION')return {accepted:false,message:interpretation.clarification};
+      if(interpretation.requiresResearch){
+        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
+        const task=await learningEngine(this).prepare(interpretation,id);
+        return {accepted:true,message:`${task.message} No XP awarded. No additional Energy spent.`,learningTaskId:task.id};
+      }
       if (activity === 'TALK') {
-        const reply=await knowledgeTalk(this,text,id,{journal:true});
+        const reply=await knowledgeTalk(this,text,id,{journal:true,interpretation});
         const memory=m.memories.find(item=>item.id===reply.memoryIds[0]);
         if(memory)this.seed.highlightRoute({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});
-        return {accepted:true,message:'Talk completed · 1 Energy spent.',talkResponse:reply};
+        return {accepted:true,message:reply.energySpent===0?'Existing research task reused · no Energy spent.':'Talk completed · 1 Energy spent.',talkResponse:reply};
       } else {
         learn(this.state,{id,text,mindId:m.id,activity}); // Pure immediate preflight, no write.
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
@@ -152,7 +161,7 @@ export class MindlingApp extends EvolutionPreview {
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);
     this.seed.update({ nodes: m.nodes, synapses: m.synapses, stage:m.stage });
-    this.dashboard.render({...dashboardState(m),developmentNow:this.state.now});
+    this.dashboard.render({...dashboardState(m),developmentNow:this.state.now,learningSession:learningSession(this)});
     this.events.emit(EVENTS.LIFE_UPDATED, dashboardLife(this.state));
     document.querySelectorAll('.stages li').forEach((row, index) => {
       const current = index + 1 === m.stage;
@@ -172,6 +181,7 @@ export class MindlingApp extends EvolutionPreview {
 
   destroy() {
     if (this.disposed) return;
+    stopLearning(this);
     clearInterval(this.lifeTimer);clearInterval(this.energyTimer); this.listeners.abort(); this.stabilityRow?.remove();
     this.cognition.destroy();this.onboarding?.hide(); this.db.close(); document.querySelector('#app')?.classList.remove('gameplay-mode');
     super.destroy();

@@ -9,6 +9,7 @@ import { createNeuralSeedState } from "../brain/neural-seed-state.js";
 import { Dashboard } from '../ui/dashboard.js';
 import { EventBus, EVENTS } from '../app/events.js';
 import { readDashboardSnapshot } from './dashboard-snapshot.js';
+import { learningEngine, stopLearning } from '../autonomous/learning-engine.js';
 import { presentationFor, PreviewDashboardPresentation } from './dashboard-presentation.js';
 import { AutomaticNetworkCountdown } from './automatic-playback.js';
 
@@ -29,7 +30,7 @@ export class EvolutionPreview {
     this.originalLabel = this.host.getAttribute('aria-label');
     document.querySelector('#app').classList.add('dashboard-preview');
     document.querySelector('#app').classList.toggle('original-preview-framing', this.originalFraming);
-    this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged });
+    this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged, onLearningTask:typeof this.change==='function'?(action,id,url)=>learningEngine(this).act(action,id,url):null });
     const snapshot = this.snapshotProvider ? await this.snapshotProvider() : null;
     if (this.disposed) return;
     if (snapshot) this.dashboard.showSnapshot(snapshot);
@@ -143,6 +144,7 @@ export class EvolutionPreview {
   visibility = () => { if (document.hidden) { this.inputFeedback?.clear(); if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null; } else { this.lastTime = null; this.schedule(); } };
   destroy() {
     if (this.disposed) return; this.disposed = true;
+    stopLearning(this);
     if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null;
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);
