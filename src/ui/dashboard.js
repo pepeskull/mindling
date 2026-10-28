@@ -3,6 +3,8 @@ import { stageMorphologyCounts } from '../renderer/stage-presentation.js';
 import { LEARNING_INPUT_LIMIT } from '../memory/content-integrity.js';
 import { DevelopmentView } from '../development/development-view.js';
 import { NeuralMemoryView } from '../memory/neural-memory-view.js';
+import { graphData } from '../memory/graph-data.js';
+import { livePathways } from '../pathways/live-pathways.js';
 import { energyLabel } from '../economy/energy.js';
 import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
@@ -83,7 +85,7 @@ export class Dashboard {
     document.querySelector('[data-life-warning] span').textContent = 'No saved Life Status available.';
     document.querySelector('[data-life-status-title]').textContent = 'Mindling — Life Status';
     document.querySelector('.mindling-id').textContent = '';
-    document.querySelector('.pathways-copy').textContent = 'No saved pathways available.';
+    this.#renderPathways();
     this.stageChip.setStage('—',{enabled:false});
     this.#memoryMap.update({memories:[]});
     this.#development.update({});
@@ -113,12 +115,17 @@ export class Dashboard {
     for (const [key, value] of Object.entries(stats)) {
       document.querySelector(`[data-stat="${key}"]`).textContent = value;
     }
+    this.#renderPathways(state);
     if (!state.name) return;
     document.querySelector("[data-life-status-title]").textContent = `${state.name} — Life Status`;
-    document.querySelector(".pathways-copy").textContent = state.pathways.join(" · ");
     document.querySelector(".mindling-id").textContent = state.mindlingId;
     document.querySelector("[data-profile-filename]").textContent = safeProfileFilename(state.name);
     this.#renderMemoryDevelopment();
+  }
+
+  #renderPathways(state = {}) {
+    const pathways = livePathways(graphData(state).distribution);
+    document.querySelector('.pathways-copy').textContent = Array.from({ length: 3 }, (_, index) => pathways[index]?.title || 'Emerging Pathway').join(' · ');
   }
 
   #setMode(mode) {
