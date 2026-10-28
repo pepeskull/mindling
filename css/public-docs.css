@@ -25,12 +25,10 @@ html:has(.docs-page) { height: auto; overflow: auto; scroll-behavior: smooth; }
 .docs-article li + li { margin-top: 12px; }
 .docs-tags { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .cyan { --tone: var(--docs-cyan); } .violet { --tone: var(--docs-violet); } .green { --tone: var(--docs-green); } .amber { --tone: var(--docs-amber); } .blue { --tone: var(--docs-blue); }
-.docs-tag, .docs-status { display: inline-flex; align-items: center; width: fit-content; padding: 4px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb,var(--tone,var(--accent)) 28%,transparent); color: var(--tone,var(--accent)); background: color-mix(in srgb,var(--tone,var(--accent)) 7%,transparent); font-size: 8px; line-height: 1.45; letter-spacing: .03em; }
-.docs-status.available { --tone: var(--docs-green); } .docs-status.target { --tone: var(--docs-amber); } .docs-status.concept { --tone: var(--docs-violet); }
-.docs-status-guide { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin: 22px 0; color: var(--text-muted); font-size: 9px; }
+.docs-tag { display: inline-flex; align-items: center; width: fit-content; padding: 4px 7px; border-radius: 5px; border: 1px solid color-mix(in srgb,var(--tone,var(--accent)) 28%,transparent); color: var(--tone,var(--accent)); background: color-mix(in srgb,var(--tone,var(--accent)) 7%,transparent); font-size: 8px; line-height: 1.45; letter-spacing: .03em; }
 .docs-card-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; margin: 20px 0; }
 .docs-info, .docs-note { min-width: 0; padding: 16px; border: 1px solid var(--border-subtle); border-left: 2px solid var(--tone,var(--accent)); border-radius: 8px; background: linear-gradient(120deg,color-mix(in srgb,var(--tone,var(--accent)) 6%,transparent),rgba(255,255,255,.012)); }
-.docs-info > .docs-status { margin: 0 5px 5px 0; } .docs-info .docs-tag { margin: 0 5px 8px 0; }
+.docs-info .docs-tag { margin: 0 5px 8px 0; }
 .docs-info h3, .docs-note h3 { margin: 10px 0 8px; }
 .docs-info p, .docs-note p { margin: 0; font-size: 11px; }
 .docs-note { margin: 20px 0; }
