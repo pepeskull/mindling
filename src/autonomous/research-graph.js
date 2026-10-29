@@ -3,7 +3,7 @@ export const learningNodeId=id=>`learning:${id}`;
 export function learningNodes(state,graph){
   return tasksFor(state).map(saved=>{
     const interrupted=['PREPARED','QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(saved.status)&&saved.session!==state.learningSession;
-    const task=interrupted?{...saved,status:'BLOCKED',code:'INTERRUPTED',message:'Research was interrupted. Completed work is saved; authorize a document to retry while the page is open.'}:saved;
+    const task=interrupted?{...saved,status:'BLOCKED',code:'INTERRUPTED',message:'Research was interrupted. Completed work is saved; start or retry using your current research permissions.'}:saved;
     const anchor=graph.memories.find(memory=>!memory.historical&&task.referenceIds.includes(memory.recordId))?.areaId||null;
     return {id:learningNodeId(task.id),kind:'research',label:task.topic||task.objective,task,taskId:task.id,anchor,progress:taskProgress(task),root:true};
   });

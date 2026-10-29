@@ -32,8 +32,11 @@ export class Dashboard {
   #pending = false;
   #mode = "TALK";
   #eventUnsubscribes = [];
+  #onClarification;
+  #onCancelClarification;
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onClarification=null, onCancelClarification=null, readOnly = false } = {}) {
+    this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
     this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
     this.primaryView='dashboard';
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask});
@@ -67,7 +70,7 @@ export class Dashboard {
     this.#listen(document.querySelector("[data-close-network]"), "click", () => { document.querySelector("#network-view").hidden = true; });
     document.querySelectorAll("[data-mobile-view]").forEach(button => this.#listen(button, "click", () => this.#openMobileView(button.dataset.mobileView)));
     this.#listen(document.querySelector("[data-download-profile]"), "click", () => { if (this.#state) downloadMindlingProfile(this.#state, this.#life); });
-    this.#listen(document.querySelector('[data-dismiss-talk]'),'click',()=>{this.talkDismissed=true;document.querySelector('[data-talk-response]').hidden=true;if(this.talkOpenedPanel)document.querySelector('.right-panel').classList.remove('mobile-open');this.talkOpenedPanel=false;});
+    this.#listen(document.querySelector('[data-dismiss-talk]'),'click',()=>{this.#onCancelClarification?.();this.talkDismissed=true;document.querySelector('[data-talk-response]').hidden=true;if(this.talkOpenedPanel)document.querySelector('.right-panel').classList.remove('mobile-open');this.talkOpenedPanel=false;});
     this.#listen(document.querySelector("#mindling-input"), "focus", () => document.documentElement.classList.add("input-active"));
     this.#listen(document.querySelector("#mindling-input"), "blur", () => document.documentElement.classList.remove("input-active"));
   }
@@ -103,7 +106,7 @@ export class Dashboard {
   }
 
   render(state) {
-    if(this.#state?.mindlingId!==state.mindlingId){document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
+    if(this.#state?.mindlingId!==state.mindlingId){this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
@@ -239,7 +242,8 @@ export class Dashboard {
     try {
       const result = await this.#onInput(text, this.#mode, id);
       this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:result.accepted?'accepted':'cancel',activity:this.#mode});
-      if(this.#mode==='TALK')this.showTalkResponse({id,state:result.accepted?'ready':'error',reply:result.talkResponse,message:result.message||'Talk was not accepted. No Energy was spent.'});
+      if(result.needsClarification)this.showTalkResponse({id,state:'clarification',reply:result.talkResponse});
+      else if(this.#mode==='TALK')this.showTalkResponse({id,state:result.accepted?'ready':'error',reply:result.talkResponse,message:result.message||'Talk was not accepted. No Energy was spent.'});
       if (result.accepted) { input.value = ""; this.#showStatus(result.message || `${LIFE_RULES.activity[this.#mode].label} completed`); }
       else this.#showStatus(result.message || (result.reason === "OUT_OF_ENERGY" ? "Out of energy" : result.reason === "MINDLING_DECEASED" ? "This Mindling is deceased" : "Activity was not accepted"));
     } catch { if(this.#mode==='TALK')this.showTalkResponse({id,state:'error',message:'Talk could not complete. No response was generated.'});this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});this.#showStatus("Activity could not be saved"); }
@@ -248,7 +252,7 @@ export class Dashboard {
 
   showTalkResponse({id,state,reply,message}) {
     if(this.#listeners.signal.aborted)return;
-    if(state==='processing'){this.talkRequest=id;this.talkDismissed=false;}
+    if(state==='processing'||state==='clarification'){this.talkRequest=id;this.talkDismissed=false;}
     if(this.talkRequest!==id||this.talkDismissed)return;
     const panel=document.querySelector('[data-talk-response]'),status=panel.querySelector('[data-talk-status]'),content=panel.querySelector('[data-talk-content]');
     panel.hidden=false;panel.dataset.state=state;content.replaceChildren();
@@ -258,9 +262,33 @@ export class Dashboard {
     if(state==='processing'){status.textContent='Preparing a response from your stored knowledge…';return;}
     if(state==='error'){status.textContent=message||'A valid Talk response is unavailable. No Energy was spent.';return;}
     if(!reply){status.textContent='No validated response was returned.';return;}
+    if(reply.clarification){
+      const model=reply.clarification;status.textContent='';const question=document.createElement('p');question.textContent=model.question;content.append(question);
+      const choices=document.createElement('div');choices.className='clarification-choices';choices.setAttribute('role','group');choices.setAttribute('aria-label',model.question);
+      for(const option of model.options){const button=document.createElement('button');button.type='button';button.textContent=option.label;button.disabled=!this.#onClarification;button.addEventListener('click',()=>this.#resumeClarification(model,option.id));choices.append(button);}content.append(choices);
+      if(model.freeText){const form=document.createElement('form'),label=document.createElement('label'),input=document.createElement('input'),send=document.createElement('button');label.textContent='Your clarification';input.maxLength=300;input.required=true;input.setAttribute('aria-label',model.question);send.type='submit';send.textContent='Continue';label.append(input);label.className='clarification-input';form.className='clarification-form';form.append(label,send);form.addEventListener('submit',event=>{event.preventDefault();if(input.reportValidity())this.#resumeClarification(model,'text',input.value);});content.append(form);}
+      this.clarificationInputValue=document.querySelector('#mindling-input').value;return;
+    }
     status.textContent=reply.memoryIds.length?`${reply.memoryIds.length} stored memories referenced · ${reply.uncertainty} uncertainty${reply.insufficientInformation?' · Limited supporting knowledge':''}`:'No relevant stored knowledge available';
     const answer=document.createElement('p');answer.textContent=reply.answer;content.append(answer);
   }
+
+  async #resumeClarification(model,choice,detail=''){
+    if(this.#pending||this.talkDismissed||this.talkRequest!==model.requestId||!this.#onClarification)return;
+    this.#pending=true;const identity=this.#state?.mindlingId,panel=document.querySelector('[data-talk-response]'),controls=[...panel.querySelectorAll('button:not([data-dismiss-talk]),input')];controls.forEach(node=>node.disabled=true);this.#form.classList.add('processing');
+    const current=()=>!this.#listeners.signal.aborted&&!this.talkDismissed&&this.talkRequest===model.requestId&&this.#state?.mindlingId===identity;
+    try{
+      const result=await this.#onClarification(model.id,choice,detail);
+      if(!current())return;
+      if(result?.needsClarification)this.showTalkResponse({id:model.requestId,state:'clarification',reply:result.talkResponse});
+      else if(result?.accepted&&result.talkResponse)this.showTalkResponse({id:model.requestId,state:'ready',reply:result.talkResponse});
+      else if(result?.accepted){panel.hidden=true;this.#showStatus(result.message||'Request continued.');}
+      else panel.querySelector('[data-talk-status]').textContent=result?.message||'The request could not continue. No clarification charge was made.';
+      const input=document.querySelector('#mindling-input');if(result?.accepted&&input.value===this.clarificationInputValue)input.value='';
+    }catch(error){if(current())panel.querySelector('[data-talk-status]').textContent=error.message||'Clarification could not continue.';}
+    finally{this.#pending=false;this.#form.classList.remove('processing');controls.forEach(node=>node.disabled=false);}
+  }
+  showClarification(reply){this.#setPrimaryView('dashboard');this.showTalkResponse({id:reply.clarification.requestId,state:'clarification',reply});}
 
   destroy() {
     if (this.#listeners.signal.aborted) return;

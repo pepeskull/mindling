@@ -18,3 +18,10 @@
 .talk-response [data-talk-content] { max-height: 180px; overflow-y: auto; scrollbar-width: thin; }
 .talk-response [data-talk-content] p { font-size: 11px; line-height: 1.75; color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }
 .talk-response[data-state=error] [data-talk-status] { color: var(--text-secondary); }
+
+.clarification-choices { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+.clarification-choices button, .clarification-form button { border: 1px solid var(--border-subtle); border-radius: 6px; padding: 8px 10px; background: rgba(255,255,255,.025); color: var(--text-primary); font: inherit; font-size: 10px; cursor: pointer; }
+.clarification-choices button:disabled, .clarification-form button:disabled { opacity: .5; cursor: default; }
+.clarification-form { display: flex; flex-wrap: wrap; gap: 8px; }
+.clarification-input { flex: 1 1 170px; min-width: 0; color: var(--text-secondary); font-size: 10px; }
+.clarification-input input { display: block; width: 100%; margin-top: 5px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: transparent; color: var(--text-primary); font: inherit; }

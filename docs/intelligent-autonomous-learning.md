@@ -1,158 +1,195 @@
-# Intelligent Input Understanding and Autonomous Learning
+# Interactive Clarifications and Autonomous Source Discovery
 
-This milestone connects existing browser gameplay, canonical learning, retrieval,
-persistence and the Memory graph. It adds no backend, provider, database, schema,
-package or rendering dependency. No model calls were made during implementation.
+Production and isolated Preview share the existing Input Understanding Engine,
+Autonomous Learning Engine, canonical memory reducer and Memory graph. This
+extends M4.2.12–13 without a backend, dependency, model configuration change,
+new database/store or schema migration.
 
-## Input interpretation
+## Clarification and continuation
 
-`understandInput` is a bounded, versioned, read-only interpretation service used
-by production and isolated Preview Teach/Deep Training/Talk. Selected UI mode
-remains authoritative. Explicit fact teaching keeps its existing native or Preview
-service path; recognized topic instructions create tasks instead of factual
-memories. Talk does not switch into teaching.
+Ambiguity produces a bounded structured question with native option buttons or a
+300-character free-text field in the existing Talk response panel. Teach and
+Deep Training use the same panel without changing their selected activity.
+Swedish/English labels cover comparison criteria, football ranking measures,
+geographic combinations, time periods and the distinction between research and
+factual teaching. Unclear instructions and constraints request free text.
+Unresolved complex negation remains a clarification rather than being discarded.
 
-Normalization preserves Unicode text, entities, numbers, dates, negations and
-technical terminology. It corrects whitespace, terminal question punctuation and
-very narrow English command-prefix spelling/capitalization. Uncertain grammar
-and sentence structure are retained. English/Swedish and a limited set of other
-explicit request patterns are recognized; Unicode pass-through is not a claim
-of universal multilingual semantic understanding. Full grammar correction,
-translation and semantic restructuring are unavailable in this deterministic
-fallback. No additional inference operation is silently billed to obtain them.
+The response renderer handles clarification before generic missing-knowledge
+copy. The question appears once; it is not concatenated from reasoning and task
+messages. Free-text fields use a separate short label.
 
-The structured result contains intent, normalized objective, explicit scope
-where recognized, depth, freshness needs and clarification. Negated learning
-requests and recognized ambiguous instructions stop for clarification. “Best”
-football questions ask for the ranking measure rather than inventing one.
-Original/corrected strings are not stored as separate facts or a correction
-archive. Direct teaching/conversation retains existing history behavior.
+An ephemeral per-application pending record retains the original input, Mindling,
+activity, request ID and validated answers. One-use continuation capabilities
+resume that original request through input understanding. The selected label is
+not submitted as a new question. Original entities, quantities and constraints
+remain in the request; selected interpretations also enter retrieval context.
+No separate conversation archive is persisted. Reload intentionally discards an
+unsubmitted clarification; saved legacy blocked tasks can reopen theirs.
 
-## One shared task engine
+Repeated clicks, identity changes, dismissal, task cancellation, superseding
+requests and stale callbacks are fenced. Failed acceptance leaves choices
+available for retry. Native buttons/forms provide keyboard access, existing
+focus outlines and wrapping; no animation or shadows are added.
 
-FOUNDATION, DEEP and TALK_RESEARCH use `AutonomousLearningEngine`. Before a task
-is prepared, existing `trainingContext` retrieves current canonical knowledge.
-Gap detection inspects lexical relevance, incomplete context, recorded conflicts,
-requested depth, dates and the actual reasoning response's uncertainty where
-available. Candidate count alone never establishes sufficiency. A suitable
-freshly dated source record can satisfy the freshness screen; generation and
-reference validation still constrain the answer.
+## Activity costs and canonical safety
 
-Task identity hashes the Mindling, mode, normalized objective, explicit scope
-and, for freshness-sensitive requests, UTC date. Case, names, quantities,
-comparisons and negation remain significant; terminal punctuation is ignored.
-This is conservative request deduplication, not semantic equivalence inference.
-Concurrent repeated questions reuse one unfinished task. A latest-conversation
-association allows completion to update that same Talk response without
-repeating the question or overwriting a later unrelated conversation.
+Clarification is intercepted before normal activity acceptance: displaying,
+choosing and correcting it cost no Energy and award no XP. Continuation retains
+the original request ID; transactional guards and existing processed-event IDs
+prevent double acceptance. An already charged legacy Talk clarification reuses
+its task and receipt instead of accepting another Talk.
 
-Tasks contain minimal objective/plan/status/work metadata, source references,
-knowledge IDs, timestamps, bounded attempt counters and a run/session fence.
-They never contain copies of canonical memory records or entire source bodies.
-At most 24 tasks are retained, eight unfinished; older terminal history can be
-pruned. One source-reading task runs per page. Runs are fenced transactionally
-across interactions/tabs so superseded work cannot commit. Already terminal
-tasks cannot be restarted by a stale callback.
+FOUNDATION/DEEP retain the existing Teach/Deep cost (2/3), charged once atomically
+only when research forms new canonical knowledge. TALK_RESEARCH inherits the
+accepted Talk's 1-Energy receipt. Discovery, source reads, evaluation, retries
+and blocking have no separate charge. Autonomous memories continue through the
+existing native classification/duplicate/conflict/quality checks with **0 XP**;
+no new model operation is added. Normal direct teaching keeps its existing path.
 
-## Actual source access and evidence
+Discovery candidates are task metadata, never factual memories. Only accepted
+source excerpts enter canonical storage, retaining source URL, content/quote
+hashes, observation date and an explicit fact-validity date when available.
+Existing knowledge, correction/supersession rules, identity, keys, Origin DNA,
+progression and pathway evidence are preserved. Knowledge Network and Live
+Pathways refresh through existing canonical state updates, not search results.
 
-There is no search provider or automatic discovery endpoint. A task starts
-BLOCKED when no source is authorized. The Memory task inspector allows the user
-to explicitly authorize a public HTTPS document, with one source for FOUNDATION
-or TALK_RESEARCH and up to two in a DEEP attempt. Native browser fetch uses CORS,
-no credentials or referrer, no redirects and bounded streaming. Supported types
-are plain text and Markdown; HTML, authenticated sites, literal IP/local-host targets
-and unreadable or CORS-restricted sources are blocked. Browser/network policy
-can further restrict access. No private memories or question text are sent to a
-document host; only the exact user-authorized URL is requested.
+## Implemented discovery providers
 
-Each task allows two explicit attempts, at most three total document requests,
-64 KiB per document, three accepted knowledge units, and no additional model
-inference calls. Requests have an 18-second deadline; deadlines do not simulate
-progress. There are no automatic retries, recursive tasks or background loops.
+Two fixed-host adapters use the public MediaWiki Action API:
 
-Evidence selection is extractive and conservative: bounded source sentences
-must match query features and any supported explicit geographic restriction.
-Recognized instructions/questions are excluded. Source text stays untrusted and
-is never executed. Time-sensitive extracts need a fresh ISO date explicitly
-introduced as an observation/update/as-of date; retrieval time alone does not
-establish freshness. This is not independent fact verification or complete
-semantic entailment analysis. Deep work can collect bounded observations from
-two authorized documents, preserving each source independently; it does not
-invent agreement, advanced comparisons or demonstrated understanding.
+| Provider | Coverage | Not supported |
+| --- | --- | --- |
+| `wikipedia-en` | English general, scientific, historical and sports reference material | Live standings/prices; primary research search |
+| `wikipedia-sv` | Swedish reference material in the same categories | Live standings/prices; primary research search |
 
-## Canonical integration and costs
+Discovery uses `generator=search`, article namespace, four candidates and
+`prop=info` canonical URLs. Retrieval uses the discovered page ID,
+`prop=extracts|info|revisions`, `explaintext=1`, introductory text and the API's
+1,200-character extract limit. Actual returned URLs, article IDs, titles,
+provider identity, local discovery time and lexical title overlap are validated.
+Revision time is retained only when returned. It is not a publication date or
+proof that an individual fact is current. Ellipsis-truncated excerpts are rejected.
 
-Validated excerpts go through the existing synchronous `learn` reducer and
-native classification/duplicate/conflict/quality rules in the existing gameplay
-transaction. The guarded autonomous option requires a matching COMMITTING task,
-current run, authorized observed source and accepted quote hash. Exact excerpt
-hashes also prevent duplicating the same observation across document hosts.
+Approved providers are ordered by request language. An explicit retry can select
+the other approved language edition. Both are Wikipedia: they are not described
+as independent corroborating sources. Source links provide article attribution
+and author/history access; the inspector links the Wikipedia text license
+(CC BY-SA 4.0; source-specific exceptions remain applicable). Search ranking and lexical overlap are
+selection hints, not truth verification. Unreadable candidates are skipped
+within the same fixed budget. FOUNDATION/Talk collect at most one readable
+source per attempt; DEEP can collect two. Broad objectives receive partial
+extractive coverage, never a claim of mastery or advanced synthesis.
 
-Accepted content is explicitly attributed: source URL, observation timestamp
-and the source excerpt. Research metadata retains source/content hashes and any
-explicit validity date. An excerpt is a source-attributed claim, not timeless or
-independently verified truth. Failed native checks preserve existing knowledge;
-correction/supersession rules are not weakened to force research acceptance.
-No research plan or user learning instruction becomes a memory.
+### API contract inspection
 
-All autonomous acceptance writes `xp: 0`; no Stage XP, lifetime XP or concept
-milestone reward is added. Direct user-fact teaching preserves its existing
-reward/cap rules. Existing canonical growth and pathway-evidence recording apply
-only to genuinely accepted new memories under their existing rules. Origin DNA,
-identity/keys, existing records and classification policy are not overwritten.
+Official upstream source was inspected, including:
 
-Preparing, reading, evaluating, retrying or blocking a task adds no Energy cost.
-FOUNDATION/DEEP spend the existing Teach/Deep Training cost (2/3) once, atomically
-when new knowledge is accepted; production uses the existing Energy journal.
-TALK_RESEARCH inherits the accepted Talk's existing 1-Energy receipt and never
-spends it again. Reusing an unfinished question's status spends no additional
-Energy. Existing low-Energy/life restrictions still govern input availability.
-A failure in the final transaction rolls back knowledge and its charge together.
+- [MediaWiki CORS handling](https://github.com/wikimedia/mediawiki/blob/master/includes/Api/ApiMain.php): `origin=*` allows anonymous cross-origin responses without credentials.
+- [Search module](https://github.com/wikimedia/mediawiki/blob/master/includes/Api/ApiQuerySearch.php): search generator, namespace and limits.
+- [Page info](https://github.com/wikimedia/mediawiki/blob/master/includes/Api/ApiQueryInfo.php): full/canonical article URLs.
+- [TextExtracts](https://github.com/wikimedia/mediawiki-extensions-TextExtracts/blob/master/includes/ApiQueryExtracts.php): plain-text extraction, introductory text and the 1,200-character maximum.
 
-## Progress, presentation and continuation
+This verifies the provider contract in source, not deployment availability.
+Direct documentation access was blocked by this environment's network proxy;
+no live discovery query, source-retrieval run or browser CORS validation was
+performed. Browser, provider, network and deployment policies can still block
+requests; failures stay unavailable rather than synthesizing results.
 
-Progress counts seven real work units: interpretation, retrieval, planning,
-source retrieval, evidence evaluation, canonical integration and answer
-preparation. A set of completed units prevents double-counting on retries.
-Blocked/cancelled work stops. Completed units survive reload; 100% describes
-only a bounded task, never topic mastery.
+## Authorization and privacy
 
-The gray research layer is projected after canonical `graphData` and is never
-included in its counts, distribution, Live Pathways or knowledge relationships.
-TALK_RESEARCH contributes one root node per unfinished question, even without an
-existing category. FOUNDATION/DEEP can show three gray work-group children.
-These children describe work, not fabricated topics or acquired knowledge.
-Gray edges connect an actual retrieved knowledge area when one exists; there is
-no invented permanent category. Source reads/evaluations have no animated fake
-progress. Canvas selection, zoom and pan are reused, plus a keyboard task list
-and inspector. No new animation loop, shadow or WebGL engine is introduced.
+Research defaults to disabled for every Mindling, including returning users.
+The task inspector offers disabled, ask before a new provider, and automatic
+research with approved providers. Each provider requires an explicit checkbox
+and Save. Ask mode contacts only providers already approved; unapproved sources
+remain blocked until the user changes permissions. Saving consent alone does
+not start a task. A subsequent learning request or explicit Start/Retry can run
+under the saved policy. Manual public document reading remains an advanced,
+explicitly authorized option and also requires enabled research access.
 
-Completed gray nodes leave the active layer; bounded history remains inspectable.
-Only accepted canonical records appear through the normal colored graph. The
-latest initiating Talk response receives source-attributed observations with
-explicit uncertainty; no second model response is fabricated or automatically
-billed. If a newer conversation owns the response panel, old completion cannot
-overwrite it. History provides links to retained source excerpts.
+Policies are stored per Mindling in existing production `settings` records or
+an isolated Preview `sandbox` key, with a monotonically increasing revision.
+Revocation aborts this page's active run. Permissions are re-read before source
+reads and integration. The final canonical write checks the policy revision and
+provider approval in the **same IndexedDB transaction** as the memory commit.
+A concurrent revocation cannot authorize a later commit with an old grant.
+Already committed knowledge and requests already sent cannot be undone.
 
-## Persistence and browser lifecycle
+Discovery derives a short public topic (at most 120 characters), never a memory
+bundle, conversation history, identity/key object or wallet state. Potential
+personal topics, URLs, identifiers, sensitive keywords and possible proper names
+are conservatively gated for explicit review of a minimal public query. This is
+local pattern screening, not a comprehensive personal-data classifier. The user
+must omit private details from the reviewed public query. Providers receive the
+query and ordinary network metadata, including IP/browser information.
+Requests omit credentials and referrers; no secret keys or proxy are used.
 
-Optional `mind.learningTasks` metadata is persisted through existing production
-`changeGameplay` and isolated Preview `change`, using the existing atomic state
-records. No IndexedDB upgrade, new object store, reset or migration is necessary.
-Returning-user hydration already carries these fields. Read-only snapshots
-inspect tasks without exposing source-execution controls.
+## Retrieval, freshness and budgets
 
-Hidden pages abort active fetches; page exit/destruction cancels listeners and
-requests. No work runs after browser closure. A session mismatch renders saved
-in-flight work as interrupted/blocked. Resumption requires explicit document
-authorization and remaining task limits; it never silently resumes paid work.
-Run tokens prevent old completions from mutating a cancelled/replaced task.
+The shared retrieval boundary enforces HTTPS public hostnames, no URL credentials
+or signed-token parameters, no literal IP/local host targets, no redirects,
+CORS, bounded streaming, safe text and cancellation. Manual imports remain
+plain text/Markdown. Only the fixed discovery adapters request JSON; returned
+webpage HTML is never fetched or parsed. Canonical article identity is checked
+again during extraction. Untrusted source text is never executed.
+
+Current/latest questions, explicit standings/form selections and recognized
+league-leader questions require dated evidence. Neither adapter declares live
+data support, so automatic research reports **Current data unavailable** without
+querying an unsuitable encyclopedia. Manual dated evidence still passes existing
+freshness checks: fetch time and page revision time cannot substitute for an
+explicit recent observation/as-of date in a claim. No current table is invented.
+
+Per-task bounds remain conservative: 24 retained tasks, eight unfinished, one
+active run per page, two attempts, two discovery queries, four candidates per
+query, three total document reads and three accepted knowledge units. Search
+reserves 16 KiB; each document reserves up to 64 KiB within a cumulative 192 KiB
+body reservation. Actual retained bytes and reservations are tracked separately;
+network buffers can deliver a final over-limit chunk, which is discarded.
+Each request has an 18-second timeout and each run a 45-second deadline (at most
+two runs). There is no recursive search, timed progress, polling or additional
+inference. DEEP excerpt collection does not implement model synthesis,
+independent corroboration, live official sports data or unrestricted web search.
+
+## Tasks, inspector and lifecycle
+
+The same seven work units are retained. The inspector separately shows
+preparation (first three units), task work out of seven, successfully retrieved
+sources and new retained canonical memories actually attributed to this task.
+Discovery query/candidate counters are actual recorded work. Percentages measure
+task steps, never knowledge mastery. Friendly labels distinguish discovering,
+reading, evaluating, integrating, waiting, paused, unavailable and completed.
+
+Start/Retry, Pause, Cancel, source references and research permissions replace the
+default URL requirement. A sensitive query gets a public-topic confirmation
+control. Advanced document selection preserves the previous safe manual path.
+Source details distinguish retrieval and page revision dates. Saved read-only
+snapshots have no execution controls.
+
+Existing blocked tasks keep IDs, counters, source/knowledge references and Energy
+receipts. Start/Retry uses newly saved permissions within remaining limits.
+Legacy CLARIFICATION tasks reopen an actionable question and update the same
+task when resolved. The optional query key supports deduplication after that
+update. Failed/superseded runs cannot commit using an old run token.
+
+TALK_RESEARCH retains one gray root per unfinished question; FOUNDATION/DEEP
+retain bounded work-group nodes. Search candidates do not create gray knowledge
+nodes. Completed tasks resolve out of the active layer; accepted memories appear
+normally. The latest initiating Talk receives an attributed result or an
+unavailable explanation; an unrelated later response cannot be overwritten.
+
+Hiding or closing the page aborts work; destruction removes listeners. Saved
+in-flight tasks render as interrupted after reload. Nothing restarts on
+hydration. Explicit resumption uses current permissions and remaining budgets;
+there is no background execution after browser closure or new animation loop.
+The existing run fencing prevents stale commits; concurrency remains one task
+per page, not a new cross-tab global worker lock.
 
 ## Validation boundary
 
-Only source inspection, text searches, `git diff --check` and native JavaScript
-syntax-only checks were performed. No tests, test suites, browser automation,
-screenshots, builds, npm commands, dependency installations, research fetches or
-paid model calls were executed. Browser layout, CORS behavior, runtime integration
-and real IndexedDB races remain unvalidated.
+Only focused source inspection, diff review, `git diff --check` and native
+JavaScript syntax-only checks were performed. At the user's explicit request,
+**no tests, test suites, browser automation, screenshots, builds, npm commands,
+dependency installations or paid model calls were executed**. Browser layout,
+end-to-end continuation, provider availability, CORS and real IndexedDB races
+remain unvalidated at runtime. No merge or direct deployment is performed.

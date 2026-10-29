@@ -18,6 +18,10 @@ export function validTask(task,mindId){
     &&Array.isArray(task.referenceIds)&&task.referenceIds.length<=24&&task.referenceIds.every(id=>typeof id==='string'&&id.length<=160)
     &&Array.isArray(task.plan)&&task.plan.length<=3&&task.plan.every(label=>typeof label==='string'&&label.length<=160)
     &&typeof task.message==='string'&&task.message.length<=1000&&typeof task.energyCharged==='boolean'&&typeof task.timeSensitive==='boolean'
+    &&(task.reservedBytes===undefined||Number.isSafeInteger(task.reservedBytes)&&task.reservedBytes>=0&&task.reservedBytes<=196608)
+    &&(task.totalBytes===undefined||Number.isSafeInteger(task.totalBytes)&&task.totalBytes>=0&&task.totalBytes<=196608)
+    &&(task.discoveryQueries===undefined||Number.isSafeInteger(task.discoveryQueries)&&task.discoveryQueries>=0&&task.discoveryQueries<=2)
+    &&(task.discoveryCandidates===undefined||Array.isArray(task.discoveryCandidates)&&task.discoveryCandidates.length<=4&&task.discoveryCandidates.every(candidate=>typeof candidate.url==='string'&&candidate.url.length<=500&&typeof candidate.title==='string'&&candidate.title.length<=160))
     &&(!task.acceptedQuotes||Array.isArray(task.acceptedQuotes)&&task.acceptedQuotes.length<=LIMITS.memories&&task.acceptedQuotes.every(hash=>/^[a-f0-9]{64}$/.test(hash)))
     &&(!task.scope||typeof task.scope==='object')&&JSON.stringify(task).length<=12000;
   } catch { return false; }
@@ -36,4 +40,8 @@ export function validateResearchClaim(state,authorization){
     ||typeof authorization.content!=='string'||authorization.content.length>2000
     ||authorization.content!==`Source observation (${new Date(source.observedAt).toISOString()}) from ${source.url}: ${authorization.quote}`)throw Error('Research evidence or task authorization changed. No knowledge was saved.');
   return task;
+}
+export function taskStatusLabel(task){
+  if(task.status==='BLOCKED')return ({NO_SOURCE:'Waiting for sources',PROVIDER_PERMISSION:'Waiting for provider approval',CURRENT_SOURCE_UNAVAILABLE:'Current data unavailable',QUERY_CONFIRMATION:'Review public query',CLARIFICATION:'Clarification needed',INTERRUPTED:'Research paused'})[task.code]||'Research unavailable';
+  return ({PREPARED:'Preparing research',QUEUED:task.code==='DISCOVERING'?'Discovering sources':'Preparing research',RESEARCHING:'Reading sources',EVALUATING:'Evaluating evidence',COMMITTING:'Integrating knowledge',COMPLETED:'Completed',CANCELLED:'Cancelled',FAILED:'Research unavailable'})[task.status]||'Research paused';
 }

@@ -2,6 +2,7 @@ import { loadTraining, saveTraining, trainingSource } from '../training/persiste
 import { reconcileEvolution } from '../preview/sandbox/engine.js';
 import { energyAt } from '../economy/energy.js';
 import { migrateGameplay, dashboardLife } from '../app/gameplay-state.js';
+import { loadResearchPermissions, saveResearchPermissions, assertResearchGrant } from '../autonomous/research-permissions.js';
 
 const DB_NAME = "mindling-db";
 const DB_VERSION = 3;
@@ -30,10 +31,12 @@ export class MindlingDatabase {
   trainingSource(mindId) { return trainingSource(this.#db, false, mindId); }
   trainingHistory(mindId) { if (!this.#db) return Promise.reject(Error('Local storage is unavailable.')); return loadTraining(this.#db, false, mindId); }
   saveTraining(record) { if (!this.#db) return Promise.reject(Error('Local storage is unavailable.')); return saveTraining(this.#db, false, record); }
+  researchPermissions(id){return loadResearchPermissions(this.#db,false,id);}
+  saveResearchPermissions(id,choice){return saveResearchPermissions(this.#db,false,id,choice);}
   async get(store, id) { return this.#request(store, "readonly", target => target.get(id)); }
   async getAll(store) { return this.#request(store, "readonly", target => target.getAll()); }
   async put(store, value) { return this.#request(store, "readwrite", target => target.put(value)); }
-  async changeGameplay(reducer, { identity = null, journal = null } = {}) {
+  async changeGameplay(reducer, { identity = null, journal = null, researchGrant=null } = {}) {
     if (!this.#db) throw Error('Database is not open');
     const names = ['gameplay', 'mindling', 'life', 'identity', 'neurons', 'synapses', 'memories', 'pathways', 'energyJournal', 'memorials', 'settings'];
     return new Promise((resolve, reject) => {
@@ -47,6 +50,7 @@ export class MindlingDatabase {
             const saved = data.gameplay.find(item => item.id === 'primary');
             if (saved && saved.state?.version !== 1) throw Error('Unsupported gameplay data; existing records have been preserved.');
             const initial = saved ? saved.state : migrateGameplay(data, Date.now());
+            assertResearchGrant(researchGrant,data.settings);
             next = reconcileEvolution(reducer(structuredClone(initial)));
             next.revision = (initial.revision || 0) + 1;
             if (initial.mind && next.mind?.id !== initial.mind.id && initial.mind.life.lifeState !== 'DECEASED') throw Error('A living identity cannot be replaced.');

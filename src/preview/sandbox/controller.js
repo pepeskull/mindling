@@ -1,6 +1,6 @@
 import { knowledgeTalk } from '../../cognition/talk-response.js';
-import { understandInput } from '../../learning/input-understanding.js';
-import { learningEngine, stopLearning, learningSession } from '../../autonomous/learning-engine.js';
+import { interpretInteraction } from '../../learning/clarification.js';
+import { learningEngine, stopLearning, learningSession, researchPermissions, syncResearchPermissions } from '../../autonomous/learning-engine.js';
 import { CognitiveEngine } from '../../cognition/cognitive-engine.js';
 import { EVENTS } from '../../app/events.js';
 import { energyCapacityForStage } from '../../economy/energy.js';
@@ -83,14 +83,14 @@ export class SandboxPreview extends EvolutionPreview {
     this.listen(document,'visibilitychange',()=>{if(!document.hidden&&!this.busy)this.change(s=>s).catch(error=>this.status(error.message));});
   }
   listen(node,type,fn){node.addEventListener(type,event=>{if(!this.external?.locked)fn(event);},{signal:this.listeners.signal});}
-  async action(fn){if(this.busy||this.external?.locked)return;this.busy=true;document.querySelector('#interaction-form').classList.add('processing');this.updateInputAvailability();this.status('Working…');try{await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;document.querySelector('#interaction-form').classList.remove('processing');this.updateInputAvailability();}}
+  async action(fn){if(this.busy||this.external?.locked)return;this.busy=true;document.querySelector('#interaction-form').classList.add('processing');this.updateInputAvailability();this.status('Working…');try{const result=await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');return result;}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;document.querySelector('#interaction-form').classList.remove('processing');this.updateInputAvailability();}}
   status(text){if(this.disposed)return;const el=this.panel?.querySelector('[data-sandbox-status]');if(el)el.textContent=text;const inline=document.querySelector('#interaction-form .interaction-status');if(inline){inline.textContent=text;inline.classList.add('visible');}}
-  async change(reducer,{preserveGameplay=false}={}) {
+  async change(reducer,{preserveGameplay=false,researchGrant=null}={}) {
     this.external?.assertWritable();
     this.pendingMutations=(this.pendingMutations||0)+1;
     try {
       const memories=this.state.mind?.memories.length||0;
-      this.state=await this.store.change(s=>{this.external?.assertWritable();return reducer(preserveGameplay?s:advanceSandbox(s));});
+      this.state=await this.store.change(s=>{this.external?.assertWritable();return reducer(preserveGameplay?s:advanceSandbox(s));},{researchGrant});
       if(!this.disposed){
         this.renderState();
         if(this.state.mind?.memories.length>memories){
@@ -100,40 +100,47 @@ export class SandboxPreview extends EvolutionPreview {
       }
     } finally { this.pendingMutations--; }
   }
-  async submitLearning(){
+  async submitLearning(request=null){
     this.external?.assertWritable();
-    const text=document.querySelector('#mindling-input').value;
+    let text=request?.text??document.querySelector('#mindling-input').value;
     if(text.length>LEARNING_INPUT_LIMIT)throw Error('Use at most 2,000 characters. Your text has not been submitted.');
     await this.change(s=>s);
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
-    const activity=this.activity;
-    const id=crypto.randomUUID();
-    if(activity==='TALK')this.dashboard.showTalkResponse({id,state:'processing'});
+    const activity=request?.activity??this.activity;
+    const id=request?.id??crypto.randomUUID();
+    if(!request&&activity==='TALK')this.dashboard.showTalkResponse({id,state:'processing'});
     try {
-      const interpretation=understandInput(text,activity);
-      if(interpretation.intent==='CLARIFICATION')throw Error(interpretation.clarification);
+      const input=interpretInteraction(this,text,activity,id,request?.continuation),{interpretation}=input;
+      if(input.result){if(!request)this.dashboard.showTalkResponse({id,state:'clarification',reply:input.result.talkResponse});return input.result;}
+      input.guard();
+      if(input.taskId&&input.paid){
+        const task=await learningEngine(this).prepare(interpretation,id,{taskId:input.taskId,guard:input.guard});learningEngine(this).follow(task,id);learningEngine(this).startIfAuthorized(task);
+        return {accepted:true,message:'Research request clarified. No additional Energy spent.',talkResponse:learningEngine(this).reply(task)};
+      }
       if(interpretation.requiresResearch){
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
-        const task=await learningEngine(this).prepare(interpretation,id);
+        const task=await learningEngine(this).prepare(interpretation,id,{taskId:input.taskId,guard:input.guard});learningEngine(this).startIfAuthorized(task);
         this.status(`${task.message} No XP awarded. No additional Energy spent.`);
         document.querySelector('#mindling-input').value='';
-        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return;
+        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return {accepted:true,message:task.message};
       }
       if(activity==='TALK'){
-        const reply=await knowledgeTalk(this,text,id,{interpretation});
-        this.dashboard.showTalkResponse({id,state:'ready',reply});
+        const reply=await knowledgeTalk(this,text,id,{interpretation,guard:input.guard});
+        if(!request)this.dashboard.showTalkResponse({id,state:'ready',reply});
         this.status(reply.energySpent===0?'Existing research task reused · no Energy spent.':'Talk completed · 1 Energy spent.');
         document.querySelector('#mindling-input').value='';
-        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return;
+        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return {accepted:true,talkResponse:reply};
       }
+      text=interpretation.factText||text;
       const submittedContext=JSON.stringify(learningContext(text,m));
       this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
       const assessment=await requestLearningAssessment(text,structuredClone(m));
       if(this.disposed)throw Error('Preview was closed before learning completed. No Energy or XP changed.');
       await this.change(s=>{
+        input.guard();
         if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
         if(JSON.stringify(learningContext(text,s.mind))!==submittedContext)throw Error('Relevant memories changed. Submit again. No Energy or XP changed.');
-        return learn(s,{id,text,mindId:m.id,activity,assessment});
+        const next=learn(s,{id,text,mindId:m.id,activity,assessment});const previous=input.taskId&&next.mind.learningTasks?.find(task=>task.id===input.taskId);if(previous&&previous.code==='CLARIFICATION'){previous.status='CANCELLED';previous.code='CLARIFIED_AS_FACT';previous.message='Resolved through direct factual teaching; no research was performed.';previous.updatedAt=Math.max(previous.updatedAt,Date.now());}return next;
       });
       const event=this.state.mind.history.find(item=>item.id===id);
       const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered.',NO_MEMORY_CHANGE:'No memory change was needed.',FLAG_CONTRADICTION:'Conflicting claim recorded; existing knowledge was preserved.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.',BATCH:'Independent statements processed together; existing history was preserved.'};
@@ -142,7 +149,8 @@ export class SandboxPreview extends EvolutionPreview {
       document.querySelector('#mindling-input').value='';
       const operations=event?.operations||[event?.operation],refused=operations.every(operation=>['REJECT_UNSAFE_INSTRUCTION','VERIFY_BEFORE_STORAGE','ASK_FOR_CLARIFICATION'].includes(operation));
       this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:refused?'cancel':'accepted',activity});
-    } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});if(activity==='TALK')this.dashboard.showTalkResponse({id,state:'error',message:error.message});throw error;}
+      return {accepted:true,message};
+    } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});if(!request&&activity==='TALK')this.dashboard.showTalkResponse({id,state:'error',message:error.message});throw error;}
   }
   async care(type){await this.change(s=>carePreview(s,type));}
   setActivity(type){
@@ -166,6 +174,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.status('Deterministic fixture — no learning service request. Repeating it earns no XP.');
   }
   renderState(){
+    syncResearchPermissions(this);
     this.cognition?.setActiveMindling(this.state.mind?.id || null);
     if(this.external?.locked)return;
     const m=this.state.mind;if(!m){this.dashboard.stageChip.setStage('—',{enabled:false});document.querySelectorAll('[data-stat]').forEach(el=>el.textContent='0');return;}
@@ -173,7 +182,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.seed.update({nodes:m.nodes,synapses:m.synapses,stage:m.stage});
     const stage=m.stage;if(this.timeline.stage!==stage){this.timeline.select(stage);this.syncStage();this.host.dataset.stage=String(stage);}
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.
-    this.dashboard.render({...m,developmentClock:'simulated',developmentNow:this.state.now,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString(),learningSession:learningSession(this)});
+    this.dashboard.render({...m,developmentClock:'simulated',developmentNow:this.state.now,mindlingId:m.id,createdAt:new Date(m.createdAt).toISOString(),learningSession:learningSession(this),researchPermissions:researchPermissions(this)});
     this.presentation.stage=null;
     this.refreshNetwork();
     const alive=m.life.lifeState==='ALIVE';
