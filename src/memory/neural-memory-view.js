@@ -1,7 +1,7 @@
 import { VIEW_ZOOM } from '../ui/view-zoom.js';
 import { sourceDescription } from './content-integrity.js';
 import {graphData,filterGraph,layoutGraph,memorySignature} from './graph-data.js';
-import { tasksFor } from '../autonomous/tasks.js';
+import { tasksFor, taskStatusLabel } from '../autonomous/tasks.js';
 import { learningNodes, withResearch, layoutResearch } from '../autonomous/research-graph.js';
 import { renderTaskInspector } from '../autonomous/task-inspector.js';
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
@@ -53,7 +53,7 @@ export class NeuralMemoryView {
     this.observer=new ResizeObserver(()=>{if(this.visible){if(this.autoFit)this.fit();else this.drawSoon();}});this.observer.observe(this.stage);
   }
   on(target,type,callback,options={}){target.addEventListener(type,callback,{...options,signal:this.abort.signal});}
-  update(state){if(this.abort.signal.aborted)return;this.state=state||{};const signature=memorySignature(this.state)+JSON.stringify(tasksFor(this.state));if(signature===this.signature)return;this.signature=signature;this.dirty=true;if(this.visible)this.queueBuild();}
+  update(state){if(this.abort.signal.aborted)return;this.state=state||{};const signature=memorySignature(this.state)+JSON.stringify([tasksFor(this.state),this.state.researchPermissions]);if(signature===this.signature)return;this.signature=signature;this.dirty=true;if(this.visible)this.queueBuild();}
   setVisible(visible){if(this.abort.signal.aborted)return;this.visible=visible;if(visible){if(this.dirty)this.queueBuild();else this.drawSoon();}else{this.stopFlow();cancelAnimationFrame(this.frame);this.frame=null;this.hideTooltip();}}
   queueBuild(){if(this.pending||document.hidden)return;this.pending=true;const token=this.generation;setTimeout(()=>{this.pending=false;if(token!==this.generation||!this.visible||document.hidden)return;this.graph=graphData(this.state);this.dirty=false;this.renderStats();this.rebuild(!this.fitted);this.renderRadar();},0);}
   renderStats(){const strip=this.root.querySelector('.memory-stat-strip');strip.replaceChildren();for(const [value,name] of [[this.graph.stats.canonical,'Canonical memories'],[this.graph.stats.areas,'Knowledge areas'],[this.graph.stats.associations,'Stored associations']]){const item=el('div');item.append(el('strong',value),el('span',name));strip.append(item);}}
@@ -65,7 +65,7 @@ export class NeuralMemoryView {
   renderTaskIndex(){
     const list=this.root.querySelector('.research-task-browser ul');list.replaceChildren();
     for(const node of [...this.taskNodes.values()].sort((a,b)=>b.task.updatedAt-a.task.updatedAt)){
-      const row=el('li'),button=el('button',`${compact(node.label,65)} · ${node.task.status}`);button.type='button';button.dataset.selectLearning=node.id;button.setAttribute('aria-pressed',String(this.selected===node.id));row.append(button);list.append(row);
+      const row=el('li'),button=el('button',`${compact(node.label,65)} · ${taskStatusLabel(node.task)}`);button.type='button';button.dataset.selectLearning=node.id;button.setAttribute('aria-pressed',String(this.selected===node.id));row.append(button);list.append(row);
     }
     if(!this.taskNodes.size)list.append(el('li','No learning tasks recorded.'));
   }
@@ -93,7 +93,7 @@ export class NeuralMemoryView {
       ctx.strokeStyle='#92959b44';ctx.lineWidth=2/this.zoom;ctx.beginPath();ctx.arc(node.x,node.y,node.r+5,0,Math.PI*2);ctx.stroke();
       if(node.progress>0){ctx.strokeStyle='#c3c6ca';ctx.beginPath();ctx.arc(node.x,node.y,node.r+5,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.min(1,node.progress));ctx.stroke();}
       ctx.font=`${10/this.zoom}px Inter, sans-serif`;ctx.textAlign='center';ctx.fillStyle='#c3c6ca';ctx.fillText(compact(node.label,25),node.x,node.y+node.r+20/this.zoom);
-      if(node.root){ctx.fillStyle='#92959b';ctx.font=`${8/this.zoom}px Inter, sans-serif`;ctx.fillText(`${node.task.status} · ${Math.round(node.progress*100)}%`,node.x,node.y+node.r+34/this.zoom);}
+      if(node.root){ctx.fillStyle='#92959b';ctx.font=`${8/this.zoom}px Inter, sans-serif`;ctx.fillText(`${taskStatusLabel(node.task)} · ${Math.round(node.progress*100)}%`,node.x,node.y+node.r+34/this.zoom);}
       ctx.restore();continue;
     }if(overview&&node.kind==='memory'&&!lit){const tone=node.historical?'#577970':color+'bb';if(!dotBatches.has(tone))dotBatches.set(tone,[]);dotBatches.get(tone).push(node);continue;}ctx.beginPath();ctx.arc(node.x,node.y,node.r,0,Math.PI*2);ctx.fillStyle=node.historical?'#122127':color+(lit?'ff':node.kind==='memory'?'bb':'ee');ctx.shadowColor=color;ctx.shadowBlur=lit?20:node.kind==='area'?18:0;ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=lit?'#d9fff4':color;ctx.lineWidth=lit?2:1;ctx.stroke();if(lit||node.kind==='area'){ctx.beginPath();ctx.arc(node.x,node.y,node.r+6,0,Math.PI*2);ctx.strokeStyle=color+'66';ctx.lineWidth=.7;ctx.stroke();}
       const show=node.kind==='area'||(node.kind==='topic'&&this.zoom>.3)||node.id===selected?.id||node.id===hover?.id;if(show){ctx.font=`${node.kind==='area'?'500':'400'} ${(node.kind==='area'?11:10)/this.zoom}px Inter, sans-serif`;ctx.fillStyle=lit?'#eefff9':node.kind==='area'?'#d5ece7':'#9bb3b0';ctx.textAlign='center';const text=compact(node.label,node.kind==='memory'?42:25),width=ctx.measureText(text).width*this.zoom,baseline=sy+node.r*this.zoom+19,row=Math.floor(baseline/20),cells=[];for(let col=Math.floor((sx-width/2)/80);col<=Math.floor((sx+width/2)/80);col++)cells.push(`${col}:${row}`);if(lit||(labelCount<80&&!cells.some(cell=>labelCells.has(cell)))){ctx.fillText(text,node.x,node.y+node.r+19/this.zoom);cells.forEach(cell=>labelCells.add(cell));labelCount++;}}}
@@ -128,7 +128,7 @@ export class NeuralMemoryView {
   }
   renderInspector(){const host=this.root.querySelector('.memory-inspector-content'),title=this.root.querySelector('#memory-inspector-title'),node=this.positions?.get(this.selected)||this.taskNodes?.get(this.selected);host.replaceChildren();this.root.querySelector('[data-graph-action="focus"]').disabled=!node||!this.positions?.has(node.id);
     if(!node){title.textContent='Follow a thought.';host.append(el('p','Select a memory to see what it holds, how it has grown, and where it connects.'));return;}
-    if(node.kind==='research'){title.textContent=node.root?'Learning task':node.label;renderTaskInspector(host,node,{onAction:this.onLearningTask,refresh:()=>this.renderInspector()});return;}
+    if(node.kind==='research'){title.textContent=node.root?'Learning task':node.label;renderTaskInspector(host,node,{onAction:this.onLearningTask,refresh:()=>this.renderInspector(),permissions:this.state.researchPermissions||{mode:"disabled",providers:[]},memories:this.graph.memories});return;}
     if(node.kind!=='memory'){title.textContent=node.label;host.append(el('p',`${node.memoryIds.length} canonical memories · ${node.kind==='area'?'Knowledge area':'Topic'}`));const candidates=this.filtered.memories.filter(memory=>node.kind==='area'?memory.areaId===node.id:memory.topicId===node.id);for(const memory of candidates.slice(0,8)){const button=el('button',compact(memory.label,76),'related-memory-button');button.type='button';button.title=memory.label;button.dataset.selectMemory=memory.id;host.append(button);}return;}
     const memory=node.raw,byId=new Map(this.graph.nodes.map(item=>[item.id,item]));title.textContent='Inside this memory';host.append(el('span',node.historical?'Historical memory':'Current memory',`memory-status-chip ${node.historical?'historical':''}`),el('p',node.label,'inspector-memory-text'));
     host.append(el('p',sourceDescription(memory),'memory-content-status'));

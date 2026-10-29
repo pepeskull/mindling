@@ -10,6 +10,7 @@ import { Dashboard } from '../ui/dashboard.js';
 import { EventBus, EVENTS } from '../app/events.js';
 import { readDashboardSnapshot } from './dashboard-snapshot.js';
 import { learningEngine, stopLearning } from '../autonomous/learning-engine.js';
+import { resumeClarification, cancelClarification } from '../learning/clarification.js';
 import { presentationFor, PreviewDashboardPresentation } from './dashboard-presentation.js';
 import { AutomaticNetworkCountdown } from './automatic-playback.js';
 
@@ -30,7 +31,9 @@ export class EvolutionPreview {
     this.originalLabel = this.host.getAttribute('aria-label');
     document.querySelector('#app').classList.add('dashboard-preview');
     document.querySelector('#app').classList.toggle('original-preview-framing', this.originalFraming);
-    this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged, onLearningTask:typeof this.change==='function'?(action,id,url)=>learningEngine(this).act(action,id,url):null });
+    this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged,
+      onLearningTask:typeof this.change==='function'?async(action,id,payload)=>{const result=await learningEngine(this).act(action,id,payload);if(result?.needsClarification)this.dashboard.showClarification(result.talkResponse);return result;}:null,
+      onClarification:typeof this.change==='function'?(token,choice,detail)=>resumeClarification(this,token,choice,detail):null,onCancelClarification:()=>cancelClarification(this) });
     const snapshot = this.snapshotProvider ? await this.snapshotProvider() : null;
     if (this.disposed) return;
     if (snapshot) this.dashboard.showSnapshot(snapshot);
@@ -145,6 +148,7 @@ export class EvolutionPreview {
   destroy() {
     if (this.disposed) return; this.disposed = true;
     stopLearning(this);
+    cancelClarification(this);
     if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null;
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);

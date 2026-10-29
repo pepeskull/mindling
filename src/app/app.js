@@ -1,6 +1,6 @@
 import { knowledgeTalk } from '../cognition/talk-response.js';
-import { understandInput } from '../learning/input-understanding.js';
-import { learningEngine, stopLearning, learningSession } from '../autonomous/learning-engine.js';
+import { interpretInteraction } from '../learning/clarification.js';
+import { learningEngine, stopLearning, learningSession, researchPermissions, syncResearchPermissions } from '../autonomous/learning-engine.js';
 import { CognitiveEngine } from '../cognition/cognitive-engine.js';
 import { energyCapacityForStage } from '../economy/energy.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
@@ -86,33 +86,44 @@ export class MindlingApp extends EvolutionPreview {
     try { await this.change(); } catch { if (!this.disposed) this.dashboard.setStorageStatus(false); }
   }
 
-  async submitInput(text, activity, id) {
+  async submitInput(text, activity, id, {continuation=null}={}) {
     try {
       await this.change();
       const m = this.state.mind;
       if (!m || m.life.lifeState !== 'ALIVE') return { accepted: false, reason: 'MINDLING_DECEASED' };
       const rule = LIFE_RULES.activity[activity];
       if (!rule) throw Error('Unknown activity');
-      if (m.energy.remaining < rule.energyCost) return { accepted: false, reason: 'OUT_OF_ENERGY' };
       if (typeof text !== 'string' || text.length > 2000) throw Error('Share a short, readable claim.');
-      const interpretation=understandInput(text,activity);
-      if(interpretation.intent==='CLARIFICATION')return {accepted:false,message:interpretation.clarification};
+      const input=interpretInteraction(this,text,activity,id,continuation),{interpretation}=input;
+      if(input.result)return input.result;
+      if (m.energy.remaining < rule.energyCost&&!input.paid) return { accepted: false, reason: 'OUT_OF_ENERGY' };
+      input.guard();
+      if(input.taskId&&input.paid){
+        const task=await learningEngine(this).prepare(interpretation,id,{taskId:input.taskId,guard:input.guard});
+        learningEngine(this).follow(task,id);learningEngine(this).startIfAuthorized(task);
+        return {accepted:true,message:'Research request clarified. No additional Energy spent.',talkResponse:learningEngine(this).reply(task)};
+      }
       if(interpretation.requiresResearch){
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
-        const task=await learningEngine(this).prepare(interpretation,id);
+        const task=await learningEngine(this).prepare(interpretation,id,{taskId:input.taskId,guard:input.guard});
+        learningEngine(this).startIfAuthorized(task);
         return {accepted:true,message:`${task.message} No XP awarded. No additional Energy spent.`,learningTaskId:task.id};
       }
       if (activity === 'TALK') {
-        const reply=await knowledgeTalk(this,text,id,{journal:true,interpretation});
+        const reply=await knowledgeTalk(this,text,id,{journal:true,interpretation,guard:input.guard});
         const memory=m.memories.find(item=>item.id===reply.memoryIds[0]);
         if(memory)this.seed.highlightRoute({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});
         return {accepted:true,message:reply.energySpent===0?'Existing research task reused · no Energy spent.':'Talk completed · 1 Energy spent.',talkResponse:reply};
       } else {
+        text=interpretation.factText||text;
         learn(this.state,{id,text,mindId:m.id,activity}); // Pure immediate preflight, no write.
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
         await this.change(s => {
+          input.guard();
           if (s.mind?.id !== m.id) throw Error('Mindling identity changed. Submit again.');
-          return learn(s, {id, text, mindId:m.id, activity});
+          const next=learn(s, {id, text, mindId:m.id, activity});
+          const previous=input.taskId&&next.mind.learningTasks?.find(task=>task.id===input.taskId);if(previous&&previous.code==='CLARIFICATION'){previous.status='CANCELLED';previous.code='CLARIFIED_AS_FACT';previous.message='Resolved through direct factual teaching; no research was performed.';previous.updatedAt=Math.max(previous.updatedAt,Date.now());}
+          return next;
         }, {journal:{id,type:activity}});
         const event = this.state.mind.history.find(item => item.id === id);
         const memory = this.state.mind.memories.find(item => item.id === (event?.memoryId || id));
@@ -153,6 +164,7 @@ export class MindlingApp extends EvolutionPreview {
   }
 
   renderState() {
+    syncResearchPermissions(this);
     this.cognition.setActiveMindling(this.state.mind?.id || null);
     if (this.external?.locked || !this.view || !this.dashboard || !this.state.mind) return;
     const m = this.state.mind;
@@ -161,7 +173,7 @@ export class MindlingApp extends EvolutionPreview {
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);
     this.seed.update({ nodes: m.nodes, synapses: m.synapses, stage:m.stage });
-    this.dashboard.render({...dashboardState(m),developmentNow:this.state.now,learningSession:learningSession(this)});
+    this.dashboard.render({...dashboardState(m),developmentNow:this.state.now,learningSession:learningSession(this),researchPermissions:researchPermissions(this)});
     this.events.emit(EVENTS.LIFE_UPDATED, dashboardLife(this.state));
     document.querySelectorAll('.stages li').forEach((row, index) => {
       const current = index + 1 === m.stage;
