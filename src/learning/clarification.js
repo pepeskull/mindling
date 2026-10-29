@@ -25,7 +25,7 @@ export async function resumeClarification(app,token,choice,detail=''){
   const answers={...pending.answers};
   if(choice==='text'){
     if(!pending.model.freeText||typeof detail!=='string'||!detail.trim()||detail.length>300)throw Error('Enter a clarification of at most 300 characters.');answers.detail=detail.trim();
-  }else{const option=pending.model.options.find(item=>item.id===choice);if(!option)throw Error('Unknown clarification option.');answers[pending.model.field]=option.id;}
+  }else{const option=pending.model.options.find(item=>item.id===choice);if(!option)throw Error('Unknown clarification option.');answers[pending.model.field]=pending.model.field==='detail'?option.value:option.id;}
   pending.processing=true;const capability=Object.freeze({});state.capabilities.set(capability,{pending,answers});
   try{
     const result=typeof app.submitInput==='function'?await app.submitInput(pending.text,pending.activity,pending.requestId,{continuation:capability}):await app.action(()=>app.submitLearning({text:pending.text,activity:pending.activity,id:pending.requestId,continuation:capability}));

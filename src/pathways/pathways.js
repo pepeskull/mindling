@@ -22,7 +22,8 @@ const list = value=>Array.isArray(value)?value:[];
 
 export function originPathways(mind={}) {
   const explicit=Array.isArray(mind.originPathways);
-  const choices=[...new Set(list(explicit?mind.originPathways:mind.pathways).filter(value=>typeof value==='string'&&value.trim()))];
+  const raw=explicit?mind.originPathways:Array.isArray(mind.pathways)&&mind.pathways.length?mind.pathways:list(mind.pathwayRecords).filter(item=>item?.selected);
+  const choices=[...new Set(list(raw).map(item=>typeof item==='string'?item:typeof item==='object'&&item?(item.name||item.title||item.pathway||item.id):'').filter(value=>typeof value==='string'&&value.trim()).map(value=>{const label=value.normalize('NFC').trim();return PATHWAYS.find(id=>normalize(id)===normalize(label))||label;}))];
   return {choices,source:explicit?'recorded-origin':'preserved-legacy-selections',unsupported:choices.filter(id=>!PATHWAYS.includes(id))};
 }
 

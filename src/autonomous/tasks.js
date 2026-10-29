@@ -1,12 +1,14 @@
+import { validClarification, validateAnswers } from '../learning/clarification-model.js';
 import { LEARNING_MODES } from '../learning/input-understanding.js';
 export const TASK_STATES=Object.freeze(['PREPARED','QUEUED','RESEARCHING','EVALUATING','COMMITTING','COMPLETED','BLOCKED','FAILED','CANCELLED']);
-export const LIMITS=Object.freeze({tasks:24,unfinished:8,concurrent:1,attempts:2,sourceRequests:3,memories:3,sourceBytes:65536,inferenceCalls:0});
+export const LIMITS=Object.freeze({tasks:24,unfinished:8,concurrent:1,attempts:2,sourceRequests:3,memories:3,sourceBytes:65536,inferenceCalls:2});
 export const WORK=Object.freeze(['understanding','retrieval','plan','source','evidence','knowledge','answer']);
 const modes=Object.values(LEARNING_MODES);
 export const terminal=task=>['COMPLETED','CANCELLED','FAILED'].includes(task.status);
 export const taskProgress=task=>Math.min(1,new Set(task.completedWork||[]).size/WORK.length);
 export function validTask(task,mindId){
   try {
+  if(task?.interpretationAnswers)validateAnswers(task.interpretationAnswers);
   return !!task&&task.version===1&&/^[a-f0-9]{64}$/.test(task.id)&&task.mindlingId===mindId&&modes.includes(task.mode)&&TASK_STATES.includes(task.status)
     &&typeof task.objective==='string'&&task.objective.length>0&&task.objective.length<=2000&&typeof task.topic==='string'&&task.topic.length<=160
     &&typeof task.run==='string'&&task.run.length<=100&&typeof task.requestId==='string'&&task.requestId.length<=100
@@ -17,6 +19,10 @@ export function validTask(task,mindId){
     &&Array.isArray(task.knowledgeIds)&&task.knowledgeIds.length<=LIMITS.memories&&task.knowledgeIds.every(id=>typeof id==='string'&&id.length<=160)
     &&Array.isArray(task.referenceIds)&&task.referenceIds.length<=24&&task.referenceIds.every(id=>typeof id==='string'&&id.length<=160)
     &&Array.isArray(task.plan)&&task.plan.length<=3&&task.plan.every(label=>typeof label==='string'&&label.length<=160)
+    &&(task.engineVersion===undefined||task.engineVersion===2)
+    &&(task.originalText===undefined||typeof task.originalText==='string'&&task.originalText.length<=2000)
+    &&(task.coordinatorClarification===undefined||validClarification(task.coordinatorClarification))
+    &&(task.clarificationRounds===undefined||Number.isSafeInteger(task.clarificationRounds)&&task.clarificationRounds>=0&&task.clarificationRounds<=1)
     &&typeof task.message==='string'&&task.message.length<=1000&&typeof task.energyCharged==='boolean'&&typeof task.timeSensitive==='boolean'
     &&(task.reservedBytes===undefined||Number.isSafeInteger(task.reservedBytes)&&task.reservedBytes>=0&&task.reservedBytes<=196608)
     &&(task.totalBytes===undefined||Number.isSafeInteger(task.totalBytes)&&task.totalBytes>=0&&task.totalBytes<=196608)
@@ -42,6 +48,7 @@ export function validateResearchClaim(state,authorization){
   return task;
 }
 export function taskStatusLabel(task){
-  if(task.status==='BLOCKED')return ({NO_SOURCE:'Waiting for sources',PROVIDER_PERMISSION:'Waiting for provider approval',CURRENT_SOURCE_UNAVAILABLE:'Current data unavailable',QUERY_CONFIRMATION:'Review public query',CLARIFICATION:'Clarification needed',INTERRUPTED:'Research paused'})[task.code]||'Research unavailable';
-  return ({PREPARED:'Preparing research',QUEUED:task.code==='DISCOVERING'?'Discovering sources':'Preparing research',RESEARCHING:'Reading sources',EVALUATING:'Evaluating evidence',COMMITTING:'Integrating knowledge',COMPLETED:'Completed',CANCELLED:'Cancelled',FAILED:'Research unavailable'})[task.status]||'Research paused';
+  if(task.engineVersion!==2&&!terminal(task))return 'Historical research';
+  if(task.status==='BLOCKED')return ({PERMISSION_REQUIRED:'Awaiting consent',ACCESS_DISABLED:'Planning disabled',QUERY_REVIEW:'Review public topic',MODEL_CLARIFICATION:'Clarification needed',TOOLS_UNAVAILABLE:'Information tools unavailable',PLANNING_UNAVAILABLE:'Planning unavailable',CLARIFICATION:'Clarification needed',INTERRUPTED:'Research paused'})[task.code]||'Research unavailable';
+  return ({PREPARED:'Preparing research',QUEUED:'Mindling planning',RESEARCHING:'Reading sources',EVALUATING:'Evaluating evidence',COMMITTING:'Integrating knowledge',COMPLETED:'Completed',CANCELLED:'Cancelled',FAILED:'Research unavailable'})[task.status]||'Research paused';
 }

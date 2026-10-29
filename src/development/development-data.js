@@ -34,7 +34,7 @@ export function developmentData(state = {}, life = null) {
     unplottedNodes: brain.unplottedNodes, unplottedEdges: brain.unplottedEdges,
     memoryCount: memories.stats.canonical, currentMemories: memories.stats.current,
     areas: memories.coverage.map(area => ({ label: area.label, count: area.count })),
-    livePathways: livePathways(memories.distribution),
+    livePathways: livePathways(memories,state),
     areaCount: memories.areas.length,
     energyText:state.energy?`${state.energy.remaining-(state.energy.bonus||0)} / ${energyCapacityForStage(stageNumber)}${state.energy.bonus?` + ${state.energy.bonus} bonus`:''}`:'—',
     stageXP: number(state.stageXP), lifetimeXP: number(state.lifetimeXP),
