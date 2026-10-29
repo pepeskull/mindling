@@ -26,15 +26,17 @@ export class AdaptivePathwaysView {
     const list=el('ul',undefined,'development-live-pathways');list.setAttribute('aria-label','Current live pathways');
     for(let index=0;index<3;index++){
       const pathway=pathways[index],row=el('li');
-      if(pathway){
+      if(pathway&&pathway.source==='knowledge'){
         row.append(el('strong',pathway.title,'development-live-title'),el('span',percent.format(pathway.share),'development-live-share'),el('span',pathway.area,'development-live-area'),el('span',`${pathway.count.toLocaleString()} retained ${pathway.count===1?'memory':'memories'}`,'development-live-count'));
+      }else if(pathway?.source==='origin'){
+        row.append(el('strong',pathway.title,'development-live-title'),el('span','Origin interest · develops through learning.','development-live-area'));
       }else{
         row.className='development-live-emerging';
         row.append(el('strong','Emerging Pathway','development-live-title'),el('span','Develops through learning.','development-live-area'));
       }
       list.append(row);
     }
-    this.live.append(list,el('p','Share of current acquired knowledge. Titles describe knowledge orientation, not verified qualifications.','development-muted'));
+    this.live.append(list,el('p','Knowledge titles require distinct retained claims, topic breadth and recorded support. Origin interests fill unformed directions. Titles are orientations, not verified qualifications.','development-muted'));
   }
   renderOrigin(origin){
     this.origin.replaceChildren(el('summary','Origin DNA'));

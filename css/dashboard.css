@@ -25,3 +25,8 @@
 .clarification-form { display: flex; flex-wrap: wrap; gap: 8px; }
 .clarification-input { flex: 1 1 170px; min-width: 0; color: var(--text-secondary); font-size: 10px; }
 .clarification-input input { display: block; width: 100%; margin-top: 5px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: transparent; color: var(--text-primary); font: inherit; }
+.research-settings-link { padding: 0; background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.research-settings { width: min(450px, calc(100vw - 32px)); padding: 26px; border: 1px solid var(--border-subtle); border-radius: var(--radius); background: rgba(10,11,13,.98); color: var(--text-primary); box-shadow: none; }
+.research-settings::backdrop { background: rgba(0,0,0,.7); }
+.research-settings h2 { margin: 0 0 20px; font-size: 20px; font-weight: 450; }
+.research-settings label, .research-settings p { font-size: 11px; line-height: 1.7; color: var(--text-secondary); }

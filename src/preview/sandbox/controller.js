@@ -108,6 +108,7 @@ export class SandboxPreview extends EvolutionPreview {
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
     const activity=request?.activity??this.activity;
     const id=request?.id??crypto.randomUUID();
+    if(!request)this.dashboard.beginInteraction(id);
     if(!request&&activity==='TALK')this.dashboard.showTalkResponse({id,state:'processing'});
     try {
       const input=interpretInteraction(this,text,activity,id,request?.continuation),{interpretation}=input;

@@ -33,10 +33,11 @@ export class Dashboard {
   #mode = "TALK";
   #eventUnsubscribes = [];
   #onClarification;
+  #onResearchAccess;
   #onCancelClarification;
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onClarification=null, onCancelClarification=null, readOnly = false } = {}) {
-    this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, readOnly = false } = {}) {
+    this.#onResearchAccess=onResearchAccess;this.onLearningTask=onLearningTask;this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
     this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
     this.primaryView='dashboard';
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask});
@@ -55,6 +56,7 @@ export class Dashboard {
       events.on(EVENTS.EVENT_HANDLER_FAILED, () => this.#showStatus("A dashboard update could not be completed")),
       events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
+    this.#mountResearchSettings();
     this.#form = document.querySelector("#interaction-form");
     this.#handleSubmit = (event) => this.#submitInteraction(event);
     if (!readOnly) {
@@ -106,8 +108,9 @@ export class Dashboard {
   }
 
   render(state) {
-    if(this.#state?.mindlingId!==state.mindlingId){this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
+    if(this.#state?.mindlingId!==state.mindlingId){this.researchDialog?.close();this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
+    if(this.researchSetting&&!this.researchDialog.open)this.researchSetting.checked=Boolean(state.researchPermissions?.enabled);
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
       neurons: brain.neurons ?? '—',
@@ -127,8 +130,8 @@ export class Dashboard {
   }
 
   #renderPathways(state = {}) {
-    const pathways = livePathways(graphData(state).distribution);
-    document.querySelector('.pathways-copy').textContent = Array.from({ length: 3 }, (_, index) => pathways[index]?.title || 'Emerging Pathway').join(' · ');
+    const pathways = livePathways(graphData(state),state);
+    document.querySelector('.pathways-copy').textContent = pathways.map(pathway=>pathway.title).join(' · ');
   }
 
   #setMode(mode) {
@@ -235,7 +238,7 @@ export class Dashboard {
     const text = input.value.trim();
     if (!text || this.#pending) return;
     this.#pending = true; const submit = this.#form.querySelector("button[type='submit']"); submit.disabled = true;
-    const id=crypto.randomUUID();
+    const id=crypto.randomUUID();this.beginInteraction(id);
     this.#form.classList.add('processing');
     if(this.#mode==='TALK')this.showTalkResponse({id,state:'processing'});
     this.#showStatus("Understanding request");
@@ -262,6 +265,7 @@ export class Dashboard {
     if(state==='processing'){status.textContent='Preparing a response from your stored knowledge…';return;}
     if(state==='error'){status.textContent=message||'A valid Talk response is unavailable. No Energy was spent.';return;}
     if(!reply){status.textContent='No validated response was returned.';return;}
+    if(reply.researchAccess){this.#renderResearchAccess(content,status,reply.researchAccess);return;}
     if(reply.clarification){
       const model=reply.clarification;status.textContent='';const question=document.createElement('p');question.textContent=model.question;content.append(question);
       const choices=document.createElement('div');choices.className='clarification-choices';choices.setAttribute('role','group');choices.setAttribute('aria-label',model.question);
@@ -271,6 +275,36 @@ export class Dashboard {
     }
     status.textContent=reply.memoryIds.length?`${reply.memoryIds.length} stored memories referenced · ${reply.uncertainty} uncertainty${reply.insufficientInformation?' · Limited supporting knowledge':''}`:'No relevant stored knowledge available';
     const answer=document.createElement('p');answer.textContent=reply.answer;content.append(answer);
+  }
+
+  openDashboard(){this.#setPrimaryView('dashboard');}
+  beginInteraction(id){this.latestInteraction=id;this.talkDismissed=false;}
+  canContinueResearch(id){return !this.#listeners.signal.aborted&&this.latestInteraction===id&&this.primaryView==='dashboard'&&!this.talkDismissed;}
+  showResearchResult(task,id,reply){if(!this.canContinueResearch(id)||this.#state?.mindlingId!==task.mindlingId)return;this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply});}
+  showResearchAccess(task,id,topic){
+    if(!this.canContinueResearch(id)||this.#state?.mindlingId!==task.mindlingId)return;
+    this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply:{researchAccess:{taskId:task.id,requestId:id,topic},memoryIds:[]}});
+  }
+  #renderResearchAccess(content,status,access){
+    status.textContent='Mindling research access';
+    const copy=document.createElement('p');copy.textContent='Allow Mindling to plan research using its existing AI connection? A short public topic is sent to the service and may incur model charges (up to two bounded requests per task). Private memory, identity and wallet data are not included. This connection cannot search the web or retrieve sources. You can revoke access in Settings.';content.append(copy);
+    const label=document.createElement('label'),input=document.createElement('input');label.className='clarification-input';label.textContent=access.topic===null?'Public topic to share (omit private details)':'Public topic';input.value=access.topic||'';input.maxLength=120;input.required=true;label.append(input);content.append(label);
+    const choices=document.createElement('div');choices.className='clarification-choices';
+    for(const [enabled,text]of [[true,'Allow & continue'],[false,'Not now']]){const button=document.createElement('button');button.type='button';button.textContent=text;button.disabled=!this.onLearningTask;button.addEventListener('click',async()=>{
+      if(this.#pending||this.latestInteraction!==access.requestId)return;if(enabled&&!input.reportValidity())return;this.#pending=true;choices.querySelectorAll('button').forEach(node=>node.disabled=true);const identity=this.#state?.mindlingId;
+      try{const result=await this.onLearningTask('consent',access.taskId,{enabled,topic:input.value.trim()});if(this.latestInteraction===access.requestId&&this.#state?.mindlingId===identity&&!this.talkDismissed&&content.isConnected){status.textContent=result.message;if(!enabled)content.replaceChildren();}}
+      catch(error){if(this.latestInteraction===access.requestId&&this.#state?.mindlingId===identity)status.textContent=error.message;}
+      finally{this.#pending=false;choices.querySelectorAll('button').forEach(node=>node.disabled=false);}
+    });choices.append(button);}content.append(choices);
+  }
+  #mountResearchSettings(){
+    if(!this.#onResearchAccess)return;
+    const footer=document.querySelector('.footer-links'),open=document.createElement('button'),dialog=document.createElement('dialog');open.type='button';open.textContent='Settings';open.className='research-settings-link';
+    dialog.className='research-settings glass-panel';dialog.setAttribute('aria-labelledby','research-settings-title');
+    dialog.innerHTML='<h2 id="research-settings-title">Mindling settings</h2><label><input type="checkbox" data-planning-access> Allow Mindling research planning</label><p>Uses the existing AI connection to plan a public topic. Model requests may incur charges. No web search or source retrieval is connected. Previous source-provider permissions do not authorize this capability.</p><p data-settings-feedback role="status"></p><div class="clarification-choices"><button type="button" data-save-access>Save</button><button type="button" data-close-settings>Close</button></div>';
+    this.researchSetting=dialog.querySelector('[data-planning-access]');document.querySelector('#app').append(dialog);footer.append(open);this.researchDialog=dialog;this.researchSettingsButton=open;
+    this.#listen(open,'click',()=>{this.researchSetting.checked=Boolean(this.#state?.researchPermissions?.enabled);dialog.showModal();});this.#listen(dialog.querySelector('[data-close-settings]'),'click',()=>dialog.close());
+    this.#listen(dialog.querySelector('[data-save-access]'),'click',async event=>{const button=event.currentTarget,identity=this.#state?.mindlingId;button.disabled=true;try{await this.#onResearchAccess(this.researchSetting.checked);if(this.#state?.mindlingId===identity)dialog.querySelector('[data-settings-feedback]').textContent='Access preference saved.';}catch(error){dialog.querySelector('[data-settings-feedback]').textContent=error.message;}finally{button.disabled=false;}});
   }
 
   async #resumeClarification(model,choice,detail=''){
@@ -288,10 +322,11 @@ export class Dashboard {
     }catch(error){if(current())panel.querySelector('[data-talk-status]').textContent=error.message||'Clarification could not continue.';}
     finally{this.#pending=false;this.#form.classList.remove('processing');controls.forEach(node=>node.disabled=false);}
   }
-  showClarification(reply){this.#setPrimaryView('dashboard');this.showTalkResponse({id:reply.clarification.requestId,state:'clarification',reply});}
+  showClarification(reply){this.beginInteraction(reply.clarification.requestId);this.#setPrimaryView('dashboard');this.showTalkResponse({id:reply.clarification.requestId,state:'clarification',reply});}
 
   destroy() {
     if (this.#listeners.signal.aborted) return;
+    this.researchDialog?.close();this.researchDialog?.remove();this.researchSettingsButton?.remove();
     this.#listeners.abort();
     this.#setPrimaryView("dashboard");
     this.#memoryMap.destroy();

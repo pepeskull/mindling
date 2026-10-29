@@ -144,7 +144,7 @@ export class MindlingApp extends EvolutionPreview {
 
   showOnboarding() {
     this.external?.assertWritable();
-    this.dashboard.hide();
+    this.dashboard.hide();this.primaryViewChanged('onboarding');
     this.onboarding = new Onboarding(document.querySelector('#onboarding'), async draft => {
       await this.onboarding.birth(draft.name,{
         create:async()=>{
@@ -153,8 +153,8 @@ export class MindlingApp extends EvolutionPreview {
         }
       });
       if (this.disposed) return;
-      this.onboarding.hide(); this.dashboard.show(); this.renderState();
-    });
+      this.onboarding.hide();this.view.claimRenderer();this.dashboard.openDashboard(); this.dashboard.show(); this.renderState();document.querySelector('#mindling-input').focus();
+    },{three:this.view.three});
     this.onboarding.show();
   }
 
