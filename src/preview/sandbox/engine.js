@@ -61,6 +61,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   const research=autonomous?validateResearchClaim(state,autonomous):null;
   if(research&&(assessment||text!==autonomous.quote))throw Error('Research must use the evaluated source excerpt.');
   const a=assessment ? serviceLearningAnalysis(text,m,assessment) : analyzeNative(text,m);
+  if(research&&a.decision)throw Error('Research cannot bypass canonical conflict or safety checks.');
   if(a.decision)return applyMemoryDecision(state,{id,text,mindId,activity},a.decision,{XP});
   if(a.relationship==='repeated')return research?structuredClone(state):reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
   const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=research?0:learningReward(a.kind);
@@ -79,7 +80,14 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
   if(a.native)memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
   if(a.service)memory.analysis={...a.service,activity,learnedAt:memory.createdAt};
-  if(research){memory.source='AUTONOMOUS';memory.submissionId=research.requestId;memory.research={taskId:research.id,sourceURL:autonomous.url,sourceHash:autonomous.sourceHash,quoteHash:autonomous.quoteHash,observedAt:autonomous.observedAt,validAt:autonomous.validAt,verification:'attributed-source-excerpt',evidenceRelation:'verbatim-source-excerpt'};const source=research.sourceReferences.find(item=>item.url===autonomous.url);Object.assign(memory.research,{title:source.title||null,provider:source.provider||null,publisher:source.publisher||null,journal:source.journal||null,publishedAt:source.publishedAt||null,type:source.type||'source-excerpt',classificationMethod:'source-evaluated-structured-metadata'});memory.native.verification='attributed-source-excerpt';memory.native.provenance={...memory.native.provenance,source:'authorized-document',method:'extractive-source-attribution'};}
+  if(research){
+    const source=research.sourceReferences.find(item=>item.url===autonomous.url),synthesis=source.type==='web-search-synthesis';
+    const verification=synthesis?'tool-cited-unverified-synthesis':'attributed-source-excerpt';
+    memory.source='AUTONOMOUS';memory.submissionId=research.requestId;memory.updatedAt=memory.createdAt;
+    memory.research={taskId:research.id,sourceURL:autonomous.url,sourceHash:autonomous.sourceHash,quoteHash:autonomous.quoteHash,observedAt:autonomous.observedAt,validAt:autonomous.validAt,verification,evidenceRelation:synthesis?'web-search-supported-synthesis':'verbatim-source-excerpt',confidence:'uncertain',evidenceText:autonomous.quote,title:source.title||null,provider:source.provider||null,publisher:source.publisher||null,publishedAt:source.publishedAt||null,type:source.type||'source-excerpt',responseId:source.responseId||null,classificationMethod:'source-evaluated-structured-metadata'};
+    memory.native.verification=verification;memory.native.provenance={...memory.native.provenance,source:synthesis?'tool-cited-report':'authorized-document',method:synthesis?'source-supported-synthesis':'extractive-source-attribution'};
+  }
+
   recordPathwayLearning(n,memory,{eventId:id,activity,at:next.now});
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];
