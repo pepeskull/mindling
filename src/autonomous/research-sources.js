@@ -47,10 +47,7 @@ export async function evaluateDocument(document,interpretation){
   const accepted=[];
   for(const item of ranked){
     if(/(?:…|\.\.\.)[\s"'”’)]*$/u.test(item.quote)||understandInput(item.quote,'TEACH').intent!=='FACT_TEACHING')continue;
-    if((interpretation.scope.excludedTopics||[]).some(topic=>features(topic).terms.some(term=>features(item.quote).terms.includes(term))))continue;
-    const region=interpretation.scope.region;
-    if(region==='Europe'&&!/\b(?:Europe|European|Europa|europeiska)\b/iu.test(item.quote)||region==='Sweden'&&!/\b(?:Sweden|Swedish|Sverige|svensk[at]?)\b/iu.test(item.quote))continue;
-    const regions=interpretation.scope.regions||[];const matches=regions.map(region=>region==='Europe'?/\b(?:Europe|European|Europa|europeiska)\b/iu.test(item.quote):/\b(?:Sweden|Swedish|Sverige|svensk[at]?)\b/iu.test(item.quote));if(matches.length&&(interpretation.scope.regionMode==='comparison'?!matches.some(Boolean):!matches.every(Boolean)))continue;
+    if(!sourceScopeMatches(item.quote,interpretation.scope))continue;
     const dates=[...item.quote.matchAll(/\b(?:as of|updated(?: on)?|observed on|data as at|standings on|uppdaterad|gäller)\s*:?\s*(\d{4}-\d{2}-\d{2})\b/giu)].flatMap(match=>{const value=Date.parse(`${match[1]}T00:00:00Z`);return Number.isFinite(value)&&new Date(value).toISOString().slice(0,10)===match[1]?[value]:[];});
     const validAt=dates.length?Math.max(...dates):null;
     // Fetch time does not prove that a reported league table or price is current.
@@ -58,4 +55,13 @@ export async function evaluateDocument(document,interpretation){
     accepted.push({quote:item.quote,quoteHash:await digest(item.quote),validAt});
   }
   return accepted;
+}
+
+// Shared local constraints for manually evaluated historical text and the
+// server-assisted acquisition path. Never relax original exclusions/geography.
+export function sourceScopeMatches(quote,scope={}){
+  if((scope.excludedTopics||[]).some(topic=>features(topic).terms.some(term=>features(quote).terms.includes(term))))return false;
+  const match=region=>region==='Europe'?/\b(?:Europe|European|Europa|europeiska)\b/iu.test(quote):region==='Sweden'?/\b(?:Sweden|Swedish|Sverige|svensk[at]?)\b/iu.test(quote):false;
+  if(scope.region&&!match(scope.region))return false;
+  const regions=scope.regions||[];return !regions.length||(scope.regionMode==='comparison'?regions.some(match):regions.every(match));
 }

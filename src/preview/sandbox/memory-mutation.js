@@ -1,3 +1,4 @@
+import { recordPathwayLearning } from '../../pathways/pathways.js';
 import { capturedContent } from '../../memory/content-integrity.js';
 import { energyAt, spendEnergy } from '../../economy/energy.js';
 import { LIFE_RULES } from '../../life/life-system.js';
@@ -40,7 +41,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
       target.valueHistory=[...(target.valueHistory||[]),{content:target.content,concept:target.concept,category:target.category,categoryId:target.categoryId,topic:target.topic,intelligence:target.intelligence||null,native:target.native||null,analysis:target.analysis||null,source:target.source||null,at:target.updatedAt||target.createdAt,eventId:event.id}];
       Object.assign(target,{content,contentIntegrity:capturedContent(content),normalized:normalize(content),concept:d.concept,normalizedConcept:normalize(d.concept),updatedAt:at,source:'SERVICE',analysis:serviceMetadata(d,event.activity,at),
         intelligence:{kind:d.kind,certainty:d.certainty,current:true,verification:'unverified-player-claim',operation,relationship:d.relationship}});
-      assignCategory(mind,target,d);delete target.native;
+      assignCategory(mind,target,d);delete target.native;recordPathwayLearning(mind,target,{eventId:event.id,activity:event.activity,at});
       changed=true;updated=true;affected.add(target.id);
     }else if(operation==='FLAG_CONTRADICTION'){
       if(!(target.contradictions||[]).some(record=>normalize(record.claim)===normalize(text))&&!state.mind.history.some(record=>record.operations?.includes('FLAG_CONTRADICTION')&&record.memoryIds?.includes(target.id)&&normalize(record.input)===normalize(text))){
