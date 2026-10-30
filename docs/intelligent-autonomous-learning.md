@@ -1,197 +1,251 @@
-# Mindling research, live identity and onboarding
+# Autonomous knowledge acquisition and specialization evidence
 
-## Audited AI integration
+## What changed
 
-The existing same-origin reasoning endpoint uses the existing configured model,
-server-side credentials, strict structured completion format, rate limits,
-model-availability check and request deadlines. Talk remains a single grounded
-response; explicit cognitive evaluation retains its existing phases. Direct
-teaching retains its existing native/isolated Preview service paths.
+Mindling uses one shared taxonomy for current knowledge, recorded claim evidence,
+Live Pathways and narrow specialization eligibility. The existing Autonomous
+Learning Engine now coordinates actual, bounded biomedical information access
+through the existing reasoning endpoint. Onboarding, identity creation and the
+Knowledge Network rendering remain unchanged.
 
-The actual request integration exposes **no tool calling, web search or source
-retrieval**. Model knowledge is not an information-access tool. This milestone
-adds bounded research planning to the existing endpoint, not another AI service,
-model, function, backend, credential or dependency. Internal provider/model
-identifiers are not used as product-facing labels. Configured identity strings
-in conversation/planning completions are rejected before returning content. Browser traffic is inspectable;
-this design does not promise technical secrecy of browser-delivered information.
+## Specialization root cause
 
-A research request sends only a public topic (120 characters maximum), activity
-mode, a freshness flag and bounded structured comparison/geographic/time criteria. It sends no private memory/context bundle, identity
-key, wallet or conversation history. The existing model can propose at most three
-research steps and one structured scope clarification. Output is validated on
-both sides. A proposed plan is not evidence or completed research.
+The previous Live Pathways selector understood scientific families such as
+Biology. Recorded evidence used a separate exact-match registry for the nine
+onboarding choices. Biology was not an onboarding-domain alias, and an unknown
+explicit category returned early as unassigned. A valid Biology memory could
+therefore support Biologist while its learning evidence contributed zero units.
+The repair routine only processed policy-version-1 records; version-2 unassigned
+records were never reconsidered.
 
-After planning, the task truthfully reports that information tools are unavailable.
-No external sources, current standings, citations, candidate facts or successful
-learning results are invented. Model-generated plans never become canonical
-knowledge. No source/evidence/knowledge/answer work unit is completed without the
-corresponding actual work. Source-backed autonomous learning therefore remains
-unavailable with the currently exposed integration. A genuine information tool
-would need its own implemented evidence contract and authorization before use.
+Canonical creation already stores category/category ID, topic, claim text,
+provenance and a recorded claim-evidence entry. Preview service decisions create
+atomic statements; native learning stores its accepted claim. Category IDs refer
+to the saved category registry, while topic strings can be natural-language
+labels. The repair resolves registry labels consistently with `graphData`; it
+does not mistake UUIDs, origin IDs, topic labels and specialization IDs for the
+same identifier.
 
-## Automatic workflow and authorization
+## One attribution and eligibility mechanism
 
-A valid Talk question or Teach/Deep topic request uses the existing input
-understanding, canonical retrieval, task identity and Autonomous Learning Engine.
-A task starts planning automatically after permission, without visiting Memory,
-entering a URL, choosing a source provider or pressing Start Research.
+`classifyKnowledge` uses the shared specialization taxonomy over saved category,
+area and topic/concept metadata. Known broad domains can support controlled
+subtopics; unknown explicit categories are not overridden by mining claim prose.
+Native Notes labels are weaker attribution. No example sentence is hardcoded.
 
-First use offers concise consent in the active response panel. It explains what
-is sent, that the connection can plan but cannot search, and possible model
-charges (up to two requests per bounded task, including a model clarification).
-Consent continues the original task automatically. Settings in the existing
-footer allows access to be enabled or revoked. Approval is per Mindling in this
-browser. Sensitive or oversized topics require explicit review of a short public
-topic; local keyword/identifier screening is not a comprehensive PII classifier.
-Users must omit private details from that public topic. The existing inference
-service necessarily receives the submitted topic and ordinary network metadata.
+Controlled biology facets include DNA/replication, genes/expression, mutations,
+inheritance, meiosis/recombination, cells, organelles, membranes/division,
+evolution/selection, photosynthesis/botany, ecology, microbiology and zoology.
+Canonical family IDs (for example `biology`) and specialization IDs (for example
+`biology:geneticist`) are shared across recording, presentation and selection.
+Facet IDs describe coverage, not extra claim units. More aliases/facets can be
+added to the registry without modifying either UI.
 
-The new capability-specific permission key does not read or inherit former
-source grants. Old permission records remain inert in their existing store;
-unrelated settings and canonical records are not deleted. New preferences use
-the existing production settings store or the isolated Preview sandbox key,
-without a version upgrade or migration. Revocation aborts active planning, and
-permission revision is checked inside the same transaction as storing a returned
-plan. Already sent inference requests may still incur provider charges; aborting
-cannot undo billing or a completed commit.
+`knowledgeEvidence` is the common read-only selector over canonical `graphData`
+records. It deduplicates normalized claim text, excludes superseded, historical,
+incomplete and non-knowledge records, and checks actual learning-record identity
+and content-key matches. Contested claims do not support eligibility. A claim
+contributes at most one domain evidence unit even when several facets match.
+Parent/child evidence counts overlap intentionally and are never summed as new
+units. Reinforcement and repeated statements add no claim units.
 
-There is one coordinator run per page, at most two attempts per task, 24 retained
-tasks and eight unfinished tasks. No source reads or additional synthesis rounds
-are initiated. Hidden pages abort planning. Interrupted current-capability tasks
-can resume when visible under still-valid permission and remaining limits.
-Explicit recovery is available after a failed attempt; unavailable information
-tools do not cause automatic retry loops. No work runs after browser closure.
-Run and identity fencing rejects stale responses. Concurrency remains per page,
-not a new global cross-tab worker service.
+Live Pathways and Developed Specializations consume that same selector. Origin
+DNA remains historical, including Developer, Social and Researcher. Actual origin
+names fill unformed directions; pending research and proposed knowledge do not
+influence current titles.
 
-## Clarification continuation
+Broad orientation still requires three distinct claims, two saved canonical topics, two
+submissions and adequate recorded attribution/provenance. Weaker native labels
+need four claims and a real relationship. Narrow orientation requires five
+claims, three facets, three submissions, at least 65% family coverage, three
+stronger attribution records and two actual in-group relationships. The broad gates preserve the existing saved-topic requirement; narrow
+coverage now uses meaningful controlled facets rather than varied wording alone.
+One DNA claim cannot produce Geneticist. Five genetics-related claims among eight
+mixed biology claims do not alone satisfy 65% coverage, and recorded relationships
+and quality gates still apply. Titles describe orientation, not qualifications,
+verified expertise or demonstrated cognitive ability.
 
-Deterministic interpretation retains its native clickable choices and bounded
-free-text fallback. The model's research-planning response can also ask a scope
-question with up to four validated options or free text. Labels and values are
-plain text, never model-generated HTML. A model-generated option contributes
-its descriptive interpretation, not an unrelated new turn or opaque option ID.
-At most one model clarification is permitted within the task's two-attempt budget.
+## Existing evidence and corrections
 
-Pending context retains the original input, Mindling, activity and request ID.
-One-use continuation capabilities, transaction guards, disabled controls and
-response ownership prevent duplicate/stale continuation. Dismissal, cancellation,
-identity changes and superseding input invalidate pending choices. Both modes
-continue through the same Input Understanding and Autonomous Learning engines.
-The question is rendered once, before generic missing-knowledge copy.
+Normal hydration/advancement invokes deterministic, idempotent policy-3 repair.
+A record is reconsidered only against the same saved canonical memory and
+normalized content key. Supported category/topic metadata can attribute a prior
+unassigned record. The original attribution, units, allocation and policy are
+retained in classification history with an explicit deterministic-repair method.
+Original learning IDs/times and memory provenance are not replaced with a claim
+that a model classified them historically. Repeated hydration adds no duplicate
+history or units when the result is unchanged.
 
-Clarification and planning add no Energy or XP. An accepted Talk retains its one
-existing Energy charge. Teach/Deep research would retain their existing charge
-only when actual new canonical knowledge is accepted; planning alone charges
-neither. Already-paid legacy Talk clarifications preserve their receipt.
-Existing direct fact teaching rewards and activity costs are unchanged.
+Insufficient metadata remains unassigned. Missing/nonmatching historical events
+are not fabricated. The selector can describe current canonical metadata while
+separately reporting that a matching recorded learning event is absent. Invalid,
+duplicate, stale and historical evidence stays stored but is excluded from current
+counts. Corrections preserve old claim history and record attribution for the
+actual updated canonical value in the existing transaction. No memory contents,
+keys, XP, Energy or Origin DNA are rewritten by attribution repair.
 
-## Removed source workflow and historical compatibility
+The eight reported claims can be attributed if their actual saved Biology
+category/topic metadata and content-key/event matches are present. This work
+inspected the production pipeline, not the user's IndexedDB; it does not claim
+to have inspected or modified those personal records. Geneticist progression is
+structurally possible as distinct, related genetics evidence meets every gate.
 
-The former encyclopedia discovery adapters, API queries, extract retrieval,
-provider registry, provider-specific consent, URL-entry controls and per-task
-start/authorize workflow are removed. There is no fallback request to the old
-endpoints. The generic evidence/retrieval utilities are not connected to a
-manual user workflow or used to simulate an available source tool.
+## Actual information access
 
-Historical tasks, source references, hashes, dates and accepted canonical
-memories remain intact. Their provenance is never rewritten as model evidence.
-Old unfinished tasks render as historical, with cancellation and an explicit
-continuation into newly authorized Mindling planning where budgets permit.
-They are never silently reassigned to a new service. Completed historical tasks
-retain their canonical references and original completion history.
+The configured AI integration remains the existing model and strict structured
+completion transport. Its request protocol does not expose a native web-search
+or retrieval tool. Changing its prompt would not add internet access.
 
-The Knowledge Network layout, geometry, colors, gray work circles, blue canonical
-nodes, connections, interaction, zoom, animation and scheduler are unchanged.
-Only task controls/status wording change. The inspector retains read-only work,
-plan and saved-source details, cancellation and genuine recovery controls.
-Progress still counts the original seven work units; preparation, successful
-source retrieval and newly retained canonical memories are displayed separately.
-Search/model output is never counted as acquired knowledge or Live Pathways.
-Autonomous research continues to award zero XP through the existing guarded
-canonical learning path; this planning-only integration performs no memory commit.
+A fixed-host server-side adapter extends the existing handler, without a new
+application, endpoint, function, database, model or runtime dependency. It uses
+the public Europe PMC REST API at EMBL-EBI for **open biomedical publication
+abstracts**. This covers literature about the human brain, neurons, genetics and
+related life sciences. It is not general web search, full-text research, clinical
+verification or a live sports/price/news service.
 
-## Shared Live Pathways
+The coordinator proposes at most two short public queries. Discovery requests
+`resulttype=lite` and actual publication metadata. Search snippets are never
+accepted as evidence. Returned MED identifiers receive five-minute, topic-bound
+HMAC tickets signed with an existing server-side secret. Retrieval accepts only
+these tickets and performs a separate `EXT_ID`/source lookup with `resulttype=core`
+for the actual abstract. Neither model-generated URLs nor client-selected hosts
+can become fetch targets.
 
-Dashboard and Development both call the same read-only selector over `graphData`,
-using its current canonical records and uncollapsed area identities. No UI-side
-ranking, new database, redundant counters or changes to canonical categories are
-introduced. Origin selections accept existing strings, named records and saved
-snapshot pathway records; display normalization never overwrites Origin DNA.
+Only suitable open, non-retracted/non-preprint records with a complete abstract
+within the text bound are returned. Structured abstract formatting is converted
+to plain text without executing HTML; unknown markup/invalid text is rejected.
+Each source preserves actual title, stable record URL, record ID, source domain,
+journal and publisher where supplied, retrieval time, publication date where
+valid, retrieval status, type and SHA-256 content hash. Missing metadata remains
+null. Publication/retrieval time is not a fact-validity date.
 
-Before sufficient knowledge exists, the three directions show the actual saved
-origin names, explicitly labeled as origin interests in Development. Only missing
-saved choices use Emerging Pathway. New knowledge-derived directions displace
-these fallbacks as evidence supports them. Historical Origin DNA remains separately
-available. Existing Developed Specializations evidence units and policy are unchanged.
+The API contract was inspected through the public rOpenSci Europe PMC client:
+[base API](https://github.com/ropensci/europepmc/blob/main/R/utils.r),
+[search](https://github.com/ropensci/europepmc/blob/main/R/epmc_search.r),
+[record details/abstracts](https://github.com/ropensci/europepmc/blob/main/R/epmc_details.r).
+The environment proxy blocked direct access to the official documentation page.
+No live search, source fetch, model probe or end-to-end request was executed;
+production availability and compatibility remain runtime-unverified.
 
-A centralized extensible taxonomy supplies broad and specific titles across
-science, geography, biology, physics, chemistry, mathematics, technology, sports,
-history, medicine/life sciences, economics, language/humanities, art, music and
-engineering. Exact structured category/topic aliases include English and Swedish.
-Examples include Geographer, Biologist, Physicist, Chemist and Mathematician,
-with more specific orientations such as Cartographer, Geneticist and Football
-Analyst. Unknown readable categories can use a neutral subject Explorer label;
-technical IDs and generic aggregation labels never become professional titles.
+## Required deployment configuration
 
-The selector excludes historical/superseded/unreadable/incomplete records,
-non-knowledge preferences/goals/intentions, contested records and duplicate stored
-claim text. It does not mine arbitrary body words for convenient occupations.
-Known broad categories can support a matching specific structured topic; unknown
-explicit categories are not silently overridden. Exact native Notes labels are
-weaker attribution, not domain proof.
+Set **`MINDLING_RESEARCH_SOURCE=europe-pmc`** on the existing Vercel project to
+explicitly enable this information integration. The default is disabled. Keep
+the existing server-only `SERVICE_API` and `SERVICE_MODEL` with strict structured
+output support. Europe PMC needs no new secret or paid search account. Outbound
+DNS/HTTPS access to `www.ebi.ac.uk` must be permitted. Deploy the updated existing
+handler with the frontend; no new route, function or duration setting is added.
 
-A broad orientation requires at least three distinct current claims, two saved
-topics and two submissions, with at least two explicitly attributed provenance
-records. Weak-only labels require at least four claims and an actual in-group
-relationship. A specific orientation requires five claims, three topics, three
-submissions, at least 65% of its family evidence, three stronger attribution
-records and two actual in-group relationships. All are conservative presentation
-thresholds, not expertise tests or independent truth verification. Repeated
-activation does not supply another claim. Corrections influence the selector
-through the current canonical state, not duplicated historical values.
+Without this flag or usable service configuration, tasks report BLOCKED and
+source access is not advertised as operational. A same-origin capability check
+can refresh configuration availability without making an inference or source
+query. Runtime deployment configuration was not read or changed by this work.
 
-At most one title per family is selected; strongest qualifying specific evidence
-can replace the broad family title. Families rank by retained eligible claim
-count and stable family ID. Ties survive reload without mutable ranking state.
-Shares use the existing canonical acquired-knowledge denominator. Titles describe
-knowledge orientation, never verified qualifications, demonstrated ability or
-intelligence. No evidence units, thresholds in the separate Developed
-Specializations policy, memory contents, XP or original choices are changed.
+## Permissions and privacy
 
-## Full-screen onboarding
+Existing AI-planning consent remains limited to two planning attempts per task.
+A **separate per-Mindling Europe PMC information grant** is required before new
+queries or abstract retrieval. It also discloses up to two evidence-evaluation
+requests through the existing model, which may incur the existing provider's
+charges. Previous planning or historical source permissions do not authorize it.
 
-The installation flow owns the opaque viewport and hides/inerts Dashboard chrome.
-Its nearly black background, minimal Play Mindling branding/help, centered
-magenta/violet luminous sphere, spacious questions, rounded interest cards and
-wide name input follow the supplied visual description. No modal card or blurred
-Dashboard remains behind it. The available attachment contained a written image
-description rather than a separate new image; no screenshot/image was generated.
+First use offers the new grant in the active workflow and continues automatically
+after approval. Settings exposes separate planning/information controls and
+revocation. No Memory visit, URL entry, Start Research or per-document approval
+is required. Preferences use existing settings/sandbox records, without a schema
+upgrade. Source-backed writes check both permission revisions in the same
+IndexedDB transaction as memory acceptance. Revocation aborts active work and
+rejects stale grants; it cannot undo an already sent request or provider billing.
 
-Welcome, at least three pathways, paired personality dimensions, naming/identity,
-review, birth and Dashboard entry retain their existing creation and validation
-logic. P-256 identity generation, local persistence, initial canonical topology
-and birth transaction are unchanged. Returning users bypass onboarding normally.
-Review explains local identity custody; origin names remain saved as selections.
+Only the reviewed public topic, bounded public scope and generated queries leave
+for research. Private memories, identity keys, wallet information and complete
+conversations are not sent to the public source or added to model evaluation.
+Potential sensitive topics require review; local pattern screening is not a
+comprehensive personal-data detector. Existing Talk's separately authorized
+knowledge-context behavior is unchanged.
 
-The decorative sphere borrows the existing Three.js module and shared renderer
-while the Dashboard animation loop is paused. A modest sphere mesh uses procedural
-vertex displacement and an iridescent shader for liquid movement, breathing,
-lighting, color flow, pointer response and step reactions. It is not a rotating
-static image. It does not touch the canonical brain state or spawn another WebGL
-context. A native Canvas 2D procedural gradient/deforming-silhouette fallback
-works without WebGL. A 30-fps cap, bounded pixel ratio, visibility pause,
-reduced-motion static render and listener/frame/geometry/material cleanup bound
-its cost. Renderer ownership, size and pixel ratio return to Dashboard at birth.
-Mobile layout uses stacked cards, large targets, viewport-safe inputs and local
-vertical scrolling. No new shadows, particles or motion-blur effects are added.
+## Retrieval security and budgets
+
+The source host/path and HTTPS port are fixed. DNS results must all be publicly
+routable, and the HTTPS connection uses the checked address with the correct TLS
+hostname. IP literals, user-controlled hosts, private/reserved addresses, URL
+credentials and redirects are not followed. Public-source requests receive no
+AI credentials, cookies or referrer. Search fields are constructed from bounded
+plain-text queries, not arbitrary source URLs or query parameters.
+
+The existing origin/IP rate controls remain. At most two information requests
+run concurrently per handler instance; public API starts are paced to two per
+second per instance. There is no new distributed coordination service.
+Requests have eight-second source deadlines and the existing handler's overall
+45-second cancellation fence. The browser caps a whole research run at two
+minutes and pauses/aborts when hidden or closed.
+
+Per-task limits are two workflow attempts, two planning and two evidence
+inferences, two search queries, three source candidates, three document reads
+and three candidate memories. Search bodies are bounded to 16 KiB, record bodies
+to 48 KiB, within a conservative cumulative body reservation below 192 KiB.
+Decoded abstracts are at most 6,000 characters; each retained quote is 40–700.
+No unbounded retries, scraping, recursive research or extra model is introduced.
+
+## Evidence evaluation and canonical integration
+
+The same model compares only the retrieved abstracts against the public objective
+and scope. It must reject unsupported/contradictory/generalized conclusions and
+return bounded exact contiguous quotes with source IDs and conservative topic
+metadata. Both server and browser validate source identity, quote membership,
+structure and bounds; the browser verifies content hashes. Local checks retain
+explicit exclusions/geography and reject non-factual instruction/question input.
+
+The existing canonical `learn` reducer receives a guarded autonomous
+source-quote authorization. Its duplicate, conflict, quality, correction and
+capacity checks remain authoritative. Classification proposals are bound to the
+saved accepted quote/source and are explicitly source-evaluated metadata, not
+independent verification. Source URL/hash, exact quote hash, publication metadata,
+observation time and source type survive on accepted memory.
+
+Stable quote-derived IDs and current-memory quote hashes prevent duplicate
+acceptance across retries/tasks. A commit, its original activity receipt and
+canonical changes are atomic. Teach/Deep spend only the existing 2/3 Energy once
+when genuinely new knowledge is formed; Talk reuses the already accepted
+one-Energy receipt. Planning/search/retrieval/clarification/recovery have no
+additional Energy fee. Autonomous acceptance remains **0 XP**, without concept
+milestone rewards. Normal direct teaching is unchanged.
+
+An abstract is partial, attributed publication evidence, not verified universal
+truth. Native contradiction checks and model cross-source review are conservative
+rather than a proof of entailment. No paper-derived claim is silently presented
+as current clinical advice, live standings or independently fact-checked truth.
+Unsupported current questions stop with an honest natural response.
+
+## Progress, response and recovery
+
+Knowledge Network geometry, colors, edges, layout, zoom, inspection and animation
+are preserved. Existing gray research circles now follow real planning, SEARCHING,
+RETRIEVING, EVALUATING, INTEGRATING, completion or explicit blocked states.
+Seven work units remain; new tasks version their work interpretation so source
+search is completed only after an actual provider response. Proposed steps do
+not complete source/knowledge units. Historical completed work is preserved.
+The inspector distinguishes work, completed query count, budget usage, successful
+sources and actually new canonical memories. BLOCKED is labeled Research paused.
+
+Talk uses natural success/uncertainty messages and accessible source links;
+configuration/error details stay in the inspector. Only accepted memories become
+blue knowledge nodes and affect Live Pathways. One gray Talk root remains per
+unfinished question. Broad research remains bounded partial coverage, not mastery.
+
+Task IDs, source/counter history, original request/activity, pending clarification,
+run/session fences and existing Energy receipts are preserved. Bounded evaluated
+quotes can be persisted before atomic integration, allowing reload recovery
+without repeating retrieval or inference. Source tickets expire; rediscovery
+requires remaining query budget. Reads with an unknown outcome consume their
+reservation rather than being assumed free. No background execution after browser
+closure is claimed. Exhausted budgets or unavailable sources remain paused.
 
 ## Validation boundary
 
-At the user's explicit request, no automated tests/test suites, browser automation,
-screenshots, builds, npm commands, dependency installations or paid model calls
-were executed. Focused source inspection, native syntax-only parsing and diff
-review are the only validation. Shader compilation, layout, interaction, model
-contract compatibility, IndexedDB races and renderer hand-off are unvalidated at
-runtime. No automatic merge or direct production deployment is performed.
+Only static source, syntax, import and diff inspection were performed. No automated
+tests/test suites, browser automation, screenshots, builds, npm commands,
+dependency installations or paid AI requests were executed, at the user's request.
+No live information-tool or inference verification was performed. This is a real
+implemented retrieval path behind explicit configuration/consent, not a claim
+that the deployed environment has already enabled or runtime-verified it.

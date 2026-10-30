@@ -1,12 +1,12 @@
-import { validatePlanningContext, validatePlanningResult } from '../autonomous/research-contract.js';
+import { validatePlanningContext, validatePlanningResult, validateDiscoveryContext, validateRetrievalContext, validateDiscovered, validateAcquisition } from '../autonomous/research-contract.js';
 import { validateContext, validateResult, validateTalkResult } from '../training/contract.js';
 
 const messages = { SERVICE_UNAVAILABLE: 'The reasoning service is not configured or its model is unavailable.', RATE_LIMITED: 'Too many requests. Wait a minute before trying again.', EVALUATION_IN_PROGRESS: 'This evaluation is already running. Wait for it to finish.', EVALUATION_TIMEOUT: 'The evaluation timed out. No successful result was recorded.', REQUEST_INVALID: 'The stored context could not be submitted. Refresh and try again.', REQUEST_TOO_LARGE: 'The selected context is too large. Try a shorter problem.' };
 
 // Transport only. Retrieval, validation rules, provider phases and persistence
-// remain separate. Explicit evaluation/Talk and consented task planning use this transport.
+// remain separate. Explicit evaluation/Talk and consented research phases use this transport.
 async function requestService({ id, context, signal }, mode = 'evaluation') {
-  if(mode==='research')validatePlanningContext(context);else validateContext(context);
+  if(mode==='research-capabilities'){if(!context||typeof context!=='object'||Array.isArray(context)||Object.keys(context).length)throw Error('Invalid capability request.');}else if(mode==='research')validatePlanningContext(context);else if(mode==='research-discover')validateDiscoveryContext(context);else if(mode==='research-acquire')validateRetrievalContext(context);else validateContext(context);
   if (signal.aborted) throw new DOMException(mode==='talk'?'Talk was cancelled. No Energy was spent.':'Evaluation cancelled', 'AbortError');
   const controller = new AbortController();
   const abort = () => controller.abort(); signal.addEventListener('abort', abort, { once: true });
@@ -19,9 +19,12 @@ async function requestService({ id, context, signal }, mode = 'evaluation') {
     if (!response.ok) {
       let message=Object.hasOwn(messages,result?.error?.code)?messages[result.error.code]:mode==='talk'?'Talk could not generate a valid response.':'The service could not complete a valid evaluation. No successful result was recorded.';
       if(mode==='talk')message+=' No Energy was spent.';
-      throw Error(message);
+      const failure=Error(message);failure.code=result?.error?.code;throw failure;
     }
-    if(mode==='research'){if(result?.service!=='mindling-reasoning-service'||result.kind!=='research-plan')throw Error('Mindling planning returned an invalid response.');validatePlanningResult(result.planning);}
+    if(mode==='research-capabilities'){if(result?.service!=='mindling-reasoning-service'||result.kind!=='research-capabilities'||result.information?.provider!=='europe-pmc'||typeof result.information.available!=='boolean')throw Error('Invalid information capability.');}
+    else if(mode==='research-discover'){if(result?.service!=='mindling-reasoning-service'||result.kind!=='research-discovery')throw Error('Invalid research discovery.');validateDiscovered(result.discovered);}
+    else if(mode==='research-acquire'){if(result?.service!=='mindling-reasoning-service'||result.kind!=='research-acquisition')throw Error('Invalid source evidence.');validateAcquisition(result.acquisition);}
+    else if(mode==='research'){if(result?.service!=='mindling-reasoning-service'||result.kind!=='research-plan')throw Error('Mindling planning returned an invalid response.');validatePlanningResult(result.planning);if(result.information?.provider!=='europe-pmc'||typeof result.information.available!=='boolean')throw Error('Invalid information capability.');}
     else if(mode==='talk')validateTalkResult(result,context);else validateResult(result, context);
     return result;
   } catch (error) {
@@ -36,3 +39,8 @@ export const requestReasoning = args => requestService(args);
 export const requestTalkReasoning = args => requestService(args,'talk');
 
 export const requestResearchPlanning = args => requestService(args,'research');
+
+export const requestResearchDiscovery=args=>requestService(args,'research-discover');
+export const requestResearchAcquisition=args=>requestService(args,'research-acquire');
+
+export const requestResearchCapabilities=args=>requestService(args,'research-capabilities');

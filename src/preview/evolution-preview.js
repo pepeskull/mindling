@@ -33,7 +33,7 @@ export class EvolutionPreview {
     document.querySelector('#app').classList.toggle('original-preview-framing', this.originalFraming);
     this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged,
       onLearningTask:typeof this.change==='function'?async(action,id,payload)=>{const result=await learningEngine(this).act(action,id,payload);if(result?.needsClarification)this.dashboard.showClarification(result.talkResponse);return result;}:null,
-      onResearchAccess:typeof this.change==='function'?enabled=>learningEngine(this).setAccess(enabled):null,
+      onResearchAccess:typeof this.change==='function'?(enabled,informationEnabled)=>learningEngine(this).setAccess(enabled,informationEnabled):null,
       onClarification:typeof this.change==='function'?(token,choice,detail)=>resumeClarification(this,token,choice,detail):null,onCancelClarification:()=>cancelClarification(this) });
     const snapshot = this.snapshotProvider ? await this.snapshotProvider() : null;
     if (this.disposed) return;

@@ -24,7 +24,7 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
     if(interpretation.intent==='QUESTION'){
       const existing=await learningEngine(app).existing(interpretation);
       if(app.disposed||signal.aborted||app.state.mind?.id!==identity||app.state.mind?.life.lifeState!=='ALIVE')throw Error('Talk was closed or the Mindling is unavailable. No Energy was spent.');
-      if(existing){learningEngine(app).follow(existing,id);return {...learningEngine(app).reply(existing),energySpent:0};}
+      if(existing){const resumed=await learningEngine(app).requested(existing,interpretation);learningEngine(app).follow(resumed,id);learningEngine(app).startIfAuthorized(resumed);return {...learningEngine(app).reply(resumed),energySpent:0};}
     }
     // Pure preflight: validates life, text, replay ID, repetition and spendable
     // Energy using the authoritative existing reducer, without saving this clone.

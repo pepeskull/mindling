@@ -70,7 +70,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   const energy=energyAt(m.energy,state.now);if(energy.remaining<cost)throw Error('Not enough Energy; wait for regeneration');
   if(m.memories.length>=1000)throw Error('Sandbox memory capacity reached');
   const next=structuredClone(state),n=next.mind;if(!research)stimulatePreviewLife(n.life,activity,next.now);n.energy=cost?spendEnergy(energy,cost,next.now):energy;n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);if(!research)n.milestones.push(a.concept);
-  if(research)a.memory=autonomous.content;
+  if(research){a.memory=autonomous.content;if(autonomous.classification){a.category=autonomous.classification.category;a.categoryId='';a.area=a.category;a.topic=autonomous.classification.topic;}}
   n.history.push({id,day,at:next.now,xp:award,kind:research?'research':a.kind==='understanding'?'concept':a.kind,assessmentKind:a.kind,source:research?'AUTONOMOUS':a.service?'SERVICE':'NATIVE',concept:a.concept,...(research?{taskId:research.id}:{})});
   const associations=growCanonical(n,id);
   const related=a.relatedMemoryIds.filter(id=>n.memories.some(memory=>memory.id===id&&!memory.supersededBy));
@@ -79,7 +79,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
   if(a.native)memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
   if(a.service)memory.analysis={...a.service,activity,learnedAt:memory.createdAt};
-  if(research){memory.source='AUTONOMOUS';memory.research={taskId:research.id,sourceURL:autonomous.url,sourceHash:autonomous.sourceHash,quoteHash:autonomous.quoteHash,observedAt:autonomous.observedAt,validAt:autonomous.validAt,verification:'attributed-source-excerpt'};memory.native.provenance={...memory.native.provenance,source:'authorized-document',method:'extractive-source-attribution'};}
+  if(research){memory.source='AUTONOMOUS';memory.submissionId=research.requestId;memory.research={taskId:research.id,sourceURL:autonomous.url,sourceHash:autonomous.sourceHash,quoteHash:autonomous.quoteHash,observedAt:autonomous.observedAt,validAt:autonomous.validAt,verification:'attributed-source-excerpt',evidenceRelation:'verbatim-source-excerpt'};const source=research.sourceReferences.find(item=>item.url===autonomous.url);Object.assign(memory.research,{title:source.title||null,provider:source.provider||null,publisher:source.publisher||null,journal:source.journal||null,publishedAt:source.publishedAt||null,type:source.type||'source-excerpt',classificationMethod:'source-evaluated-structured-metadata'});memory.native.verification='attributed-source-excerpt';memory.native.provenance={...memory.native.provenance,source:'authorized-document',method:'extractive-source-attribution'};}
   recordPathwayLearning(n,memory,{eventId:id,activity,at:next.now});
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];

@@ -17,7 +17,7 @@ export function withResearch(graph,state,canonical){
     // Talk has exactly one node. Other modes expose bounded work groups;
     // rings derive from the actual completed units in each group.
     if(root.task.mode!=='TALK_RESEARCH'){
-      const groups=[['Knowledge check',['understanding','retrieval','plan']],['Source evaluation',['source','evidence']],['Memory integration',['knowledge','answer']]];
+      const groups=[[root.task.workVersion===2?'Request & discovery':'Knowledge check',['understanding','retrieval','plan']],['Source evaluation',['source','evidence']],['Memory integration',['knowledge','answer']]];
       groups.forEach(([label,units],index)=>{
         const id=`${root.id}:${index}`;
         nodes.push({...root,id,label,root:false,parent:root.id,progress:units.filter(unit=>root.task.completedWork.includes(unit)).length/units.length});

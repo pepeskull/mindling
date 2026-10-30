@@ -17,7 +17,7 @@ export class AdaptivePathwaysView {
       this.originSignature=originSignature;this.renderOrigin(profile.origin);
     }
     this.identity=identity;
-    const signature=JSON.stringify([identity,profile.pathways,profile.ignoredEvidence,profile.unassigned,profile.lastUpdate,profile.evidence.map(item=>[item.id,item.pathwayId,item.units,item.recordedAt,item.attribution])]);
+    const signature=JSON.stringify([identity,profile.pathways,profile.ignoredEvidence,profile.unassigned,profile.lastUpdate,profile.specializations,profile.unrecorded,profile.contested,profile.evidence.map(item=>[item.id,item.pathwayId,item.units,item.recordedAt,item.attribution])]);
     if(signature===this.signature)return;this.signature=signature;
     this.renderSpecializations(profile);
   }
@@ -46,12 +46,15 @@ export class AdaptivePathwaysView {
   }
   renderSpecializations(profile){
     this.specializations.replaceChildren();
-    if(profile.ignoredEvidence)this.specializations.append(el('p',`${profile.ignoredEvidence} duplicate, malformed or unsupported evidence records excluded; no progress guessed.`,'development-muted'));
+    if(profile.ignoredEvidence)this.specializations.append(el('p',`${profile.ignoredEvidence} duplicate, malformed, historical or no-longer-matching evidence records excluded; no progress guessed.`,'development-muted'));
     this.specializations.append(el('h4','Developed specializations'));
     const developed=profile.pathways.filter(item=>item.evidenceUnits);
-    if(!developed.length)this.specializations.append(el('p','No attributed pathway-development evidence yet. Older memories are not retrospectively scored.','development-muted'));
-    const list=el('ul',undefined,'development-areas');for(const item of developed){const row=el('li');row.append(el('span',item.id),el('strong',`${Number(item.evidenceUnits.toFixed(3))} evidence ${item.evidenceUnits===1?'unit':'units'}`));list.append(row);}this.specializations.append(list);
-    this.specializations.append(el('p',`One distinct claim contributes at most one unit, split equally across up to three exact structured domains. ${profile.evidence.length} retained claim evidence records; ${profile.unassigned} unassigned. Repeated claims and reinforcement add no units. These are knowledge-evidence units, not skill levels or intelligence.`,'development-muted'));
+    if(!developed.length)this.specializations.append(el('p','No attributed pathway-development evidence yet. Saved metadata is insufficient for reliable attribution.','development-muted'));
+    const list=el('ul',undefined,'development-areas');for(const item of developed){const row=el('li');row.append(el('span',item.title||item.id),el('strong',`${Number(item.evidenceUnits.toFixed(3))} evidence ${item.evidenceUnits===1?'unit':'units'}`));list.append(row);}this.specializations.append(list);
+    this.specializations.append(el('p',`One distinct claim contributes at most one unit, attributed once to its canonical domain, with controlled structured subtopics. ${profile.evidence.length} retained claim evidence records; ${profile.unassigned} unassigned. Repeated claims and reinforcement add no units. These are knowledge-evidence units, not skill levels or intelligence.`,'development-muted'));
+    if(profile.specializations?.length)this.specializations.append(el('h4','Specialization evidence'),el('p','These are evidence candidates; a current specialization title requires every eligibility threshold.','development-muted'));
+    for(const item of profile.specializations||[]){const row=el('p',`${item.title}: ${item.count} distinct claims · ${item.topics} subtopics · ${item.relationships} recorded relationships · ${item.ready?'orientation supported':'more evidence needed'}`,'development-muted');this.specializations.append(row);}
+    if(profile.unrecorded||profile.contested)this.specializations.append(el('p',`${profile.unrecorded} current claims have no matching recorded learning event; ${profile.contested} contested claims are excluded from supported orientations.`,'development-muted'));
     this.specializations.append(el('p',profile.lastUpdate===null?'No meaningful pathway evidence update recorded.':`Last recorded evidence: ${new Date(profile.lastUpdate).toLocaleString()}`,'development-muted'));
   }
   destroy(){this.root.replaceChildren();}

@@ -30,3 +30,5 @@
 .research-settings::backdrop { background: rgba(0,0,0,.7); }
 .research-settings h2 { margin: 0 0 20px; font-size: 20px; font-weight: 450; }
 .research-settings label, .research-settings p { font-size: 11px; line-height: 1.7; color: var(--text-secondary); }
+.talk-response .research-citations { margin: 10px 0; padding-left: 18px; font-size: 10px; line-height: 1.7; color: var(--text-secondary); }
+.talk-response .research-citations a { color: var(--accent); }

@@ -110,7 +110,7 @@ export class Dashboard {
   render(state) {
     if(this.#state?.mindlingId!==state.mindlingId){this.researchDialog?.close();this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
-    if(this.researchSetting&&!this.researchDialog.open)this.researchSetting.checked=Boolean(state.researchPermissions?.enabled);
+    if(this.researchSetting&&!this.researchDialog.open){this.researchSetting.checked=Boolean(state.researchPermissions?.enabled);this.researchInformationSetting.checked=Boolean(state.researchPermissions?.information?.enabled);}
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
       neurons: brain.neurons ?? '—',
@@ -275,24 +275,25 @@ export class Dashboard {
     }
     status.textContent=reply.memoryIds.length?`${reply.memoryIds.length} stored memories referenced · ${reply.uncertainty} uncertainty${reply.insufficientInformation?' · Limited supporting knowledge':''}`:'No relevant stored knowledge available';
     const answer=document.createElement('p');answer.textContent=reply.answer;content.append(answer);
+    if(reply.sources?.length){const list=document.createElement('ol');list.className='research-citations';for(const source of reply.sources.slice(0,3)){let url;try{url=new URL(source.url);}catch{continue;}if(url.protocol!=='https:'||url.username||url.password)continue;const item=document.createElement('li'),link=document.createElement('a');link.href=url.href;link.textContent=source.title||url.hostname;link.target='_blank';link.rel='noopener noreferrer';item.append(link);if(source.publishedAt)item.append(document.createTextNode(` · ${source.publishedAt}`));list.append(item);}content.append(list);}
   }
 
   openDashboard(){this.#setPrimaryView('dashboard');}
   beginInteraction(id){this.latestInteraction=id;this.talkDismissed=false;}
   canContinueResearch(id){return !this.#listeners.signal.aborted&&this.latestInteraction===id&&this.primaryView==='dashboard'&&!this.talkDismissed;}
   showResearchResult(task,id,reply){if(!this.canContinueResearch(id)||this.#state?.mindlingId!==task.mindlingId)return;this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply});}
-  showResearchAccess(task,id,topic){
+  showResearchAccess(task,id,topic,{information=false}={}){
     if(!this.canContinueResearch(id)||this.#state?.mindlingId!==task.mindlingId)return;
-    this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply:{researchAccess:{taskId:task.id,requestId:id,topic},memoryIds:[]}});
+    this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply:{researchAccess:{taskId:task.id,requestId:id,topic,information},memoryIds:[]}});
   }
   #renderResearchAccess(content,status,access){
     status.textContent='Mindling research access';
-    const copy=document.createElement('p');copy.textContent='Allow Mindling to plan research using its existing AI connection? A short public topic is sent to the service and may incur model charges (up to two bounded requests per task). Private memory, identity and wallet data are not included. This connection cannot search the web or retrieve sources. You can revoke access in Settings.';content.append(copy);
-    const label=document.createElement('label'),input=document.createElement('input');label.className='clarification-input';label.textContent=access.topic===null?'Public topic to share (omit private details)':'Public topic';input.value=access.topic||'';input.maxLength=120;input.required=true;label.append(input);content.append(label);
+    const copy=document.createElement('p');copy.textContent=access.information?'Allow Mindling to search Europe PMC for open biomedical publications and retrieve their abstracts? Public queries reach EMBL-EBI; retrieved text goes to the existing AI connection for evaluation (up to two evaluation requests per task; charges may apply). No private memories, identity keys or wallet data are sent. This is a separate permission from planning, revocable in Settings.': 'Allow Mindling to plan research using its existing AI connection? A short public topic is sent to the service and may incur model charges (up to two planning requests per task). Private memory, identity and wallet data are not included. Biomedical information access requires separate Europe PMC consent and deployment configuration. You can revoke access in Settings.';content.append(copy);
+    const label=document.createElement('label'),input=document.createElement('input');label.className='clarification-input';label.textContent=access.topic===null?'Public topic to share (omit private details)':'Public topic';input.value=access.topic||'';input.readOnly=access.information;input.maxLength=120;input.required=true;label.append(input);content.append(label);
     const choices=document.createElement('div');choices.className='clarification-choices';
     for(const [enabled,text]of [[true,'Allow & continue'],[false,'Not now']]){const button=document.createElement('button');button.type='button';button.textContent=text;button.disabled=!this.onLearningTask;button.addEventListener('click',async()=>{
       if(this.#pending||this.latestInteraction!==access.requestId)return;if(enabled&&!input.reportValidity())return;this.#pending=true;choices.querySelectorAll('button').forEach(node=>node.disabled=true);const identity=this.#state?.mindlingId;
-      try{const result=await this.onLearningTask('consent',access.taskId,{enabled,topic:input.value.trim()});if(this.latestInteraction===access.requestId&&this.#state?.mindlingId===identity&&!this.talkDismissed&&content.isConnected){status.textContent=result.message;if(!enabled)content.replaceChildren();}}
+      try{const result=await this.onLearningTask('consent',access.taskId,{enabled,topic:input.value.trim(),capability:access.information?'information':'planning'});if(this.latestInteraction===access.requestId&&this.#state?.mindlingId===identity&&!this.talkDismissed&&content.isConnected){status.textContent=result.message;if(!enabled)content.replaceChildren();}}
       catch(error){if(this.latestInteraction===access.requestId&&this.#state?.mindlingId===identity)status.textContent=error.message;}
       finally{this.#pending=false;choices.querySelectorAll('button').forEach(node=>node.disabled=false);}
     });choices.append(button);}content.append(choices);
@@ -301,10 +302,10 @@ export class Dashboard {
     if(!this.#onResearchAccess)return;
     const footer=document.querySelector('.footer-links'),open=document.createElement('button'),dialog=document.createElement('dialog');open.type='button';open.textContent='Settings';open.className='research-settings-link';
     dialog.className='research-settings glass-panel';dialog.setAttribute('aria-labelledby','research-settings-title');
-    dialog.innerHTML='<h2 id="research-settings-title">Mindling settings</h2><label><input type="checkbox" data-planning-access> Allow Mindling research planning</label><p>Uses the existing AI connection to plan a public topic. Model requests may incur charges. No web search or source retrieval is connected. Previous source-provider permissions do not authorize this capability.</p><p data-settings-feedback role="status"></p><div class="clarification-choices"><button type="button" data-save-access>Save</button><button type="button" data-close-settings>Close</button></div>';
-    this.researchSetting=dialog.querySelector('[data-planning-access]');document.querySelector('#app').append(dialog);footer.append(open);this.researchDialog=dialog;this.researchSettingsButton=open;
-    this.#listen(open,'click',()=>{this.researchSetting.checked=Boolean(this.#state?.researchPermissions?.enabled);dialog.showModal();});this.#listen(dialog.querySelector('[data-close-settings]'),'click',()=>dialog.close());
-    this.#listen(dialog.querySelector('[data-save-access]'),'click',async event=>{const button=event.currentTarget,identity=this.#state?.mindlingId;button.disabled=true;try{await this.#onResearchAccess(this.researchSetting.checked);if(this.#state?.mindlingId===identity)dialog.querySelector('[data-settings-feedback]').textContent='Access preference saved.';}catch(error){dialog.querySelector('[data-settings-feedback]').textContent=error.message;}finally{button.disabled=false;}});
+    dialog.innerHTML='<h2 id="research-settings-title">Mindling settings</h2><label><input type="checkbox" data-planning-access> Allow Mindling research planning</label><label><input type="checkbox" data-information-access> Allow Europe PMC biomedical information access</label><p>Mindling uses its existing AI connection to plan and evaluate public topics (up to two planning and two evidence-evaluation requests per task; charges may apply). Europe PMC access separately allows public biomedical searches and publication-abstract retrieval through EMBL-EBI when configured by the deployment. Private memories, identity keys and wallet data are not sent. Planning consent does not grant information access.</p><p data-settings-feedback role="status"></p><div class="clarification-choices"><button type="button" data-save-access>Save</button><button type="button" data-close-settings>Close</button></div>';
+    this.researchSetting=dialog.querySelector('[data-planning-access]');this.researchInformationSetting=dialog.querySelector('[data-information-access]');document.querySelector('#app').append(dialog);footer.append(open);this.researchDialog=dialog;this.researchSettingsButton=open;
+    this.#listen(open,'click',()=>{this.researchSetting.checked=Boolean(this.#state?.researchPermissions?.enabled);this.researchInformationSetting.checked=Boolean(this.#state?.researchPermissions?.information?.enabled);dialog.showModal();});this.#listen(dialog.querySelector('[data-close-settings]'),'click',()=>dialog.close());
+    this.#listen(dialog.querySelector('[data-save-access]'),'click',async event=>{const button=event.currentTarget,identity=this.#state?.mindlingId;button.disabled=true;try{await this.#onResearchAccess(this.researchSetting.checked,this.researchInformationSetting.checked);if(this.#state?.mindlingId===identity)dialog.querySelector('[data-settings-feedback]').textContent='Access preference saved.';}catch(error){dialog.querySelector('[data-settings-feedback]').textContent=error.message;}finally{button.disabled=false;}});
   }
 
   async #resumeClarification(model,choice,detail=''){
