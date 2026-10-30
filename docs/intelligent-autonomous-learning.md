@@ -94,8 +94,10 @@ report, not a purported verbatim quotation of the cited website. Only safe HTTPS
 citations also present in tool actions are retained. Publication date remains
 unknown unless actually available; retrieval time is never a publication date.
 
-Current facts require an explicit valid as-of date in the accepted passage and
-freshness checks. A report date is source-supported model interpretation, not an
+Current facts require an explicit valid as-of date in the same cited paragraph
+as the accepted claim and freshness checks. The date may sit outside the selected
+claim substring; dates from another paragraph, publication metadata or retrieval
+time cannot supply that support. A report date is source-supported model interpretation, not an
 independent freshness certificate. No table, price or answer is fabricated when
 that evidence is absent. The same-model analysis is not independent cross-checking.
 
@@ -157,3 +159,6 @@ only. Deployment configuration, model/account compatibility, live source quality
 latency and a successful real hosted-search demonstration remain unverified.
 This implementation must not be described as live-verified until that separate
 check has actually succeeded. No build or dependency installation is needed.
+
+For the production observations after PR #110, confirmed defects, bounded fixes
+and remaining uncertainty, see [Live research diagnostics](live-research-diagnostics.md).

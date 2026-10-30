@@ -1,3 +1,4 @@
+import { citedPassages, supportsClaimDate } from './evidence-dates.js';
 // Shared by the existing inference endpoint and browser. No external tool is
 // inferred from model output; source access is a separate configured capability.
 export const INFORMATION_CAPABILITY='mindling-web-search-v1';
@@ -6,7 +7,7 @@ const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.trim()===value&&value.length>0&&value.length<=max&&!/[\p{Cc}\p{Cf}]/u.test(value);
 const fail=()=>{throw Error('Mindling could not validate the research plan. No research knowledge was saved.');};
 export function validatePlanningContext(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='freshness,mode,scope,topic'||!['FOUNDATION','DEEP','TALK_RESEARCH'].includes(value.mode)||typeof value.freshness!=='boolean'||!text(value.topic,120))fail();
+  if(!object(value)||!['freshness,mode,scope,topic','autonomous,freshness,mode,scope,topic'].includes(Object.keys(value).sort().join(','))||value.autonomous!==undefined&&typeof value.autonomous!=='boolean'||!['FOUNDATION','DEEP','TALK_RESEARCH'].includes(value.mode)||typeof value.freshness!=='boolean'||!text(value.topic,120))fail();
   const scope=value.scope;
   if(!object(scope)||Object.keys(scope).sort().join(',')!=='criterion,geography,geographyMode,period,quantity'||![null,'standings','form','history','performance','cost','reliability','features'].includes(scope.criterion)||![null,'week','month','year'].includes(scope.period)||![null,'intersection','comparison'].includes(scope.geographyMode)||!Array.isArray(scope.geography)||scope.geography.length>2||scope.geography.some(region=>!['Europe','Sweden'].includes(region))||!(scope.quantity===null||Number.isSafeInteger(scope.quantity)&&scope.quantity>=1&&scope.quantity<=999))fail();
   return value;
@@ -34,8 +35,9 @@ export function publicResearchTopic(task,reviewed=null){
 export const validQuery=value=>text(value,120)&&/^[\p{L}\p{N}][\p{L}\p{M}\p{N} '\-]*$/u.test(value)&&!/@|https?:|\b(?:password|secret|wallet|personnummer)\b/iu.test(value);
 // No arbitrary URLs, source tickets, private memories or identifiers cross this boundary.
 export function validateRetrievalContext(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='queries,remainingCalls,request')fail();
+  if(!object(value)||!['queries,remainingCalls,request','plan,queries,remainingCalls,request'].includes(Object.keys(value).sort().join(',')))fail();
   validatePlanningContext(value.request);
+  if(value.plan!==undefined&&(!Array.isArray(value.plan)||value.plan.length>3||!value.plan.every(item=>text(item,160))))fail();
   if(!Array.isArray(value.queries)||!value.queries.length||value.queries.length>2||!value.queries.every(validQuery)||!Number.isSafeInteger(value.remainingCalls)||value.remainingCalls<1||value.remainingCalls>2)fail();return value;
 }
 export function publicSourceURL(value){
@@ -49,14 +51,15 @@ export function validateSourceEvaluation(value,sources){
   if(!object(value)||Object.keys(value).sort().join(',')!=='claims,limitations,nextQuestion'||!Array.isArray(value.claims)||value.claims.length>3||!Array.isArray(value.limitations)||value.limitations.length>3||!value.limitations.every(item=>text(item,240))||!(value.nextQuestion===null||validQuery(value.nextQuestion)))fail();
   for(const claim of value.claims){
     const source=sources.find(item=>item.id===claim?.sourceId);
-    if(!object(claim)||Object.keys(claim).sort().join(',')!=='category,quote,reason,sourceId,topic,validAt'||!source||!text(claim.quote,700)||claim.quote.length<40||!source.text.includes(claim.quote)||!text(claim.category,80)||!text(claim.topic,100)||!text(claim.reason,240))fail();
-    if(claim.validAt!==null){const at=Date.parse(claim.validAt+'T00:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(claim.validAt)||!Number.isFinite(at)||new Date(at).toISOString().slice(0,10)!==claim.validAt||!claim.quote.includes(claim.validAt)||at>source.observedAt)fail();}
+    if(!object(claim)||Object.keys(claim).sort().join(',')!=='category,quote,reason,sourceId,topic,validAt'||!source||!text(claim.quote,700)||claim.quote.length<40||!citedPassages(source).some(passage=>passage.includes(claim.quote))||!text(claim.category,80)||!text(claim.topic,100)||!text(claim.reason,240))fail();
+    if(claim.validAt!==null){const at=Date.parse(claim.validAt+'T00:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(claim.validAt)||!Number.isFinite(at)||new Date(at).toISOString().slice(0,10)!==claim.validAt||!supportsClaimDate(source,claim.quote,claim.validAt)||at>source.observedAt)fail();}
   }return value;
 }
 export function validateAcquisition(value){
   if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.sources)||value.sources.length>3||!Number.isSafeInteger(value.requests)||value.requests<1||value.requests>2||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>196608||!text(value.responseId,160))fail();
   for(const source of value.sources){
     if(!object(source)||!/^web:[a-f0-9]{64}$/.test(source.id)||source.provider!==INFORMATION_PROVIDER||publicSourceURL(source.url)!==source.url||source.domain!==new URL(source.url).hostname||!text(source.title,240)||source.type!=='web-search-synthesis'||source.status!=='tool-cited'||!Number.isSafeInteger(source.observedAt)||source.observedAt<0||!text(source.text,2400)||!/^[a-f0-9]{64}$/.test(source.hash)||source.publishedAt!==null)fail();
+    if(source.passages!==undefined&&(!Array.isArray(source.passages)||!source.passages.length||source.passages.length>6||!source.passages.every(passage=>text(passage,2400))||source.passages.join(' ')!==source.text))fail();
   }
   validateSourceEvaluation(value.evaluation,value.sources);return value;
 }

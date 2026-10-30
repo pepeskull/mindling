@@ -11,6 +11,8 @@ export function validTask(task,mindId){
   try {
   if(task?.sourcePlan){validatePlanningContext(task.sourcePlan.request);if(!Array.isArray(task.sourcePlan.queries)||task.sourcePlan.queries.length>2||!task.sourcePlan.queries.every(validQuery)||!['web','biomedical','unsupported'].includes(task.sourcePlan.sourceCategory)||typeof task.sourcePlan.available!=='boolean')return false;}
   if(task?.pendingEvidence&&(!Array.isArray(task.pendingEvidence)||task.pendingEvidence.length>3||task.pendingEvidence.some(claim=>typeof claim.quote!=='string'||claim.quote.length<40||claim.quote.length>700||!/^[a-f0-9]{64}$/.test(claim.quoteHash)||!/^[a-f0-9]{64}$/.test(claim.sourceHash)||typeof claim.category!=='string'||!claim.category.trim()||claim.category.length>80||typeof claim.topic!=='string'||!claim.topic.trim()||claim.topic.length>100||!task.sourceReferences?.some(source=>source.url===claim.sourceURL&&source.hash===claim.sourceHash&&source.observedAt===claim.observedAt))))return false;
+  if(task?.evidenceDiagnostics&&(!Array.isArray(task.evidenceDiagnostics.rejections)||task.evidenceDiagnostics.rejections.length>3||task.evidenceDiagnostics.rejections.some(item=>!/^[A-Z_]{1,60}$/.test(item.code))||!Number.isSafeInteger(task.evidenceDiagnostics.candidates)||task.evidenceDiagnostics.candidates<0||task.evidenceDiagnostics.candidates>3||!Number.isSafeInteger(task.evidenceDiagnostics.accepted)||task.evidenceDiagnostics.accepted<0||task.evidenceDiagnostics.accepted>3))return false;
+  if(task?.memoryRejections&&(!Array.isArray(task.memoryRejections)||task.memoryRejections.length>3||task.memoryRejections.some(item=>!/^[A-Z_]{1,60}$/.test(item.code))))return false;
   if(task?.interpretationAnswers)validateAnswers(task.interpretationAnswers);
   return !!task&&task.version===1&&/^[a-f0-9]{64}$/.test(task.id)&&task.mindlingId===mindId&&modes.includes(task.mode)&&TASK_STATES.includes(task.status)
     &&typeof task.objective==='string'&&task.objective.length>0&&task.objective.length<=2000&&typeof task.topic==='string'&&task.topic.length<=160
@@ -56,7 +58,7 @@ export function validateResearchClaim(state,authorization){
     ||typeof authorization.quote!=='string'||authorization.quote.length<40||authorization.quote.length>700||!Array.isArray(task.acceptedQuotes)||!task.acceptedQuotes.includes(authorization.quoteHash)
     ||typeof authorization.content!=='string'||authorization.content.length>2000
     ||authorization.content!==`Source observation (${new Date(source.observedAt).toISOString()}) from ${source.url}: ${authorization.quote}`)throw Error('Research evidence or task authorization changed. No knowledge was saved.');
-  if([3,4].includes(task.engineVersion)&&!task.pendingEvidence?.some(claim=>claim.quoteHash===authorization.quoteHash&&claim.quote===authorization.quote&&claim.sourceURL===authorization.url&&claim.sourceHash===authorization.sourceHash&&claim.category===authorization.classification?.category&&claim.topic===authorization.classification?.topic))throw Error('Research classification or source evidence changed.');
+  if([3,4].includes(task.engineVersion)&&!task.pendingEvidence?.some(claim=>claim.quoteHash===authorization.quoteHash&&claim.quote===authorization.quote&&claim.validAt===authorization.validAt&&claim.sourceURL===authorization.url&&claim.sourceHash===authorization.sourceHash&&claim.category===authorization.classification?.category&&claim.topic===authorization.classification?.topic))throw Error('Research classification or source evidence changed.');
   return task;
 }
 export function taskStatusLabel(task){

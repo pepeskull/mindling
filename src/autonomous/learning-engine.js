@@ -1,6 +1,6 @@
-import { AUTONOMY, dayKey, nextOpportunity, autonomousStatus } from './autonomous-schedule.js';
+import { AUTONOMY, dayKey, nextOpportunity, autonomousStatus, autonomousDiagnostics } from './autonomous-schedule.js';
 import { EVENTS } from '../app/events.js';
-import { sourceScopeMatches } from './research-sources.js';
+import { evidenceRejection, canonicalRejection, rejectionExplanation } from './research-evidence.js';
 import { learn } from '../preview/sandbox/engine.js';
 import { stimulatePreviewLife } from '../preview/sandbox/life.js';
 import { understandInput, knowledgeGap, LEARNING_MODES } from '../learning/input-understanding.js';
@@ -128,7 +128,7 @@ export class AutonomousLearningEngine {
     if(!(await this.loadPermissions(true)).enabled)throw Error('Allow Mindling planning in Settings before continuing this historical or interrupted task.');
     const next=await this.patch(id,null,item=>{if(item.engineVersion===2&&item.planningCalls===undefined){item.planningCalls=Math.min(item.attempts,2);item.modelCalls=item.planningCalls;}item.attempts++;item.engineVersion=4;item.code='QUEUED';item.status='BLOCKED';item.message='Mindling planning queued under current authorization.';});this.startIfAuthorized(next);return next;
   }
-  context(task,topic){const scope=task.scope||{};return {topic,mode:task.mode,freshness:task.timeSensitive,scope:{criterion:scope.metric||null,geography:scope.regions||[scope.region].filter(Boolean),geographyMode:scope.regionMode||null,period:scope.period||null,quantity:Number.isSafeInteger(scope.count)&&scope.count>0?scope.count:null}};}
+  context(task,topic){const scope=task.scope||{};return {...(task.autonomous?{autonomous:true}:{}),topic,mode:task.mode,freshness:task.timeSensitive,scope:{criterion:scope.metric||null,geography:scope.regions||[scope.region].filter(Boolean),geographyMode:scope.regionMode||null,period:scope.period||null,quantity:Number.isSafeInteger(scope.count)&&scope.count>0?scope.count:null}};}
   grant(prefs){return {mindlingId:this.app.state.mind.id,capability:INFORMATION_CAPABILITY,revision:prefs.revision};}
   async requested(task,interpretation){
     if(task.engineVersion!==4)return this.patch(task.id,null,item=>{item.planningCalls=item.engineVersion===2?Math.min(item.attempts,2):0;item.modelCalls=item.planningCalls;item.engineVersion=4;item.code='PERMISSION_REQUIRED';item.originalText=interpretation.normalizedText;item.message='Preparing Mindling research under current authorization.';});return task;
@@ -154,7 +154,7 @@ export class AutonomousLearningEngine {
       await this.sources(current,run,controller);
     }catch(error){try{
       const code=navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'INTERRUPTED':/^(?:INFORMATION_[A-Z_]+|RATE_LIMITED|BUDGET_EXHAUSTED)$/.test(error.code||error.message)?error.code||error.message:'PLANNING_UNAVAILABLE';
-      const blocked=await this.patch(task.id,run,item=>{if(terminal(item))return;item.status='BLOCKED';item.code=code;item.lastFailureCode=code;item.retryAt=Date.now()+AUTONOMY.retryDelay*Math.max(1,item.attempts);item.message=code==='OFFLINE'?'Research paused — Offline.':code==='INTERRUPTED'?'Research paused. Completed work is saved.':code==='INFORMATION_UNCONFIGURED'?'Research paused — Web information access is not configured.':code==='RATE_LIMITED'?'Research paused — Service rate limit. A bounded retry is scheduled.':'Research paused. Reliable supporting information could not be acquired within the service and research limits.';});this.notify(blocked);
+      const blocked=await this.patch(task.id,run,item=>{if(terminal(item))return;item.lastFailurePhase=item.code==='PLANNING'?'PLANNING':item.status;item.status='BLOCKED';item.code=code;item.lastFailureCode=code;item.retryAt=Date.now()+AUTONOMY.retryDelay*Math.max(1,item.attempts);item.message=code==='OFFLINE'?'Research paused — Offline.':code==='INTERRUPTED'?'Research paused. Completed work is saved.':code==='INFORMATION_UNCONFIGURED'?'Research paused — Web information access is not configured.':code==='RATE_LIMITED'?'Research paused — Service rate limit. A bounded retry is scheduled.':'Research paused. Reliable supporting information could not be acquired within the service and research limits.';});this.notify(blocked);
     }catch{/* A newer run, cancellation or identity owns the task. */}}
     finally{clearTimeout(deadline);this.reviewedTopics.delete(task.id);if(this.active?.controller===controller)this.active=null;if(!this.disposed&&!this.app.disposed)this.app.renderState();this.schedule();}
   }
@@ -170,24 +170,26 @@ export class AutonomousLearningEngine {
     // Reserve the whole hosted-tool budget before sending: unknown/aborted remote
     // work is never refunded, which prevents reload/cancellation cost loops.
     let current=await this.patch(task.id,run,item=>{if((item.modelCalls||0)+2>LIMITS.inferenceCalls)throw Error('BUDGET_EXHAUSTED');item.modelCalls=(item.modelCalls||0)+2;item.evaluationCalls=(item.evaluationCalls||0)+1;item.sourceRequests+=remainingCalls;item.status='RESEARCHING';item.code='SEARCHING';item.message='Researching public sources and comparing cited evidence.';});
-    const context={request:current.sourcePlan.request,queries:current.sourcePlan.queries,remainingCalls},id=await digest(JSON.stringify([task.id,run,'web-search',context]));
+    const context={request:current.sourcePlan.request,queries:current.sourcePlan.queries,remainingCalls,plan:current.plan},id=await digest(JSON.stringify([task.id,run,'web-search',context]));
     const result=await requestResearchAcquisition({id,context,signal:controller.signal});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
-    const acquired=result.acquisition,observedAt=Date.now(),pending=[];
+    const acquired=result.acquisition,observedAt=Date.now(),pending=[],rejections=[];
     for(const source of acquired.sources)if(await digest(source.text)!==source.hash)throw Error('Source evidence hash did not match.');
     for(const claim of acquired.evaluation.claims){
-      if(!sourceScopeMatches(claim.quote,task.scope)||understandInput(claim.quote,'TEACH').intent!=='FACT_TEACHING')continue;
-      const source=acquired.sources.find(item=>item.id===claim.sourceId),validAt=claim.validAt===null?null:Date.parse(claim.validAt+'T00:00:00Z');
-      if(task.timeSensitive&&(validAt===null||validAt>observedAt||observedAt-validAt>2*86400000))continue;
+      const source=acquired.sources.find(item=>item.id===claim.sourceId),reason=evidenceRejection(claim,source,task,observedAt);
+      if(reason){rejections.push({sourceId:claim.sourceId,code:reason});continue;}
+      const validAt=claim.validAt===null?null:Date.parse(claim.validAt+'T00:00:00Z');
       pending.push({quote:claim.quote,quoteHash:await digest(claim.quote),sourceURL:source.url,sourceHash:source.hash,observedAt,validAt,category:claim.category,topic:claim.topic});
     }
+    if(!acquired.evaluation.claims.length)rejections.push({code:acquired.sources.length?'NO_MODEL_CANDIDATES':'NO_CITED_PASSAGES'});
     current=await this.patch(task.id,run,item=>{
+      item.evidenceDiagnostics={version:1,candidates:acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
       item.totalBytes=(item.totalBytes||0)+acquired.bytes;item.status='EVALUATING';item.code='EVALUATING';item.message='Checking tool-cited research against canonical memory.';item.limitations=acquired.evaluation.limitations;item.nextQuestion=acquired.evaluation.nextQuestion;item.responseId=acquired.responseId;item.completedToolCalls=acquired.requests;
       if(pending.length)item.pendingEvidence=pending;else delete item.pendingEvidence;
-      for(const source of acquired.sources)item.sourceReferences.push({url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,excerpt:source.text,authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId});
+      for(const source of acquired.sources)item.sourceReferences.push({url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,excerpt:source.text,...(source.passages?{passages:source.passages}:{}),authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId});
       if(acquired.requests)item.completedWork=[...new Set([...item.completedWork,'retrieval'])];
       if(acquired.sources.length)item.completedWork=[...new Set([...item.completedWork,'source','evidence'])];
     },{researchGrant:this.grant(prefs)});
-    if(!pending.length)return block('NO_EVIDENCE','Research paused — The cited evidence did not support a suitable claim. No research knowledge was saved.');
+    if(!pending.length)return block('NO_EVIDENCE',`Research paused — Insufficient evidence. ${rejectionExplanation(rejections[0]?.code)} No research knowledge was saved.`);
     return this.integrate(current,run,controller,prefs);
   }
   async integrate(task,run,controller,prefs){
@@ -198,18 +200,19 @@ export class AutonomousLearningEngine {
     await this.app.change(state=>{
       this.assertLive(task.mindlingId);if(controller.signal.aborted||state.mind?.id!==task.mindlingId||state.mind.life.lifeState!=='ALIVE'||state.tombstones.some(item=>item.id===task.mindlingId))throw Error('Research was cancelled.');
       let next=structuredClone(state),current=writableTasks(next.mind).find(item=>item.id===task.id);if(!current||current.run!==run||current.status!=='COMMITTING')throw Error('Task authorization changed.');
-      const knowledge=[];let formed=0;
+      const knowledge=[],memoryRejections=[];let formed=0;
       for(const claim of evidence){
-        if((next.mind.researchExclusions||[]).includes(claim.quoteHash))continue;
+        if((next.mind.researchExclusions||[]).includes(claim.quoteHash)){memoryRejections.push({code:'EXCLUDED_BY_USER',quoteHash:claim.quoteHash});continue;}
         const duplicate=next.mind.memories.find(memory=>!memory.supersededBy&&memory.intelligence?.current!==false&&memory.kind!=='historical'&&memory.intelligence?.kind!=='historical'&&memory.research?.quoteHash===claim.quoteHash);if(duplicate){knowledge.push(duplicate.id);continue;}
         const id=`${task.id.slice(0,40)}:${claim.quoteHash.slice(0,40)}`,content=`Source observation (${new Date(claim.observedAt).toISOString()}) from ${claim.sourceURL}: ${claim.quote}`;
         const authorization={taskId:task.id,run,url:claim.sourceURL,sourceHash:claim.sourceHash,observedAt:claim.observedAt,validAt:claim.validAt,quote:claim.quote,quoteHash:claim.quoteHash,content,classification:{category:claim.category,topic:claim.topic}};
-        try{const candidate=learn(next,{id,text:claim.quote,mindId:task.mindlingId,activity:activity==='TALK'?'TEACH':activity,autonomous:authorization});if(candidate.mind.memories.some(memory=>memory.id===id)){next=candidate;knowledge.push(id);formed++;}}catch{/* Native duplicate/conflict/quality rejection preserves current knowledge. */}
+        try{const candidate=learn(next,{id,text:claim.quote,mindId:task.mindlingId,activity:activity==='TALK'?'TEACH':activity,autonomous:authorization});if(candidate.mind.memories.some(memory=>memory.id===id)){next=candidate;knowledge.push(id);formed++;}else memoryRejections.push({code:'CANONICAL_DUPLICATE_OR_UNCERTAIN',quoteHash:claim.quoteHash});}catch(error){memoryRejections.push({code:canonicalRejection(error),quoteHash:claim.quoteHash});}
       }
       current=writableTasks(next.mind).find(item=>item.id===task.id);
       if(formed&&!current.autonomous&&!current.energyCharged){if(activity==='TALK'||next.mind.processed.includes(current.requestId))throw Error('The original activity charge is unavailable.');next.mind.energy=spendEnergy(energyAt(next.mind.energy,next.now),LIFE_RULES.activity[activity].energyCost,next.now);stimulatePreviewLife(next.mind.life,activity,next.now);next.mind.processed.push(current.requestId);current.energyCharged=true;}
+      current.memoryRejections=memoryRejections;
       current.knowledgeIds=[...new Set(knowledge)];delete current.pendingEvidence;delete current.acceptedQuotes;current.updatedAt=Math.max(current.createdAt,Date.now());
-      if(knowledge.length){current.completedWork=[...new Set([...current.completedWork,'knowledge','answer'])];current.status='COMPLETED';current.code='SOURCE_BACKED';current.message=`Research completed: ${formed} new source-attributed ${formed===1?'memory':'memories'} retained. This is bounded evidence, not complete topic coverage or independent verification.`;}else{current.status='BLOCKED';current.code='NO_EVIDENCE';current.message='Research paused — Canonical checks did not accept any new claim. Existing knowledge was preserved.';}
+      if(knowledge.length){current.completedWork=[...new Set([...current.completedWork,'knowledge','answer'])];current.status='COMPLETED';current.code='SOURCE_BACKED';current.message=`Research completed: ${formed} new source-attributed ${formed===1?'memory':'memories'} retained. This is bounded evidence, not complete topic coverage or independent verification.`;}else{current.status='BLOCKED';current.code='NO_EVIDENCE';current.message=`Research paused — Insufficient evidence. ${rejectionExplanation(memoryRejections[0]?.code)} Existing knowledge was preserved.`;}
       if(!validTask(current,task.mindlingId))throw Error('Research completion was invalid.');return next;
     },{preserveGameplay:true,researchGrant:grant,...(activity==='TALK'||task.autonomous?{}:{journal:{id:`research:${task.id}:${run}`,type:activity}})});
     const completed=tasksFor(this.app.state.mind).find(item=>item.id===task.id);this.notify(completed);if(completed.knowledgeIds.length){const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity:'TEACH'});}return completed;
@@ -221,7 +224,7 @@ export class AutonomousLearningEngine {
     const quotes=memories.map(memory=>{const position=memory.content.indexOf(': ',memory.content.indexOf(' from '));return position>=0?memory.content.slice(position+2):memory.content;});
     const found=task.sourceReferences.some(source=>source.hash),unsupported=task.code==='SOURCE_UNSUPPORTED',active=['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status);
     const paused=unsupported?(sv?'Jag kan inte verifiera den här frågan med de tillgängliga källorna.':'I can’t verify this question with the available sources.'):found?(sv?'Jag hittade källor, men kunde inte säkert behålla ytterligare kunskap från dem. Dina befintliga minnen är oförändrade.':'I found sources, but couldn’t safely retain additional knowledge from them. Your existing memories are unchanged.'):active?(sv?'Jag undersöker vilket underlag som finns för din fråga.':'I’m checking the available evidence for your request.'):(sv?'Jag förstår vad du vill lära dig, men kan inte hämta tillräckligt tillförlitliga källor just nu. Forskningsuppgiften är pausad.':'I understand what you want to learn, but I can’t retrieve reliable supporting sources right now. The research task is paused.');
-    const answer=completed?(sv?'Här är vad jag kunde behålla från de källstödda sökresultaten:':'Here is what I could retain from the source-supported search report:')+'\n\n'+quotes.join('\n\n'):paused;
+    const answer=completed?(sv?'Här är vad jag kunde behålla från de källstödda sökresultaten:':'Here is what I could retain from the source-supported search report:')+'\n\n'+quotes.join('\n\n'):task.code==='NO_EVIDENCE'?paused+' '+(sv?'Källornas underlag eller aktualitet räckte inte för att spara ett nytt påstående.':'The source evidence or its date did not establish a supported new claim. See the learning task for details.'):paused;
     return {answer,memoryIds:memories.map(memory=>memory.id),sources,uncertainty:completed?'medium':'high',insufficientInformation:!completed||!memories.length,researchTaskId:task.id};
   }
   follow(task,requestId){this.followers.set(task.id,requestId);if(this.followers.size>LIMITS.tasks)this.followers.delete(this.followers.keys().next().value);}
@@ -262,5 +265,6 @@ export class AutonomousLearningEngine {
     this.schedule();
   }
   get status(){return autonomousStatus(this);}
+  get diagnostics(){return autonomousDiagnostics(this);}
   destroy(){clearTimeout(this.wakeTimer);this.disposed=true;this.active?.controller.abort();this.abort.abort();this.queue.clear();this.reviewedTopics.clear();}
 }
