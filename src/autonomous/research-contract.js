@@ -1,8 +1,7 @@
 // Shared by the existing inference endpoint and browser. No external tool is
 // inferred from model output; source access is a separate configured capability.
-export const RESEARCH_CAPABILITY='mindling-planning-v1';
-export const INFORMATION_CAPABILITY='mindling-europe-pmc-v1';
-export const INFORMATION_PROVIDER='europe-pmc';
+export const INFORMATION_CAPABILITY='mindling-web-search-v1';
+export const INFORMATION_PROVIDER='openai-web-search';
 const object=value=>value&&typeof value==='object'&&!Array.isArray(value);
 const text=(value,max)=>typeof value==='string'&&value.trim()===value&&value.length>0&&value.length<=max&&!/[\p{Cc}\p{Cf}]/u.test(value);
 const fail=()=>{throw Error('Mindling could not validate the research plan. No research knowledge was saved.');};
@@ -13,11 +12,11 @@ export function validatePlanningContext(value){
   return value;
 }
 const option={type:'object',additionalProperties:false,required:['id','label','value'],properties:{id:{type:'string'},label:{type:'string'},value:{type:'string'}}};
-export const planningSchema={type:'object',additionalProperties:false,required:['plan','clarification','queries','sourceCategory'],properties:{queries:{type:'array',items:{type:'string'},minItems:0,maxItems:2},sourceCategory:{type:'string',enum:['biomedical','unsupported']},plan:{type:'array',items:{type:'string'},minItems:1,maxItems:3},clarification:{anyOf:[{type:'null'},{type:'object',additionalProperties:false,required:['question','options'],properties:{question:{type:'string'},options:{type:'array',items:option,minItems:0,maxItems:4}}}]}}};
+export const planningSchema={type:'object',additionalProperties:false,required:['plan','clarification','queries','sourceCategory'],properties:{queries:{type:'array',items:{type:'string'},minItems:0,maxItems:2},sourceCategory:{type:'string',enum:['web','unsupported']},plan:{type:'array',items:{type:'string'},minItems:1,maxItems:3},clarification:{anyOf:[{type:'null'},{type:'object',additionalProperties:false,required:['question','options'],properties:{question:{type:'string'},options:{type:'array',items:option,minItems:0,maxItems:4}}}]}}};
 export function validatePlanningResult(value){
   if(!object(value)||Object.keys(value).sort().join(',')!=='clarification,plan,queries,sourceCategory'||!Array.isArray(value.plan)||!value.plan.length||value.plan.length>3||!value.plan.every(item=>text(item,160)))fail();
-  if(!['biomedical','unsupported'].includes(value.sourceCategory)||!Array.isArray(value.queries)||value.queries.length>2||value.queries.some(query=>!validQuery(query)))fail();
-  if(value.sourceCategory==='biomedical'&&value.clarification===null&&!value.queries.length)fail();
+  if(!['web','unsupported'].includes(value.sourceCategory)||!Array.isArray(value.queries)||value.queries.length>2||value.queries.some(query=>!validQuery(query)))fail();
+  if(value.sourceCategory==='web'&&value.clarification===null&&!value.queries.length)fail();
   const question=value.clarification;
   if(question!==null&&(!object(question)||Object.keys(question).sort().join(',')!=='options,question'||!text(question.question,400)||!Array.isArray(question.options)||question.options.length>4||new Set(question.options.map(item=>item?.id)).size!==question.options.length||question.options.some(item=>!object(item)||Object.keys(item).sort().join(',')!=='id,label,value'||!text(item.label,80)||!text(item.value,160)||!/^[a-z][a-z_-]{0,31}$/.test(item.id))))fail();
   return value;
@@ -33,29 +32,31 @@ export function publicResearchTopic(task,reviewed=null){
 }
 
 export const validQuery=value=>text(value,120)&&/^[\p{L}\p{N}][\p{L}\p{M}\p{N} '\-]*$/u.test(value)&&!/@|https?:|\b(?:password|secret|wallet|personnummer)\b/iu.test(value);
-export function validateDiscoveryContext(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='queries,request,remainingQueries')fail();validatePlanningContext(value.request);
-  if(value.request.freshness||!Array.isArray(value.queries)||!value.queries.length||value.queries.length>2||!value.queries.every(validQuery)||!Number.isSafeInteger(value.remainingQueries)||value.remainingQueries<1||value.remainingQueries>2)fail();return value;
-}
+// No arbitrary URLs, source tickets, private memories or identifiers cross this boundary.
 export function validateRetrievalContext(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='request,tickets')fail();validatePlanningContext(value.request);
-  if(value.request.freshness||!Array.isArray(value.tickets)||!value.tickets.length||value.tickets.length>3||value.tickets.some(ticket=>typeof ticket!=='string'||!/^\d{1,12}\.\d{13}\.[a-f0-9]{64}\.[a-f0-9]{64}$/.test(ticket)))fail();return value;
+  if(!object(value)||Object.keys(value).sort().join(',')!=='queries,remainingCalls,request')fail();
+  validatePlanningContext(value.request);
+  if(!Array.isArray(value.queries)||!value.queries.length||value.queries.length>2||!value.queries.every(validQuery)||!Number.isSafeInteger(value.remainingCalls)||value.remainingCalls<1||value.remainingCalls>2)fail();return value;
 }
-export function validateDiscovered(value){
-  if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.candidates)||value.candidates.length>3||!Number.isSafeInteger(value.queries)||value.queries<1||value.queries>2||!Number.isSafeInteger(value.completedQueries)||value.completedQueries<0||value.completedQueries>value.queries||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>32768||!Array.isArray(value.failures))fail();
-  for(const source of value.candidates){validateSourceMetadata(source);if(typeof source.ticket!=='string'||source.ticket.length>200)fail();}return value;
+export function publicSourceURL(value){
+  if(!text(value,500))fail();const url=new URL(value),host=url.hostname.toLowerCase();
+  if(url.protocol!=='https:'||url.username||url.password||url.port&&url.port!=='443'||!host.includes('.')||host.includes(':')||/^[0-9.]+$/.test(host)||/(?:^|\.)(?:localhost|local|internal|test|invalid|example)$/.test(host)||/[?&](?:key|token|secret|auth|signature|credential)[^=]*=/i.test(url.search))fail();
+  url.hash='';return url.href;
 }
-function validateSourceMetadata(source){
-  if(!object(source)||!/^MED:\d{1,12}$/.test(source.id)||source.provider!==INFORMATION_PROVIDER||source.url!==`https://europepmc.org/article/MED/${source.id.slice(4)}`||source.domain!=='europepmc.org'||!text(source.title,240)||source.type!=='publication-abstract'||!Number.isSafeInteger(source.observedAt)||source.observedAt<0||!(source.publisher===null||text(source.publisher,160))||!(source.publishedAt===null||/^\d{4}-\d{2}-\d{2}$/.test(source.publishedAt)))fail();
-}
-const claimSchema={type:'object',additionalProperties:false,required:['sourceId','quote','category','topic','reason'],properties:{sourceId:{type:'string'},quote:{type:'string'},category:{type:'string',enum:['Biology','Medicine','Chemistry','Science']},topic:{type:'string'},reason:{type:'string'}}};
-export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:{type:'string'},maxItems:3}}};
+const claimSchema={type:'object',additionalProperties:false,required:['sourceId','quote','category','topic','reason','validAt'],properties:{sourceId:{type:'string'},quote:{type:'string'},category:{type:'string'},topic:{type:'string'},reason:{type:'string'},validAt:{type:['string','null']}}};
+export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:{type:'string'},maxItems:3},nextQuestion:{type:['string','null']}}};
 export function validateSourceEvaluation(value,sources){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='claims,limitations'||!Array.isArray(value.claims)||value.claims.length>3||!Array.isArray(value.limitations)||value.limitations.length>3||!value.limitations.every(item=>text(item,240)))fail();
-  for(const claim of value.claims){const source=sources.find(item=>item.id===claim?.sourceId);if(!object(claim)||Object.keys(claim).sort().join(',')!=='category,quote,reason,sourceId,topic'||!source||!text(claim.quote,700)||claim.quote.length<40||!source.text.includes(claim.quote)||!['Biology','Medicine','Chemistry','Science'].includes(claim.category)||!text(claim.topic,100)||!text(claim.reason,240))fail();}return value;
+  if(!object(value)||Object.keys(value).sort().join(',')!=='claims,limitations,nextQuestion'||!Array.isArray(value.claims)||value.claims.length>3||!Array.isArray(value.limitations)||value.limitations.length>3||!value.limitations.every(item=>text(item,240))||!(value.nextQuestion===null||validQuery(value.nextQuestion)))fail();
+  for(const claim of value.claims){
+    const source=sources.find(item=>item.id===claim?.sourceId);
+    if(!object(claim)||Object.keys(claim).sort().join(',')!=='category,quote,reason,sourceId,topic,validAt'||!source||!text(claim.quote,700)||claim.quote.length<40||!source.text.includes(claim.quote)||!text(claim.category,80)||!text(claim.topic,100)||!text(claim.reason,240))fail();
+    if(claim.validAt!==null){const at=Date.parse(claim.validAt+'T00:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(claim.validAt)||!Number.isFinite(at)||new Date(at).toISOString().slice(0,10)!==claim.validAt||!claim.quote.includes(claim.validAt)||at>source.observedAt)fail();}
+  }return value;
 }
 export function validateAcquisition(value){
-  if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.sources)||value.sources.length>3||!Number.isSafeInteger(value.requests)||value.requests<1||value.requests>3||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>147456)fail();
-  for(const source of value.sources){validateSourceMetadata(source);if(!text(source.text,6000)||source.status!=='retrieved'||!/^[a-f0-9]{64}$/.test(source.hash))fail();}
+  if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.sources)||value.sources.length>3||!Number.isSafeInteger(value.requests)||value.requests<1||value.requests>2||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>196608||!text(value.responseId,160))fail();
+  for(const source of value.sources){
+    if(!object(source)||!/^web:[a-f0-9]{64}$/.test(source.id)||source.provider!==INFORMATION_PROVIDER||publicSourceURL(source.url)!==source.url||source.domain!==new URL(source.url).hostname||!text(source.title,240)||source.type!=='web-search-synthesis'||source.status!=='tool-cited'||!Number.isSafeInteger(source.observedAt)||source.observedAt<0||!text(source.text,2400)||!/^[a-f0-9]{64}$/.test(source.hash)||source.publishedAt!==null)fail();
+  }
   validateSourceEvaluation(value.evaluation,value.sources);return value;
 }
