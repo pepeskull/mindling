@@ -1,3 +1,4 @@
+import { rejectionExplanation } from './research-evidence.js';
 import { taskProgress, taskStatusLabel } from './tasks.js';
 import { memoryNodeId } from '../memory/graph-data.js';
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
@@ -9,8 +10,14 @@ export function renderTaskInspector(host,node,{onAction=null,refresh=()=>{},memo
   const preparation=['understanding','retrieval','plan'].filter(unit=>task.completedWork.includes(unit)).length,acquired=memories.filter(memory=>!memory.historical&&task.knowledgeIds.includes(memory.recordId)&&memory.raw.research?.taskId===task.id).length;
   host.append(progress,el('p',`Task progress: ${task.completedWork.length} / 7 steps (${Math.round(taskProgress(task)*100)}%)`),el('p',`Task preparation: ${preparation} / 3 steps · ${task.engineVersion===4?'Cited web sources':'Research sources retrieved'}: ${task.sourceReferences.filter(source=>source.hash&&source.observedAt).length} · New knowledge acquired: ${acquired} ${acquired===1?'memory':'memories'}`));
   if(task.engineVersion===4)host.append(el('p',`Hosted tool calls completed: ${task.completedToolCalls||0} · Tool budget reserved: ${task.sourceRequests} / 2`,'memory-content-status'));
+  if(task.engineVersion===4)host.append(el('p','Reserved tool budget is a pre-request ceiling, not the number of completed or billed calls. Unknown interrupted work stays reserved.','memory-content-status'));
   if(task.discoveryQueries)host.append(el('p',`Search queries completed: ${task.completedQueries||0} · Query budget used: ${task.discoveryQueries} / 2`,'memory-content-status'));
   host.append(el('p',legacy&&active?'Historical task. Its former research workflow is unavailable. Saved sources and knowledge remain intact.':task.message));
+  if(task.limitations?.length){host.append(el('h4','Evidence limitations'));for(const limitation of task.limitations)host.append(el('p',limitation,'memory-content-status'));}
+  const diagnostics=task.evidenceDiagnostics;
+  if(diagnostics){host.append(el('p',`Proposed claims: ${diagnostics.candidates} · Passed evidence checks: ${diagnostics.accepted}`,'memory-content-status'));const extraction=diagnostics.extraction;if(extraction)host.append(el('p',`Tool source URLs: ${extraction.toolSourceURLs} · URL citations: ${extraction.citationsSeen} · Retained cited passages: ${extraction.retainedPassages}`,'memory-content-status'));if(extraction?.dropped)for(const [reason,count]of Object.entries(extraction.dropped))host.append(el('p',`${count} citation(s) not retained: ${reason.replaceAll('_',' ').toLowerCase()}.`,'memory-content-status'));}
+  for(const rejection of [...(diagnostics?.rejections||[]),...(task.memoryRejections||[])])host.append(el('p',rejectionExplanation(rejection.code),'memory-content-status'));
+  if(task.lastFailureCode)host.append(el('p',`Service diagnostic: ${task.lastFailureCode}${task.lastFailurePhase?' · '+task.lastFailurePhase:''}`,'memory-content-status'));
   if(task.retrievalFailures?.length)for(const failure of task.retrievalFailures)host.append(el('p',`${failure.sourceId}: ${failure.reason}`,'memory-content-status'));
   host.append(el('h4',task.plannedAt?'Mindling research plan':'Research plan'));const plan=el('ul');for(const item of task.plan)plan.append(el('li',item));host.append(plan);
   host.append(el('p','Proposed steps are separate from completed research. Hosted web search supplies cited summaries, not raw page quotations or independent fact verification. No source or knowledge step is completed without evidence.','memory-content-status'));
