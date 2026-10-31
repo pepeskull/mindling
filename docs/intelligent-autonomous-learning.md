@@ -162,3 +162,6 @@ check has actually succeeded. No build or dependency installation is needed.
 
 For the production observations after PR #110, confirmed defects, bounded fixes
 and remaining uncertainty, see [Live research diagnostics](live-research-diagnostics.md).
+
+For the later Production 502 incidents, bounded source-analysis recovery and
+Vercel verification runbook, see [Production research HTTP 502](production-research-502.md).

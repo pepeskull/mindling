@@ -111,7 +111,7 @@ export class Dashboard {
     if(this.#state?.mindlingId!==state.mindlingId){this.researchDialog?.close();this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
     if(this.researchSetting&&!this.researchDialog.open){this.researchSetting.checked=Boolean(state.researchPermissions?.enabled);}
-    const learningStatus=this.researchDialog?.querySelector('[data-autonomous-status]');if(learningStatus)learningStatus.textContent=`Autonomous learning: ${state.autonomousStatus||'PAUSED'}${state.autonomousReason?' — '+state.autonomousReason:''}`;
+    const learningStatus=this.researchDialog?.querySelector('[data-autonomous-status]');if(learningStatus)learningStatus.textContent=`Autonomous learning: ${state.autonomousStatus||'PAUSED'}${state.autonomousTask?' · '+state.autonomousTask:''}${state.autonomousReason?' — '+state.autonomousReason:''}`;
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
       neurons: brain.neurons ?? '—',

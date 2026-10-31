@@ -173,7 +173,7 @@ export class MindlingApp extends EvolutionPreview {
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);
     this.seed.update({ nodes: m.nodes, synapses: m.synapses, stage:m.stage });
-    this.dashboard.render({...dashboardState(m),developmentNow:this.state.now,learningSession:learningSession(this),autonomousStatus:learningEngine(this).status,autonomousReason:learningEngine(this).diagnostics.reason,researchPermissions:researchPermissions(this)});
+    this.dashboard.render({...dashboardState(m),developmentNow:this.state.now,learningSession:learningSession(this),autonomousStatus:learningEngine(this).status,autonomousReason:learningEngine(this).diagnostics.reason,autonomousTask:learningEngine(this).diagnostics.topic,researchPermissions:researchPermissions(this)});
     this.events.emit(EVENTS.LIFE_UPDATED, dashboardLife(this.state));
     document.querySelectorAll('.stages li').forEach((row, index) => {
       const current = index + 1 === m.stage;

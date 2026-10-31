@@ -1,4 +1,5 @@
-import { validatePlanningContext, validQuery } from './research-contract.js';
+import { validateServiceDiagnostic } from './service-diagnostics.js';
+import { validatePlanningContext, validQuery, validateResearchCheckpoint } from './research-contract.js';
 import { validClarification, validateAnswers } from '../learning/clarification-model.js';
 import { LEARNING_MODES } from '../learning/input-understanding.js';
 export const TASK_STATES=Object.freeze(['PREPARED','QUEUED','RESEARCHING','EVALUATING','COMMITTING','COMPLETED','BLOCKED','FAILED','CANCELLED']);
@@ -9,6 +10,9 @@ export const terminal=task=>['COMPLETED','CANCELLED','FAILED'].includes(task.sta
 export const taskProgress=task=>Math.min(1,new Set(task.completedWork||[]).size/WORK.length);
 export function validTask(task,mindId){
   try {
+  if(task?.pendingSourceEvidence)validateResearchCheckpoint(task.pendingSourceEvidence);
+  if(task?.serviceDiagnostic)validateServiceDiagnostic(task.serviceDiagnostic);
+  if(task?.researchExecution){const e=task.researchExecution;if(e.version!==1||!['RESERVED','DISPATCHED','COMPLETED','FAILED','OUTCOME_UNKNOWN'].includes(e.toolState)||!Number.isSafeInteger(e.reserved)||e.reserved<1||e.reserved>2||!Number.isSafeInteger(e.completed)||e.completed<0||e.completed>2||!Number.isSafeInteger(e.failed)||e.failed<0||e.failed>2||typeof e.clientDispatched!=='boolean'||typeof e.outcomeUnknown!=='boolean'||![null,true,false].includes(e.upstreamDispatched))return false;}
   if(task?.sourcePlan){validatePlanningContext(task.sourcePlan.request);if(!Array.isArray(task.sourcePlan.queries)||task.sourcePlan.queries.length>2||!task.sourcePlan.queries.every(validQuery)||!['web','biomedical','unsupported'].includes(task.sourcePlan.sourceCategory)||typeof task.sourcePlan.available!=='boolean')return false;}
   if(task?.pendingEvidence&&(!Array.isArray(task.pendingEvidence)||task.pendingEvidence.length>3||task.pendingEvidence.some(claim=>typeof claim.quote!=='string'||claim.quote.length<40||claim.quote.length>700||!/^[a-f0-9]{64}$/.test(claim.quoteHash)||!/^[a-f0-9]{64}$/.test(claim.sourceHash)||typeof claim.category!=='string'||!claim.category.trim()||claim.category.length>80||typeof claim.topic!=='string'||!claim.topic.trim()||claim.topic.length>100||!task.sourceReferences?.some(source=>source.url===claim.sourceURL&&source.hash===claim.sourceHash&&source.observedAt===claim.observedAt))))return false;
   if(task?.evidenceDiagnostics&&(!Array.isArray(task.evidenceDiagnostics.rejections)||task.evidenceDiagnostics.rejections.length>3||task.evidenceDiagnostics.rejections.some(item=>!/^[A-Z_]{1,60}$/.test(item.code))||!Number.isSafeInteger(task.evidenceDiagnostics.candidates)||task.evidenceDiagnostics.candidates<0||task.evidenceDiagnostics.candidates>3||!Number.isSafeInteger(task.evidenceDiagnostics.accepted)||task.evidenceDiagnostics.accepted<0||task.evidenceDiagnostics.accepted>3))return false;
@@ -42,7 +46,7 @@ export function validTask(task,mindId){
     &&(task.discoveryQueries===undefined||Number.isSafeInteger(task.discoveryQueries)&&task.discoveryQueries>=0&&task.discoveryQueries<=2)
     &&(task.discoveryCandidates===undefined||Array.isArray(task.discoveryCandidates)&&task.discoveryCandidates.length<=4&&task.discoveryCandidates.every(candidate=>typeof candidate.url==='string'&&candidate.url.length<=500&&typeof candidate.title==='string'&&candidate.title.length<=240))
     &&(!task.acceptedQuotes||Array.isArray(task.acceptedQuotes)&&task.acceptedQuotes.length<=LIMITS.memories&&task.acceptedQuotes.every(hash=>/^[a-f0-9]{64}$/.test(hash)))
-    &&(!task.scope||typeof task.scope==='object')&&JSON.stringify(task).length<=(task.engineVersion===4?27000:18000);
+    &&(!task.scope||typeof task.scope==='object')&&JSON.stringify(task).length<=(task.pendingSourceEvidence?36000:task.engineVersion===4?27000:18000);
   } catch { return false; }
 }
 export function tasksFor(mind={}){return Array.isArray(mind.learningTasks)?mind.learningTasks.filter(task=>validTask(task,mind.mindlingId||mind.id)).slice(0,LIMITS.tasks):[];}
