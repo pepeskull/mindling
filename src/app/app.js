@@ -6,7 +6,8 @@ import { energyCapacityForStage } from '../economy/energy.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../preview/automatic-playback.js';
 import { STAGES } from '../preview/evolution-model.js';
-import { learn, talk, eligibility } from '../preview/sandbox/engine.js';
+import { teachMemory } from '../learning/teach-memory.js';
+import { talk, eligibility } from '../preview/sandbox/engine.js';
 import { carePreview } from '../preview/sandbox/life.js';
 import { LIFE_RULES } from '../life/life-system.js';
 import { MindlingDatabase } from '../storage/database.js';
@@ -116,20 +117,12 @@ export class MindlingApp extends EvolutionPreview {
         return {accepted:true,message:reply.energySpent===0?'Existing research task reused · no Energy spent.':'Talk completed · 1 Energy spent.',talkResponse:reply};
       } else {
         text=interpretation.factText||text;
-        learn(this.state,{id,text,mindId:m.id,activity}); // Pure immediate preflight, no write.
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
-        await this.change(s => {
-          input.guard();
-          if (s.mind?.id !== m.id) throw Error('Mindling identity changed. Submit again.');
-          const next=learn(s, {id, text, mindId:m.id, activity});
-          const previous=input.taskId&&next.mind.learningTasks?.find(task=>task.id===input.taskId);if(previous&&previous.code==='CLARIFICATION'){previous.status='CANCELLED';previous.code='CLARIFIED_AS_FACT';previous.message='Resolved through direct factual teaching; no research was performed.';previous.updatedAt=Math.max(previous.updatedAt,Date.now());}
-          return next;
-        }, {journal:{id,type:activity}});
-        const event = this.state.mind.history.find(item => item.id === id);
-        const memory = this.state.mind.memories.find(item => item.id === (event?.memoryId || id));
+        const {event,message}=await teachMemory(this,{id,text,activity,taskId:input.taskId},{guard:input.guard,journal:true});
+        const memory = this.state.mind.memories.find(item => item.id === (event?.memoryIds?.[0] || id));
         const edge = this.state.mind.synapses.find(item => item.id === memory?.synapseIds?.[0]);
         if (edge) this.seed.signal({entry:false,source:edge.from,destination:edge.to,synapse:edge.id,outcome:event?.kind==='reinforcement'?'REINFORCEMENT':'MEMORY_FORMATION'});
-        return {accepted:true,message:event?.kind==='reinforcement'?'Already learned. Memory reinforced; no XP awarded.':'Input learned locally; the claim is stored as player-provided and is not fact-checked.'};
+        return {accepted:true,message};
       }
     } catch (error) {
       if (!this.disposed) await this.refreshState();

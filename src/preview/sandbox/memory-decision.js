@@ -1,6 +1,6 @@
 import { atomicStatements, updatePart, updateInput, mutableAttribute } from './atomic-memory.js';
 import { normalize } from '../../learning/text.js';
-// Provider-free decision contract shared by the server and isolated preview.
+// Provider-free decision contract shared by the server, normal app and Stage Preview.
 export const RELATIONSHIPS = ['NEW_MEMORY','SAME_MEMORY','RELATED_MEMORY','UPDATED_MEMORY','CONTRADICTION'];
 export const OPERATIONS = ['CREATE_NEW','REINFORCE_EXISTING','LINK_TO_EXISTING','UPDATE_EXISTING','FLAG_CONTRADICTION','VERIFY_BEFORE_STORAGE','REJECT_UNSAFE_INSTRUCTION','ASK_FOR_CLARIFICATION','NO_MEMORY_CHANGE'];
 export const KINDS = ['claim','preference','goal','skill','historical','intention'];

@@ -10,7 +10,7 @@ import { atomicStatements, explicitMutableKind, updatePart, updateInput, mutable
 import { formationAssociations, recordMemory, decomposeLegacy, reinforceMemory, serviceMetadata } from './memory-records.js';
 
 // All operations run synchronously in the caller's ONE IndexedDB transaction.
-// Native production learning never enters this operation-aware service path.
+// Normal and Stage Preview Teach share this operation-aware service path.
 export function applyMemoryDecision(state,event,assessment,{XP}) {
   if(!['TALK','TEACH','DEEP_TRAINING'].includes(event.activity))throw Error('Unsupported learning activity');
   const statements=atomicStatements(event.text);
