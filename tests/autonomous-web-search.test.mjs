@@ -50,10 +50,10 @@ test('planning supports general/current questions and genuinely needed clarifica
 test('unsupported, failed, incomplete, uncited and oversized hosted search never invent evidence',async t=>{
   for(const [name,response,expected] of [
     ['rate limit',()=>new Response('',{status:429}),'RATE_LIMITED'],
-    ['unsupported',()=>Response.json({error:{}},{status:400}),'INFORMATION_UNSUPPORTED'],
-    ['incomplete',()=>Response.json(payload({status:'incomplete'})),'INFORMATION_INCOMPLETE'],
-    ['no tool',()=>Response.json(payload({search:false})),'INFORMATION_NO_SEARCH'],
-    ['oversized',()=>new Response('x'.repeat(196609),{headers:{'content-type':'application/json'}}),'INFORMATION_RESPONSE_TOO_LARGE']
+    ['unsupported',()=>Response.json({error:{}},{status:400}),'INVALID_REQUEST'],
+    ['incomplete',()=>Response.json(payload({status:'incomplete'})),'RESPONSE_PARSE_ERROR'],
+    ['no tool',()=>Response.json(payload({search:false})),'NO_SEARCH_EXECUTED'],
+    ['oversized',()=>new Response('x'.repeat(196609),{headers:{'content-type':'application/json'}}),'RESPONSE_PARSE_ERROR']
   ])await t.test(name,async()=>{const res=await api('research-acquire',context,async target=>target.includes('/models/')?Response.json({id:'opaque-model'}):response());assert.equal(res.body.error.code,expected);assert.equal(res.body.acquisition,undefined);});
   const res=await api('research-acquire',context,async target=>target.includes('/models/')?Response.json({id:'opaque-model'}):Response.json(payload({cite:false})));
   assert.equal(res.code,200);assert.equal(res.body.acquisition.sources.length,0);assert.equal(res.body.acquisition.evaluation.claims.length,0);
@@ -64,12 +64,12 @@ test('citations must belong to actual completed tool sources; failed tool calls 
   assert.equal(res.code,200);assert.equal(res.body.acquisition.sources.length,0);
   const failed=payload();failed.output[0].status='failed';
   const rejected=await api('research-acquire',context,async target=>target.includes('/models/')?Response.json({id:'opaque-model'}):Response.json(failed));
-  assert.equal(rejected.body.error.code,'INFORMATION_NO_SEARCH');
+  assert.equal(rejected.body.error.code,'NO_SEARCH_EXECUTED');
 });
 test('aborted hosted retrieval propagates cancellation and cannot return a candidate',async()=>{
   const original=process.env.MINDLING_WEB_SEARCH;process.env.MINDLING_WEB_SEARCH='enabled';const controller=new AbortController();
   globalThis.fetch=async(target,options)=>{assert.equal(options.signal,controller.signal);controller.abort();throw new DOMException('cancel','AbortError');};
-  try{await assert.rejects(information.search(context,'synthetic-key','opaque-model',controller.signal),{name:'AbortError'});}finally{globalThis.fetch=originalFetch;if(original===undefined)delete process.env.MINDLING_WEB_SEARCH;else process.env.MINDLING_WEB_SEARCH=original;}
+  try{await assert.rejects(information.search(context,'synthetic-key','opaque-model',controller.signal),{code:'REQUEST_INTERRUPTED'});}finally{globalThis.fetch=originalFetch;if(original===undefined)delete process.env.MINDLING_WEB_SEARCH;else process.env.MINDLING_WEB_SEARCH=original;}
 });
 test('URL/source contracts reject local/credential targets, invented quotations and ungrounded dates',()=>{
   for(const unsafe of ['http://example.org','https://127.0.0.1/','https://localhost/','https://service.internal/','https://user:secret@example.org/','https://example.org/?token=secret'])assert.throws(()=>publicSourceURL(unsafe));

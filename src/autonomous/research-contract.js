@@ -63,3 +63,14 @@ export function validateAcquisition(value){
   }
   validateSourceEvaluation(value.evaluation,value.sources);return value;
 }
+// Public, signed source evidence only; never credentials or a private conversation.
+// The browser validates shape; only the server can verify the HMAC proof.
+export function validateResearchCheckpoint(value){
+  if(!object(value)||Object.keys(value).sort().join(',')!=='evidence,expiresAt,originalId,plan,request,signature,version'||value.version!==1||!Number.isSafeInteger(value.expiresAt)||!/^[a-f0-9]{64}$/.test(value.originalId)||!/^[a-f0-9]{64}$/.test(value.signature))fail();
+  validatePlanningContext(value.request);validateAcquisition(value.evidence);
+  if(!Array.isArray(value.plan)||value.plan.length>3||!value.plan.every(item=>text(item,160)))fail();
+  if(value.evidence.evaluation.claims.length||value.evidence.evaluation.limitations.length||value.evidence.evaluation.nextQuestion!==null||JSON.stringify(value).length>24000)fail();return value;
+}
+export function validateResearchEvaluationContext(value){
+  if(!object(value)||Object.keys(value).join(',')!=='checkpoint')fail();validateResearchCheckpoint(value.checkpoint);return value;
+}

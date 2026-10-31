@@ -1,3 +1,4 @@
+import { SERVICE_MESSAGES, canRetryResearch, retryableServiceFailure } from './service-diagnostics.js';
 import { AUTONOMY, dayKey, nextOpportunity, autonomousStatus, autonomousDiagnostics } from './autonomous-schedule.js';
 import { EVENTS } from '../app/events.js';
 import { evidenceRejection, canonicalRejection, rejectionExplanation } from './research-evidence.js';
@@ -10,7 +11,7 @@ import { LIFE_RULES } from '../life/life-system.js';
 import { LIMITS, validTask, writableTasks, tasksFor, terminal, digest } from './tasks.js';
 import { defaultPermissions, validatePermissions } from './research-permissions.js';
 import { INFORMATION_CAPABILITY, publicResearchTopic } from './research-contract.js';
-import { requestResearchPlanning, requestResearchAcquisition, requestResearchCapabilities } from '../cognition/reasoning-client.js';
+import { requestResearchPlanning, requestResearchAcquisition, requestResearchCapabilities, requestResearchEvaluation } from '../cognition/reasoning-client.js';
 import { beginClarification, cancelTaskClarification } from '../learning/clarification.js';
 
 const engines=new WeakMap();
@@ -50,11 +51,11 @@ export class AutonomousLearningEngine {
   }
   recover(){
     if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||!this.preferences?.enabled)return;
-    for(const task of tasksFor(this.app.state.mind)){const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;if(task.engineVersion===4&&!terminal(task)&&(['PERMISSION_REQUIRED','ACCESS_DISABLED','INTERRUPTED','QUEUED','OFFLINE'].includes(task.code)||interrupted||aborted))this.startIfAuthorized(task);}
+    for(const task of tasksFor(this.app.state.mind)){const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;if(task.engineVersion===4&&!terminal(task)&&interrupted&&!canRetryResearch(task)){this.patch(task.id,task.run,item=>{item.lastFailurePhase=item.lastFailurePhase||item.status;item.status='BLOCKED';item.code=item.lastFailureCode||'REQUEST_INTERRUPTED';item.message=SERVICE_MESSAGES[item.code]||'Research interrupted; unknown remote work remains reserved.';}).catch(()=>{});continue;}if(task.engineVersion===4&&!terminal(task)&&(['PERMISSION_REQUIRED','ACCESS_DISABLED','INTERRUPTED','QUEUED','OFFLINE'].includes(task.code)||interrupted||aborted))this.startIfAuthorized(task);}
     this.schedule();
   }
   startIfAuthorized(task){
-    if(!task||terminal(task)||task.engineVersion!==4||['CLARIFICATION','MODEL_CLARIFICATION','SOURCE_UNSUPPORTED','QUERY_REVIEW','BUDGET_EXHAUSTED','NO_EVIDENCE','INFORMATION_UNCONFIGURED','INFORMATION_UNSUPPORTED','INFORMATION_UNAUTHORIZED'].includes(task.code)||this.disposed)return;
+    if(!task||terminal(task)||task.engineVersion!==4||!canRetryResearch(task)||['CLARIFICATION','MODEL_CLARIFICATION','SOURCE_UNSUPPORTED','QUERY_REVIEW','BUDGET_EXHAUSTED','NO_EVIDENCE','INFORMATION_UNCONFIGURED','INFORMATION_UNSUPPORTED','INFORMATION_UNAUTHORIZED'].includes(task.code)||this.disposed)return;
     this.queue.add(task.id);this.drain();
   }
   async drain(){
@@ -124,7 +125,7 @@ export class AutonomousLearningEngine {
       if(payload.enabled){this.startIfAuthorized(task);return {accepted:true,message:'Mindling planning continues automatically.'};}return {accepted:true,message:'Mindling planning remains disabled.'};
     }
     if(!['retry','continue'].includes(action))throw Error('Unknown research action.');
-    if(task.attempts>=LIMITS.attempts)throw Error('This task reached its bounded attempt limit.');
+    if(!canRetryResearch(task))throw Error(SERVICE_MESSAGES.BUDGET_EXHAUSTED);
     if(!(await this.loadPermissions(true)).enabled)throw Error('Allow Mindling planning in Settings before continuing this historical or interrupted task.');
     const next=await this.patch(id,null,item=>{if(item.engineVersion===2&&item.planningCalls===undefined){item.planningCalls=Math.min(item.attempts,2);item.modelCalls=item.planningCalls;}item.attempts++;item.engineVersion=4;item.code='QUEUED';item.status='BLOCKED';item.message='Mindling planning queued under current authorization.';});this.startIfAuthorized(next);return next;
   }
@@ -135,7 +136,7 @@ export class AutonomousLearningEngine {
   }
   async run(task,topic){
     if(this.active)return;this.assertLive(task.mindlingId);
-    const controller=new AbortController(),run=crypto.randomUUID();this.active={id:task.id,controller};const deadline=setTimeout(()=>controller.abort(),120000);
+    const controller=new AbortController(),run=crypto.randomUUID();this.active={id:task.id,run,controller};const deadline=setTimeout(()=>controller.abort(),120000);
     try{
       let current=await this.patch(task.id,null,item=>{if(terminal(item))throw Error('Task finished.');item.run=run;item.session=this.session;item.attempts=Math.max(1,item.attempts);});
       let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
@@ -153,8 +154,22 @@ export class AutonomousLearningEngine {
       }
       await this.sources(current,run,controller);
     }catch(error){try{
-      const code=navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'INTERRUPTED':/^(?:INFORMATION_[A-Z_]+|RATE_LIMITED|BUDGET_EXHAUSTED)$/.test(error.code||error.message)?error.code||error.message:'PLANNING_UNAVAILABLE';
-      const blocked=await this.patch(task.id,run,item=>{if(terminal(item))return;item.lastFailurePhase=item.code==='PLANNING'?'PLANNING':item.status;item.status='BLOCKED';item.code=code;item.lastFailureCode=code;item.retryAt=Date.now()+AUTONOMY.retryDelay*Math.max(1,item.attempts);item.message=code==='OFFLINE'?'Research paused — Offline.':code==='INTERRUPTED'?'Research paused. Completed work is saved.':code==='INFORMATION_UNCONFIGURED'?'Research paused — Web information access is not configured.':code==='RATE_LIMITED'?'Research paused — Service rate limit. A bounded retry is scheduled.':'Research paused. Reliable supporting information could not be acquired within the service and research limits.';});this.notify(blocked);
+      const code=navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'REQUEST_INTERRUPTED':Object.hasOwn(SERVICE_MESSAGES,error.code||error.message)?error.code||error.message:/^INFORMATION_[A-Z_]+$/.test(error.code||'')?error.code:'PLANNING_UNAVAILABLE';
+      const blocked=await this.patch(task.id,run,item=>{
+        if(terminal(item))return;
+        // Keep the original failure instead of replacing it with a failed retry preflight.
+        if(code==='BUDGET_EXHAUSTED'&&item.lastFailureCode){item.retryBlockedReason=code;item.status='BLOCKED';return;}
+        item.lastFailurePhase=error.diagnostic?.phase||(item.code==='PLANNING'?'PLANNING':item.status);item.status='BLOCKED';item.code=code;item.lastFailureCode=code;
+        item.retryAt=Date.now()+AUTONOMY.retryDelay*Math.max(1,item.attempts);
+        if(error.diagnostic){item.serviceDiagnostic=error.diagnostic;this.recordExecution(item,error.diagnostic);}
+        else if(item.researchExecution&&['RESERVED','DISPATCHED'].includes(item.researchExecution.toolState)){item.researchExecution.toolState='OUTCOME_UNKNOWN';item.researchExecution.outcomeUnknown=true;}
+        if(error.checkpoint&&JSON.stringify(error.checkpoint.request)===JSON.stringify(item.sourcePlan?.request)){
+          item.pendingSourceEvidence=error.checkpoint;
+          const acquired=error.checkpoint.evidence;item.completedToolCalls=acquired.requests;item.completedWork=[...new Set([...item.completedWork,'retrieval','source'])];
+          for(const source of acquired.sources)if(!item.sourceReferences.some(ref=>ref.url===source.url))item.sourceReferences.push({url:source.url,title:source.title,provider:source.provider,type:source.type,hash:source.hash,status:'pending-analysis',authorizedAt:Date.now(),observedAt:Date.now()});
+        }
+        item.message=code==='OFFLINE'?'Research paused — Offline.':SERVICE_MESSAGES[code]||'Research paused. The task details preserve the service failure.';
+      });this.notify(blocked);
     }catch{/* A newer run, cancellation or identity owns the task. */}}
     finally{clearTimeout(deadline);this.reviewedTopics.delete(task.id);if(this.active?.controller===controller)this.active=null;if(!this.disposed&&!this.app.disposed)this.app.renderState();this.schedule();}
   }
@@ -166,12 +181,19 @@ export class AutonomousLearningEngine {
     }
     let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
     if(task.pendingEvidence?.length)return this.integrate(task,run,controller,prefs);
-    const authorizedAt=Date.now(),remainingCalls=2-(task.sourceRequests||0);if(remainingCalls<1)throw Error('BUDGET_EXHAUSTED');
-    // Reserve the whole hosted-tool budget before sending: unknown/aborted remote
-    // work is never refunded, which prevents reload/cancellation cost loops.
-    let current=await this.patch(task.id,run,item=>{if((item.modelCalls||0)+2>LIMITS.inferenceCalls)throw Error('BUDGET_EXHAUSTED');item.modelCalls=(item.modelCalls||0)+2;item.evaluationCalls=(item.evaluationCalls||0)+1;item.sourceRequests+=remainingCalls;item.status='RESEARCHING';item.code='SEARCHING';item.message='Researching public sources and comparing cited evidence.';});
-    const context={request:current.sourcePlan.request,queries:current.sourcePlan.queries,remainingCalls,plan:current.plan},id=await digest(JSON.stringify([task.id,run,'web-search',context]));
-    const result=await requestResearchAcquisition({id,context,signal:controller.signal});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
+    const authorizedAt=Date.now(),checkpoint=task.pendingSourceEvidence,remainingCalls=2-(task.sourceRequests||0);
+    if(!checkpoint&&remainingCalls<1)throw Error('BUDGET_EXHAUSTED');
+    const context=checkpoint?{checkpoint}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan};
+    const id=await digest(JSON.stringify([task.id,run,checkpoint?'source-evaluation':'web-search',context]));
+    let current=await this.patch(task.id,run,item=>{
+      const calls=checkpoint?1:2;if((item.modelCalls||0)+calls>LIMITS.inferenceCalls||(item.evaluationCalls||0)>=2)throw Error('BUDGET_EXHAUSTED');
+      item.modelCalls=(item.modelCalls||0)+calls;item.evaluationCalls=(item.evaluationCalls||0)+1;
+      if(!checkpoint){item.sourceRequests+=remainingCalls;item.researchExecution={version:1,reserved:remainingCalls,toolState:'RESERVED',clientDispatched:false,upstreamDispatched:null,completed:0,failed:0,outcomeUnknown:false};}
+      item.researchExecution.correlationId=id;item.researchExecution.operation=checkpoint?'research-evaluate':'research-acquire';
+      item.status=checkpoint?'EVALUATING':'RESEARCHING';item.code=checkpoint?'EVALUATING':'SEARCHING';item.message=checkpoint?'Evaluating the previously retrieved signed evidence; no new search.':'Researching public sources and comparing cited evidence.';
+    });
+    current=await this.patch(task.id,run,item=>{item.researchExecution.clientDispatched=true;if(!checkpoint)item.researchExecution.toolState='DISPATCHED';});
+    const result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
     const acquired=result.acquisition,observedAt=Date.now(),pending=[],rejections=[];
     for(const source of acquired.sources)if(await digest(source.text)!==source.hash)throw Error('Source evidence hash did not match.');
     for(const claim of acquired.evaluation.claims){
@@ -182,15 +204,24 @@ export class AutonomousLearningEngine {
     }
     if(!acquired.evaluation.claims.length)rejections.push({code:acquired.sources.length?'NO_MODEL_CANDIDATES':'NO_CITED_PASSAGES'});
     current=await this.patch(task.id,run,item=>{
+      if(result.execution){item.serviceDiagnostic=result.execution;this.recordExecution(item,result.execution);}
+      delete item.pendingSourceEvidence;
       item.evidenceDiagnostics={version:1,candidates:acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
       item.totalBytes=(item.totalBytes||0)+acquired.bytes;item.status='EVALUATING';item.code='EVALUATING';item.message='Checking tool-cited research against canonical memory.';item.limitations=acquired.evaluation.limitations;item.nextQuestion=acquired.evaluation.nextQuestion;item.responseId=acquired.responseId;item.completedToolCalls=acquired.requests;
       if(pending.length)item.pendingEvidence=pending;else delete item.pendingEvidence;
-      for(const source of acquired.sources)item.sourceReferences.push({url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,excerpt:source.text,...(source.passages?{passages:source.passages}:{}),authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId});
+      for(const source of acquired.sources){const metadata={url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,excerpt:source.text,...(source.passages?{passages:source.passages}:{}),authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId};const existing=item.sourceReferences.find(ref=>ref.url===source.url);if(existing)Object.assign(existing,metadata);else item.sourceReferences.push(metadata);}
       if(acquired.requests)item.completedWork=[...new Set([...item.completedWork,'retrieval'])];
       if(acquired.sources.length)item.completedWork=[...new Set([...item.completedWork,'source','evidence'])];
     },{researchGrant:this.grant(prefs)});
     if(!pending.length)return block('NO_EVIDENCE',`Research paused — Insufficient evidence. ${rejectionExplanation(rejections[0]?.code)} No research knowledge was saved.`);
     return this.integrate(current,run,controller,prefs);
+  }
+  recordExecution(task,diagnostic){
+    const receipt=task.researchExecution;if(!receipt)return;
+    receipt.upstreamDispatched=receipt.upstreamDispatched===true||diagnostic.searchDispatched;receipt.completed=diagnostic.completed;receipt.failed=diagnostic.failed;receipt.outcomeUnknown=diagnostic.outcomeUnknown;
+    receipt.toolState=diagnostic.outcomeUnknown?'OUTCOME_UNKNOWN':diagnostic.completed>0?'COMPLETED':diagnostic.failed>0?'FAILED':diagnostic.searchDispatched?'FAILED':'RESERVED';
+    task.completedToolCalls=diagnostic.completed;
+    if(diagnostic.searchCompleted)task.completedWork=[...new Set([...task.completedWork,'retrieval'])];
   }
   async integrate(task,run,controller,prefs){
     prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
@@ -258,7 +289,7 @@ export class AutonomousLearningEngine {
     if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||this.active||this.draining)return this.schedule();
     const prefs=await this.loadPermissions(true);if(!prefs.enabled)return;
     const now=Date.now(),tasks=tasksFor(this.app.state.mind);
-    const retry=tasks.find(task=>task.engineVersion===4&&!terminal(task)&&['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE'].includes(task.code)&&(task.retryAt||0)<=now&&task.attempts<LIMITS.attempts&&((task.modelCalls||0)<LIMITS.inferenceCalls||task.pendingEvidence?.length));
+    const retry=tasks.find(task=>task.engineVersion===4&&!terminal(task)&&retryableServiceFailure(task)&&(task.retryAt||0)<=now&&canRetryResearch(task));
     if(retry){const next=await this.patch(retry.id,null,item=>{item.attempts++;item.code='QUEUED';});this.startIfAuthorized(next);return;}
     const topic=nextOpportunity(this.app.state.mind,now);
     if(topic){const interpretation=understandInput(`Learn about ${topic}`,'TEACH');if(!interpretation.clarification){const task=await this.prepare(interpretation,`autonomous:${crypto.randomUUID()}`,{autonomous:true});this.startIfAuthorized(task);return;}}
