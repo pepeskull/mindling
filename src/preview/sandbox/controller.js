@@ -6,7 +6,7 @@ import { EVENTS } from '../../app/events.js';
 import { energyCapacityForStage } from '../../economy/energy.js';
 import { PATHWAYS, DEFAULT_ORIGINS } from '../../pathways/pathways.js';
 import { LEARNING_INPUT_LIMIT } from '../../memory/content-integrity.js';
-import { learningContext } from './learning-assessment.js';
+import { teachMemory } from '../../learning/teach-memory.js';
 import { EvolutionPreview } from '../evolution-preview.js';
 import { AutomaticNetworkCountdown } from '../automatic-playback.js';
 import { STAGES } from '../evolution-model.js';
@@ -16,7 +16,6 @@ import { createSandbox,newMindling,advanceTime,resetClock,eligibility,learn,upgr
 import { LIFE_RULES } from '../../life/life-system.js';
 import { TestWalletUI } from './wallet-ui.js';
 import { PreviewStore } from './storage.js';
-import { requestLearningAssessment } from './learning-service.js';
 
 export class SandboxPreview extends EvolutionPreview {
   constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'}),originalFraming:true,canonicalBrain:true}); this.listeners=new AbortController(); }
@@ -133,22 +132,10 @@ export class SandboxPreview extends EvolutionPreview {
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return {accepted:true,talkResponse:reply};
       }
       text=interpretation.factText||text;
-      const submittedContext=JSON.stringify(learningContext(text,m));
       this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
-      const assessment=await requestLearningAssessment(text,structuredClone(m));
-      if(this.disposed)throw Error('Preview was closed before learning completed. No Energy or XP changed.');
-      await this.change(s=>{
-        input.guard();
-        if(s.mind?.id!==m.id)throw Error('Mindling identity changed. Submit again.');
-        if(JSON.stringify(learningContext(text,s.mind))!==submittedContext)throw Error('Relevant memories changed. Submit again. No Energy or XP changed.');
-        const next=learn(s,{id,text,mindId:m.id,activity,assessment});const previous=input.taskId&&next.mind.learningTasks?.find(task=>task.id===input.taskId);if(previous&&previous.code==='CLARIFICATION'){previous.status='CANCELLED';previous.code='CLARIFIED_AS_FACT';previous.message='Resolved through direct factual teaching; no research was performed.';previous.updatedAt=Math.max(previous.updatedAt,Date.now());}return next;
-      });
-      const event=this.state.mind.history.find(item=>item.id===id);
-      const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered.',NO_MEMORY_CHANGE:'No memory change was needed.',FLAG_CONTRADICTION:'Conflicting claim recorded; existing knowledge was preserved.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.',BATCH:'Independent statements processed together; existing history was preserved.'};
-      const message=event?.kind==='reinforcement'?'Already learned. Memory reinforced.':messages[event?.operation]||'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.';
+      const {event,message,refused}=await teachMemory(this,{id,text,activity,taskId:input.taskId},{guard:input.guard});
       this.status(`${message} ${event?.energySpent?`${event.energySpent} Energy spent.`:'No Energy spent.'}${event?.xp?'':' No XP awarded.'}`);
       document.querySelector('#mindling-input').value='';
-      const operations=event?.operations||[event?.operation],refused=operations.every(operation=>['REJECT_UNSAFE_INSTRUCTION','VERIFY_BEFORE_STORAGE','ASK_FOR_CLARIFICATION'].includes(operation));
       this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:refused?'cancel':'accepted',activity});
       return {accepted:true,message};
     } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});if(!request&&activity==='TALK')this.dashboard.showTalkResponse({id,state:'error',message:error.message});throw error;}
