@@ -71,7 +71,7 @@ test('server rejects invented references and upstream failures with stable publi
     server._resetRateLimits();globalThis.fetch=withModelLookup(async()=>({ok:true,async json(){return {choices:[{message:{content:JSON.stringify({...serverAssessment(1),relationship:'RELATED_MEMORY',operation:'LINK_TO_EXISTING',relatedMemoryId:'invented'})}}]};}}));
     let res=response();await server.handler(request(context),res);assert.equal(res.statusCode,502);assert.deepEqual(res.body.error,{code:'ANALYSIS_INVALID'});assert.doesNotMatch(JSON.stringify(res.body),/invented|secret/);
     server._resetRateLimits();globalThis.fetch=withModelLookup(async()=>({ok:false,status:503,async json(){return {raw:'provider failure'};}}));
-    res=response();await server.handler(request(context),res);assert.equal(res.statusCode,502);assert.deepEqual(res.body.error,{code:'ANALYSIS_UNAVAILABLE'});assert.doesNotMatch(JSON.stringify(res.body),/provider failure|503/);
+    res=response();await server.handler(request(context),res);assert.equal(res.statusCode,502);assert.deepEqual(res.body.error,{code:'ANALYSIS_UNAVAILABLE'});assert.doesNotMatch(JSON.stringify(res.body),/provider failure/);assert.equal(res.body.diagnostic.upstreamStatus,503);assert.equal(res.body.diagnostic.category,'UPSTREAM_HTTP_ERROR');
   } finally {globalThis.fetch=originalFetch;if(originalKey===undefined)delete process.env.SERVICE_API;else process.env.SERVICE_API=originalKey;}
 });
 
