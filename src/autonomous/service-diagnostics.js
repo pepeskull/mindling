@@ -1,6 +1,7 @@
 import { validateLimitationFailure } from './research-limitations.js';
 import { validateSourceEvaluationDiagnostics } from './research-contract.js';
 export const SERVICE_MESSAGES=Object.freeze({
+  RESPONSE_SERIALIZATION_ERROR:'The completed research result could not be serialized by the server. Signed source evidence may be available for a bounded retry.',
   UPSTREAM_HTTP_ERROR:'The information service rejected this operation. The task details contain a safe request reference.',
   UPSTREAM_NETWORK_ERROR:'The information service connection failed. Remote work may still have run; the reserved budget is protected.',
   UPSTREAM_TIMEOUT:'The information service exceeded the application deadline. Completed remote work may be unknown.',
@@ -16,7 +17,7 @@ export const SERVICE_MESSAGES=Object.freeze({
 });
 export function validateServiceDiagnostic(value){
   if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['correlationId','operation','phase','endpoint','upstreamStatus','upstreamRequestId','errorCategory','detail','durationMs','searchRequested','searchDispatched','searchCompleted','completed','failed','outcomeUnknown','sourceCount','fallbackReason','modelConfirmed','validation','limitationFailure'].includes(key)))throw Error('Invalid service diagnostic');
-  if(!/^[a-f0-9]{64}$/.test(value.correlationId)||!['research','research-acquire','research-evaluate','research-capabilities'].includes(value.operation)||!['SERVICE','MODEL','PLANNING','INFORMATION','SOURCE_EVALUATION'].includes(value.phase)||![null,'models','responses','completions'].includes(value.endpoint)||!(value.upstreamStatus===null||Number.isSafeInteger(value.upstreamStatus)&&value.upstreamStatus>=100&&value.upstreamStatus<=599)||value.errorCategory!==null&&!Object.hasOwn(SERVICE_MESSAGES,value.errorCategory)||!/^[A-Z_]{1,60}$/.test(value.detail)||!Number.isSafeInteger(value.durationMs)||value.durationMs<0||value.durationMs>120000||['searchRequested','searchDispatched','searchCompleted','outcomeUnknown'].some(key=>typeof value[key]!=='boolean')||['completed','failed'].some(key=>!Number.isSafeInteger(value[key])||value[key]<0||value[key]>2)||!Number.isSafeInteger(value.sourceCount)||value.sourceCount<0||value.sourceCount>3||value.fallbackReason!=='none'||value.modelConfirmed!==undefined&&typeof value.modelConfirmed!=='boolean'||value.upstreamRequestId!==undefined&&!/^[A-Za-z0-9_-]{1,120}$/.test(value.upstreamRequestId))throw Error('Invalid service diagnostic');
+  if(!/^[a-f0-9]{64}$/.test(value.correlationId)||!['research','research-acquire','research-evaluate','research-capabilities'].includes(value.operation)||!['SERVICE','MODEL','PLANNING','INFORMATION','SOURCE_EVALUATION','RESPONSE_SERIALIZATION'].includes(value.phase)||![null,'models','responses','completions'].includes(value.endpoint)||!(value.upstreamStatus===null||Number.isSafeInteger(value.upstreamStatus)&&value.upstreamStatus>=100&&value.upstreamStatus<=599)||value.errorCategory!==null&&!Object.hasOwn(SERVICE_MESSAGES,value.errorCategory)||!/^[A-Z_]{1,60}$/.test(value.detail)||!Number.isSafeInteger(value.durationMs)||value.durationMs<0||value.durationMs>120000||['searchRequested','searchDispatched','searchCompleted','outcomeUnknown'].some(key=>typeof value[key]!=='boolean')||['completed','failed'].some(key=>!Number.isSafeInteger(value[key])||value[key]<0||value[key]>2)||!Number.isSafeInteger(value.sourceCount)||value.sourceCount<0||value.sourceCount>3||value.fallbackReason!=='none'||value.modelConfirmed!==undefined&&typeof value.modelConfirmed!=='boolean'||value.upstreamRequestId!==undefined&&!/^[A-Za-z0-9_-]{1,120}$/.test(value.upstreamRequestId))throw Error('Invalid service diagnostic');
   if(value.validation!==undefined)validateSourceEvaluationDiagnostics(value.validation);
   if(value.limitationFailure!==undefined)validateLimitationFailure(value.limitationFailure);
   return value;
@@ -31,10 +32,12 @@ export function researchFailureMessage(diagnostic,hasCheckpoint=false){
   if(diagnostic?.detail==='LIMITATION_INVALID')return `Research paused — An evidence limitation could not be represented safely. ${hasCheckpoint?'Retrieved sources are saved for a bounded evaluation-only retry.':'No research knowledge was saved.'}`;
   return SERVICE_MESSAGES[diagnostic?.errorCategory]||'Research paused. The task details preserve the service failure.';
 }
-export const retryableServiceFailure=task=>task.code==='RESPONSE_PARSE_ERROR'&&!!task.pendingSourceEvidence||['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE','UPSTREAM_NETWORK_ERROR','UPSTREAM_TIMEOUT','REQUEST_INTERRUPTED','UPSTREAM_HTTP_ERROR'].includes(task.code);
+const invalidReceipt=task=>['RECEIPT_VALIDATION_FAILED','CHECKPOINT_VALIDATION_FAILED','EVIDENCE_VALIDATION_FAILED','STALE_RESEARCH_RESPONSE'].includes(task.code);
+export const retryableServiceFailure=task=>!invalidReceipt(task)&&(!!task.pendingSourceEvaluation||!!task.pendingEvidence?.length||task.code==='RESPONSE_PARSE_ERROR'&&!!task.pendingSourceEvidence||['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE','UPSTREAM_NETWORK_ERROR','UPSTREAM_TIMEOUT','REQUEST_INTERRUPTED','UPSTREAM_HTTP_ERROR','RESPONSE_SERIALIZATION_ERROR'].includes(task.code));
 // A saved source plan must never trigger another search when its ceiling was reserved.
 export function canRetryResearch(task){
-  if(task.pendingEvidence?.length)return true;
+  if(invalidReceipt(task))return false;
+  if(task.pendingEvidence?.length||task.pendingSourceEvaluation)return true;
   if(task.attempts>2||task.attempts===2&&task.code!=='QUEUED')return false;
   if(task.pendingSourceEvidence)return (task.modelCalls||0)<4;
   if(task.sourcePlan)return (task.sourceRequests||0)<2&&(task.modelCalls||0)+2<=4;

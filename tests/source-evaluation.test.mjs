@@ -94,7 +94,7 @@ test('mixed production-shaped HTTP 200 assessments retain only exact supported c
   assert.doesNotMatch(JSON.stringify(res.logs),/Neurons|Synapses|PRIVATE|synthetic-private-key|opaque-model|https:/);
 });
 test('zero acceptable claims is explicit insufficient evidence, not HTTP 502 or invented knowledge',async()=>{
-  const res=await api({propose:s=>evaluation(s,'zero')});assert.equal(res.code,200);assert.deepEqual(res.body.acquisition.evaluation.claims,[]);assert.equal(res.body.execution.detail,'INSUFFICIENT_EVIDENCE');assert.equal(res.body.execution.validation.accepted,0);assert.equal(res.body.execution.validation.rejections.length,2);assert.equal(res.body.sourceCheckpoint,undefined);
+  const res=await api({propose:s=>evaluation(s,'zero')});assert.equal(res.code,200);assert.deepEqual(res.body.acquisition.evaluation.claims,[]);assert.equal(res.body.execution.detail,'INSUFFICIENT_EVIDENCE');assert.equal(res.body.execution.validation.accepted,0);assert.equal(res.body.execution.validation.rejections.length,2);validateResearchCheckpoint(res.body.sourceCheckpoint);
 });
 test('malformed evaluation envelopes fail precisely and preserve a signed evidence checkpoint',async()=>{
   for(const propose of [()=>({claims:[],limitations:[]}),s=>({...evaluation(s),claims:[...evaluation(s).claims,...evaluation(s).claims]})]){

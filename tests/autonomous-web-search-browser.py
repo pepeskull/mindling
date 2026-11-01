@@ -45,7 +45,7 @@ with sync_playwright() as p:
       // Interrupt AFTER persisted evidence, before canonical commit, then reopen IndexedDB.
       let stars=await engine.prepare(understandInput('Learn about stars','TEACH'),'stars-request');
       const integrate=engine.integrate.bind(engine);engine.integrate=async()=>{throw new DOMException('synthetic interruption','AbortError');};await engine.run(stars,stars.topic);
-      stars=app.state.mind.learningTasks.find(task=>task.id===stars.id);check(stars.pendingEvidence?.length===1&&stars.code==='REQUEST_INTERRUPTED','pending evidence not durable');
+      stars=app.state.mind.learningTasks.find(task=>task.id===stars.id);check(stars.pendingEvidence?.length===1&&stars.code==='INTEGRATION_FAILED'&&stars.clientDiagnostic.phase==='INTEGRATION'&&!stars.researchExecution.outcomeUnknown,'pending evidence not durable');
       engine.destroy();store.close();const reopened=await new PreviewStore().open();app.store=reopened;app.state=await reopened.read();app.change=async function(reducer,options={}){this.state=await reopened.change(reducer,options);};
       engine=new AutonomousLearningEngine(app);await engine.loadPermissions();let network=0,fetcher=globalThis.fetch;globalThis.fetch=async()=>{network++;throw Error('Recovery must not refetch');};
       await engine.run(app.state.mind.learningTasks.find(task=>task.id===stars.id),stars.topic);globalThis.fetch=fetcher;

@@ -1,5 +1,6 @@
 import { validateServiceDiagnostic } from './service-diagnostics.js';
-import { validatePlanningContext, validQuery, validateResearchCheckpoint } from './research-contract.js';
+import { validatePlanningContext, validQuery, validateResearchCheckpoint, validateSourceEvaluation } from './research-contract.js';
+import { validateClientDiagnostic } from './client-diagnostics.js';
 import { validClarification, validateAnswers } from '../learning/clarification-model.js';
 import { LEARNING_MODES } from '../learning/input-understanding.js';
 export const TASK_STATES=Object.freeze(['PREPARED','QUEUED','RESEARCHING','EVALUATING','COMMITTING','COMPLETED','BLOCKED','FAILED','CANCELLED']);
@@ -12,6 +13,12 @@ export function validTask(task,mindId){
   try {
   if(task?.pendingSourceEvidence)validateResearchCheckpoint(task.pendingSourceEvidence);
   if(task?.serviceDiagnostic)validateServiceDiagnostic(task.serviceDiagnostic);
+  if(task?.clientDiagnostic)validateClientDiagnostic(task.clientDiagnostic);
+  if(task?.pendingSourceEvaluation){
+    const value=task.pendingSourceEvaluation;
+    if(!task.pendingSourceEvidence||Object.keys(value).sort().join(',')!=='authorizedAt,evaluation,receivedAt,version'||value.version!==1||!Number.isSafeInteger(value.authorizedAt)||!Number.isSafeInteger(value.receivedAt)||value.receivedAt<value.authorizedAt||task.serviceDiagnostic?.errorCategory!==null||task.serviceDiagnostic.correlationId!==task.researchExecution?.correlationId)return false;
+    validateSourceEvaluation(value.evaluation,task.pendingSourceEvidence.evidence.sources);
+  }
   if(task?.researchExecution){const e=task.researchExecution;if(e.version!==1||!['RESERVED','DISPATCHED','COMPLETED','FAILED','OUTCOME_UNKNOWN'].includes(e.toolState)||!Number.isSafeInteger(e.reserved)||e.reserved<1||e.reserved>2||!Number.isSafeInteger(e.completed)||e.completed<0||e.completed>2||!Number.isSafeInteger(e.failed)||e.failed<0||e.failed>2||typeof e.clientDispatched!=='boolean'||typeof e.outcomeUnknown!=='boolean'||![null,true,false].includes(e.upstreamDispatched))return false;}
   if(task?.sourcePlan){validatePlanningContext(task.sourcePlan.request);if(!Array.isArray(task.sourcePlan.queries)||task.sourcePlan.queries.length>2||!task.sourcePlan.queries.every(validQuery)||!['web','biomedical','unsupported'].includes(task.sourcePlan.sourceCategory)||typeof task.sourcePlan.available!=='boolean')return false;}
   if(task?.pendingEvidence&&(!Array.isArray(task.pendingEvidence)||task.pendingEvidence.length>3||task.pendingEvidence.some(claim=>typeof claim.quote!=='string'||claim.quote.length<40||claim.quote.length>700||!/^[a-f0-9]{64}$/.test(claim.quoteHash)||!/^[a-f0-9]{64}$/.test(claim.sourceHash)||typeof claim.category!=='string'||!claim.category.trim()||claim.category.length>80||typeof claim.topic!=='string'||!claim.topic.trim()||claim.topic.length>100||!task.sourceReferences?.some(source=>source.url===claim.sourceURL&&source.hash===claim.sourceHash&&source.observedAt===claim.observedAt))))return false;

@@ -46,7 +46,7 @@ with sync_playwright() as p:
       const third=await engine.prepare(understandInput('Learn about cancellation','TEACH'),'unknown-tool',{autonomous:true});
       const running=engine.run(third,'cancel operation');while(app.state.mind.learningTasks.find(task=>task.id===third.id)?.researchExecution?.toolState!=='DISPATCHED')await new Promise(resolve=>setTimeout(resolve,5));
       engine.active.controller.abort();await running;let interrupted=app.state.mind.learningTasks.find(task=>task.id===third.id);
-      check(interrupted.code==='REQUEST_INTERRUPTED'&&interrupted.researchExecution.outcomeUnknown&&interrupted.sourceRequests===2,'unknown remote work refunded or misreported');
+      check(interrupted.code==='TRANSPORT_INTERRUPTED'&&interrupted.clientDiagnostic.phase==='TRANSPORT'&&!interrupted.clientDiagnostic.received&&interrupted.researchExecution.outcomeUnknown&&interrupted.sourceRequests===2,'unknown remote work refunded or misreported');
       check(!canRetryResearch(interrupted),'unknown search can repeat');
       check(app.state.mind.memories.length===1&&app.state.mind.energy.remaining===energy&&app.state.mind.lifetimeXP===xp,'failure/recovery changed rewards or fabricated memories');
       check(JSON.stringify(app.state.player)===player&&JSON.stringify(app.state.mind.pathways)===origins,'identity/origins changed');

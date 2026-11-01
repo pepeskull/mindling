@@ -1,3 +1,4 @@
+import { CLIENT_RESEARCH_CODES } from './client-diagnostics.js';
 import { retryableServiceFailure, canRetryResearch } from './service-diagnostics.js';
 import { specializationFor } from '../pathways/specialization-taxonomy.js';
 import { graphData } from '../memory/graph-data.js';
@@ -33,10 +34,12 @@ export function autonomousDiagnostics(engine){
   const phase=active&&({QUEUED:'PLANNING',RESEARCHING:'RESEARCHING',EVALUATING:'ANALYZING',COMMITTING:'LEARNING'})[active.status];
   if(phase)return {status:phase,reason:active.message,taskId:active.id,topic:active.topic};
   if(engine.active)return {status:'PAUSED',reason:'Preparing the active research operation.',taskId:engine.active.id,topic:active?.topic||''};
+  const local=engine.clientFailure,owner=local&&tasks.find(task=>task.autonomous&&task.id===local.taskId&&task.run===local.run&&task.researchExecution?.correlationId===local.diagnostic.correlationId&&!['COMPLETED','CANCELLED','FAILED'].includes(task.status));
+  if(owner)return {status:['INTEGRATION_PAUSED','TRANSPORT_INTERRUPTED'].includes(local.diagnostic.code)?'PAUSED':'ERROR',reason:CLIENT_RESEARCH_CODES[local.diagnostic.code]+(local.serverDiagnostic?.errorCategory?` Server: ${local.serverDiagnostic.errorCategory} · ${local.serverDiagnostic.phase} · ${local.serverDiagnostic.detail}`:''),taskId:owner.id,topic:owner.topic};
   // A manual research outcome does not diagnose the autonomous scheduler.
   const latest=tasks.filter(task=>task.engineVersion===4&&task.autonomous).sort((a,b)=>b.updatedAt-a.updatedAt)[0];
   if(latest?.status==='BLOCKED'||latest?.status==='FAILED'){
-    const paused=['NO_EVIDENCE','SOURCE_UNSUPPORTED','INTERRUPTED','REQUEST_INTERRUPTED','ACCESS_DISABLED','BUDGET_EXHAUSTED','MODEL_CLARIFICATION','QUERY_REVIEW','PERMISSION_REQUIRED','QUEUED'];
+    const paused=['INTEGRATION_PAUSED','TRANSPORT_INTERRUPTED','NO_EVIDENCE','SOURCE_UNSUPPORTED','INTERRUPTED','REQUEST_INTERRUPTED','ACCESS_DISABLED','BUDGET_EXHAUSTED','MODEL_CLARIFICATION','QUERY_REVIEW','PERMISSION_REQUIRED','QUEUED'];
     const status=latest.code==='RATE_LIMITED'?'RATE_LIMITED':latest.code==='OFFLINE'?'OFFLINE':paused.includes(latest.code)?'PAUSED':'ERROR';
     return {status,reason:latest.message,taskId:latest.id,topic:latest.topic};
   }
