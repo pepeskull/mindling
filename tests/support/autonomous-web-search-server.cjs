@@ -4,12 +4,14 @@ const {createServer}=require('node:http'),fs=require('node:fs/promises'),path=re
 const root=path.resolve(__dirname,'../..');
 process.env.SERVICE_API='synthetic-local-only';process.env.SERVICE_MODEL='opaque-model';process.env.MINDLING_WEB_SEARCH='enabled';
 const analysisAttempts=new Map();
+const sourceEvaluationFixture=require('./source-evaluation-fixtures.cjs');
 globalThis.fetch=async(target,options)=>{
   if(target==='https://api.openai.com/v1/models/opaque-model')return Response.json({id:'opaque-model'});
   if(!['https://api.openai.com/v1/responses','https://api.openai.com/v1/chat/completions'].includes(target))throw Error('External network forbidden in integration fixture');
   const body=JSON.parse(options.body);
   if(target.endsWith('/responses')){
     const {request}=JSON.parse(body.input);
+    if(request.topic.startsWith('source validation'))return Response.json(sourceEvaluationFixture.searchPayload());
     if(request.topic.includes('no hosted action'))return Response.json({id:'resp_synthetic_no_tool',status:'completed',output:[]});
     if(request.topic.includes('failure'))return Response.json({error:{}},{status:429});
     if(request.topic.includes('cancel'))await new Promise((resolve,reject)=>{const timer=setTimeout(resolve,4000);options.signal.addEventListener('abort',()=>{clearTimeout(timer);reject(new DOMException('cancel','AbortError'));},{once:true});});
@@ -25,6 +27,12 @@ globalThis.fetch=async(target,options)=>{
     return Response.json({id:'resp_synthetic_local',status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url}]}},{type:'message',status:'completed',content:[{type:'output_text',text:quote+' [1]',annotations:[{type:'url_citation',start_index:quote.length+1,end_index:quote.length+4,title:'Explicit synthetic source fixture',url}]}]}]});
   }
   const data=JSON.parse(body.messages[1].content),name=body.response_format.json_schema.name;
+  if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('source validation')){
+    const topic=data.request.topic,used=analysisAttempts.get(topic)||0;analysisAttempts.set(topic,used+1);
+    if(topic.includes('recovery')&&!used)return Response.json({error:{message:'Synthetic interrupted source evaluation'}},{status:503});
+    const mode=topic.includes('zero')?'zero':topic.includes('recovery')?'recovery':'mixed';
+    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(sourceEvaluationFixture.evaluation(data.sources,mode))}}]});
+  }
   if(name==='mindling_source_evaluation'&&data.request.topic.includes('analysis once')){const used=analysisAttempts.get(data.request.topic)||0;analysisAttempts.set(data.request.topic,used+1);if(!used)return Response.json({error:{type:'server_error',message:'Synthetic analysis failure'}},{status:503});}
   let result;
   if(name==='mindling_planning')result=data.topic.includes('ambiguous orientation')?{plan:['Choose a foundational focus'],clarification:{question:'Which optional learning focus do you prefer?',options:[]},queries:[],sourceCategory:'web'}:{plan:['Find reliable public sources','Compare cited evidence'],clarification:null,queries:['public knowledge learning'],sourceCategory:'web'};
