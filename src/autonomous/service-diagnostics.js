@@ -1,3 +1,4 @@
+import { validateLimitationFailure } from './research-limitations.js';
 import { validateSourceEvaluationDiagnostics } from './research-contract.js';
 export const SERVICE_MESSAGES=Object.freeze({
   UPSTREAM_HTTP_ERROR:'The information service rejected this operation. The task details contain a safe request reference.',
@@ -14,10 +15,21 @@ export const SERVICE_MESSAGES=Object.freeze({
   RATE_LIMITED:'The information service rate limit was reached. Work remains within its existing budget.'
 });
 export function validateServiceDiagnostic(value){
-  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['correlationId','operation','phase','endpoint','upstreamStatus','upstreamRequestId','errorCategory','detail','durationMs','searchRequested','searchDispatched','searchCompleted','completed','failed','outcomeUnknown','sourceCount','fallbackReason','modelConfirmed','validation'].includes(key)))throw Error('Invalid service diagnostic');
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['correlationId','operation','phase','endpoint','upstreamStatus','upstreamRequestId','errorCategory','detail','durationMs','searchRequested','searchDispatched','searchCompleted','completed','failed','outcomeUnknown','sourceCount','fallbackReason','modelConfirmed','validation','limitationFailure'].includes(key)))throw Error('Invalid service diagnostic');
   if(!/^[a-f0-9]{64}$/.test(value.correlationId)||!['research','research-acquire','research-evaluate','research-capabilities'].includes(value.operation)||!['SERVICE','MODEL','PLANNING','INFORMATION','SOURCE_EVALUATION'].includes(value.phase)||![null,'models','responses','completions'].includes(value.endpoint)||!(value.upstreamStatus===null||Number.isSafeInteger(value.upstreamStatus)&&value.upstreamStatus>=100&&value.upstreamStatus<=599)||value.errorCategory!==null&&!Object.hasOwn(SERVICE_MESSAGES,value.errorCategory)||!/^[A-Z_]{1,60}$/.test(value.detail)||!Number.isSafeInteger(value.durationMs)||value.durationMs<0||value.durationMs>120000||['searchRequested','searchDispatched','searchCompleted','outcomeUnknown'].some(key=>typeof value[key]!=='boolean')||['completed','failed'].some(key=>!Number.isSafeInteger(value[key])||value[key]<0||value[key]>2)||!Number.isSafeInteger(value.sourceCount)||value.sourceCount<0||value.sourceCount>3||value.fallbackReason!=='none'||value.modelConfirmed!==undefined&&typeof value.modelConfirmed!=='boolean'||value.upstreamRequestId!==undefined&&!/^[A-Za-z0-9_-]{1,120}$/.test(value.upstreamRequestId))throw Error('Invalid service diagnostic');
   if(value.validation!==undefined)validateSourceEvaluationDiagnostics(value.validation);
+  if(value.limitationFailure!==undefined)validateLimitationFailure(value.limitationFailure);
   return value;
+}
+// A previous run's diagnostic must not diagnose a newer dispatched request.
+export function matchingEvaluationFailure(task){
+  const diagnostic=task.serviceDiagnostic,receipt=task.researchExecution;
+  try{validateServiceDiagnostic(diagnostic);}catch{return null;}
+  return diagnostic.phase==='SOURCE_EVALUATION'&&diagnostic.errorCategory&&receipt?.correlationId===diagnostic.correlationId&&receipt.operation===diagnostic.operation?diagnostic:null;
+}
+export function researchFailureMessage(diagnostic,hasCheckpoint=false){
+  if(diagnostic?.detail==='LIMITATION_INVALID')return `Research paused — An evidence limitation could not be represented safely. ${hasCheckpoint?'Retrieved sources are saved for a bounded evaluation-only retry.':'No research knowledge was saved.'}`;
+  return SERVICE_MESSAGES[diagnostic?.errorCategory]||'Research paused. The task details preserve the service failure.';
 }
 export const retryableServiceFailure=task=>task.code==='RESPONSE_PARSE_ERROR'&&!!task.pendingSourceEvidence||['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE','UPSTREAM_NETWORK_ERROR','UPSTREAM_TIMEOUT','REQUEST_INTERRUPTED','UPSTREAM_HTTP_ERROR'].includes(task.code);
 // A saved source plan must never trigger another search when its ceiling was reserved.

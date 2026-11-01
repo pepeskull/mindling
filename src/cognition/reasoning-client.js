@@ -22,7 +22,10 @@ async function requestService({ id, context, signal }, mode = 'evaluation') {
       if(mode==='talk')message+=' No Energy was spent.';
       const failure=Error(message);failure.code=result?.error?.code;
       if(mode.startsWith('research')&&result?.error?.diagnostic){validateServiceDiagnostic(result.error.diagnostic);if(result.error.diagnostic.correlationId!==id||result.error.diagnostic.operation!==mode)throw Error('Mismatched research diagnostic.');failure.diagnostic=result.error.diagnostic;}
-      if(mode.startsWith('research')&&result?.sourceCheckpoint){validateResearchCheckpoint(result.sourceCheckpoint);failure.checkpoint=result.sourceCheckpoint;}
+      if(mode.startsWith('research')&&result?.sourceCheckpoint){
+        try{validateResearchCheckpoint(result.sourceCheckpoint);failure.checkpoint=result.sourceCheckpoint;}
+        catch{failure.recoveryBlockedReason='CHECKPOINT_INVALID';}
+      }
       throw failure;
     }
     if(mode==='research-capabilities'){if(result?.service!=='mindling-reasoning-service'||result.kind!=='research-capabilities'||result.information?.provider!=='openai-web-search'||typeof result.information.available!=='boolean')throw Error('Invalid information capability.');}

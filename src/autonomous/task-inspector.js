@@ -1,6 +1,7 @@
 import { rejectionExplanation } from './research-evidence.js';
 import { taskProgress, taskStatusLabel } from './tasks.js';
 import { memoryNodeId } from '../memory/graph-data.js';
+import { matchingEvaluationFailure } from './service-diagnostics.js';
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
 export function renderTaskInspector(host,node,{onAction=null,refresh=()=>{},memories=[]}={}){
   const task=node.task,legacy=task.engineVersion!==4,active=!['COMPLETED','CANCELLED','FAILED'].includes(task.status),status=el('p',undefined,'learning-task-feedback');status.setAttribute('role','status');
@@ -20,7 +21,8 @@ export function renderTaskInspector(host,node,{onAction=null,refresh=()=>{},memo
   const diagnostics=task.evidenceDiagnostics;
   if(diagnostics){host.append(el('p',`Proposed claims: ${diagnostics.candidates} · Passed evidence checks: ${diagnostics.accepted}`,'memory-content-status'));const extraction=diagnostics.extraction;if(extraction)host.append(el('p',`Tool source URLs: ${extraction.toolSourceURLs} · URL citations: ${extraction.citationsSeen} · Retained cited passages: ${extraction.retainedPassages}`,'memory-content-status'));if(extraction?.dropped)for(const [reason,count]of Object.entries(extraction.dropped))host.append(el('p',`${count} citation(s) not retained: ${reason.replaceAll('_',' ').toLowerCase()}.`,'memory-content-status'));}
   for(const rejection of [...(diagnostics?.rejections||[]),...(task.memoryRejections||[])])host.append(el('p',rejectionExplanation(rejection.code),'memory-content-status'));
-  if(task.lastFailureCode)host.append(el('p',`Service diagnostic: ${task.lastFailureCode}${task.lastFailurePhase?' · '+task.lastFailurePhase:''}`,'memory-content-status'));
+  const failure=matchingEvaluationFailure(task);
+  if(task.lastFailureCode||failure)host.append(el('p',`Service diagnostic: ${failure?.errorCategory||task.lastFailureCode}${failure?.phase||task.lastFailurePhase?' · '+(failure?.phase||task.lastFailurePhase):''}${failure?' · '+failure.detail:''}`,'memory-content-status'));
   if(task.retrievalFailures?.length)for(const failure of task.retrievalFailures)host.append(el('p',`${failure.sourceId}: ${failure.reason}`,'memory-content-status'));
   host.append(el('h4',task.plannedAt?'Mindling research plan':'Research plan'));const plan=el('ul');for(const item of task.plan)plan.append(el('li',item));host.append(plan);
   host.append(el('p','Proposed steps are separate from completed research. Hosted web search supplies cited summaries, not raw page quotations or independent fact verification. No source or knowledge step is completed without evidence.','memory-content-status'));
