@@ -2,6 +2,16 @@ import { supportsClaimDate } from './evidence-dates.js';
 import { sourceScopeMatches } from './research-sources.js';
 import { understandInput } from '../learning/input-understanding.js';
 export const REJECTION_REASONS=Object.freeze({
+  CLAIM_FIELDS_INVALID:'A proposed claim did not contain exactly the required evidence fields.',
+  SOURCE_ID_UNKNOWN:'A proposed claim did not reference a retrieved cited source.',
+  QUOTE_FORMAT_INVALID:'A proposed passage did not meet the exact quotation length or format requirements.',
+  QUOTE_NOT_IN_CITED_PASSAGE:'A proposed quotation was not present verbatim within one passage from its cited source.',
+  CATEGORY_INVALID:'A proposed claim had invalid knowledge-category metadata.',
+  TOPIC_INVALID:'A proposed claim had invalid topic metadata.',
+  REASON_INVALID:'A proposed claim had an invalid evidence assessment.',
+  DATE_FORMAT_INVALID:'A proposed as-of date was not a valid ISO calendar date.',
+  DATE_UNSUPPORTED:'A proposed as-of date was not supported by the same cited passage as the claim.',
+  DATE_AFTER_RETRIEVAL:'A proposed as-of date was later than source retrieval.',
   NO_CITED_PASSAGES:'No usable cited report passages were returned.',
   NO_MODEL_CANDIDATES:'The evidence assessment proposed no supported factual claims.',
   MISSING_AS_OF_DATE:'A current fact needs an explicit as-of date in its cited passage; a season or retrieval date is insufficient.',

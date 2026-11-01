@@ -45,15 +45,72 @@ export function publicSourceURL(value){
   if(url.protocol!=='https:'||url.username||url.password||url.port&&url.port!=='443'||!host.includes('.')||host.includes(':')||/^[0-9.]+$/.test(host)||/(?:^|\.)(?:localhost|local|internal|test|invalid|example)$/.test(host)||/[?&](?:key|token|secret|auth|signature|credential)[^=]*=/i.test(url.search))fail();
   url.hash='';return url.href;
 }
-const claimSchema={type:'object',additionalProperties:false,required:['sourceId','quote','category','topic','reason','validAt'],properties:{sourceId:{type:'string'},quote:{type:'string'},category:{type:'string'},topic:{type:'string'},reason:{type:'string'},validAt:{type:['string','null']}}};
-export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:{type:'string'},maxItems:3},nextQuestion:{type:['string','null']}}};
+const claimSchema={type:'object',additionalProperties:false,required:['sourceId','quote','category','topic','reason','validAt'],properties:{sourceId:{type:'string'},quote:{type:'string',minLength:40,maxLength:700},category:{type:'string',minLength:1,maxLength:80},topic:{type:'string',minLength:1,maxLength:100},reason:{type:'string',minLength:1,maxLength:240},validAt:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'}}};
+export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:{type:'string',minLength:1,maxLength:240},maxItems:3},nextQuestion:{type:['string','null'],minLength:1,maxLength:120}}};
+export function sourceEvaluationSchemaFor(sources){
+  const schema=structuredClone(sourceEvaluationSchema);
+  schema.properties.claims.items.properties.sourceId.enum=sources.map(source=>source.id);
+  return schema;
+}
+// The schema constrains shape/length/IDs; exact attribution and calendar support
+// remain application checks. Quotes are never trimmed, paraphrased or repaired.
+export const SOURCE_EVALUATION_RULES=Object.freeze(['CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
+const evaluationFailure=detail=>{throw Object.assign(Error('Mindling could not validate the source evaluation. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail});};
+function evaluationShape(value){
+  if(!object(value)||Object.keys(value).sort().join(',')!=='claims,limitations,nextQuestion'||!Array.isArray(value.claims)||value.claims.length>3||!Array.isArray(value.limitations)||value.limitations.length>3)evaluationFailure('EVALUATION_FIELDS_INVALID');
+}
+function claimRejection(claim,sources){
+  if(!object(claim)||Object.keys(claim).sort().join(',')!=='category,quote,reason,sourceId,topic,validAt')return 'CLAIM_FIELDS_INVALID';
+  const source=sources.find(item=>item.id===claim.sourceId);
+  if(!source)return 'SOURCE_ID_UNKNOWN';
+  if(!text(claim.quote,700)||claim.quote.length<40)return 'QUOTE_FORMAT_INVALID';
+  if(!citedPassages(source).some(passage=>passage.includes(claim.quote)))return 'QUOTE_NOT_IN_CITED_PASSAGE';
+  if(!text(claim.category,80))return 'CATEGORY_INVALID';
+  if(!text(claim.topic,100))return 'TOPIC_INVALID';
+  if(!text(claim.reason,240))return 'REASON_INVALID';
+  if(claim.validAt!==null){
+    if(typeof claim.validAt!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(claim.validAt))return 'DATE_FORMAT_INVALID';
+    const at=Date.parse(claim.validAt+'T00:00:00Z');
+    if(!Number.isFinite(at)||new Date(at).toISOString().slice(0,10)!==claim.validAt)return 'DATE_FORMAT_INVALID';
+    if(!supportsClaimDate(source,claim.quote,claim.validAt))return 'DATE_UNSUPPORTED';
+    if(at>source.observedAt)return 'DATE_AFTER_RETRIEVAL';
+  }
+  return null;
+}
+// Strict validation is used again in the browser and for signed checkpoints.
 export function validateSourceEvaluation(value,sources){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='claims,limitations,nextQuestion'||!Array.isArray(value.claims)||value.claims.length>3||!Array.isArray(value.limitations)||value.limitations.length>3||!value.limitations.every(item=>text(item,240))||!(value.nextQuestion===null||validQuery(value.nextQuestion)))fail();
-  for(const claim of value.claims){
-    const source=sources.find(item=>item.id===claim?.sourceId);
-    if(!object(claim)||Object.keys(claim).sort().join(',')!=='category,quote,reason,sourceId,topic,validAt'||!source||!text(claim.quote,700)||claim.quote.length<40||!citedPassages(source).some(passage=>passage.includes(claim.quote))||!text(claim.category,80)||!text(claim.topic,100)||!text(claim.reason,240))fail();
-    if(claim.validAt!==null){const at=Date.parse(claim.validAt+'T00:00:00Z');if(!/^\d{4}-\d{2}-\d{2}$/.test(claim.validAt)||!Number.isFinite(at)||new Date(at).toISOString().slice(0,10)!==claim.validAt||!supportsClaimDate(source,claim.quote,claim.validAt)||at>source.observedAt)fail();}
-  }return value;
+  evaluationShape(value);
+  if(!value.limitations.every(item=>text(item,240)))evaluationFailure('LIMITATION_INVALID');
+  if(!(value.nextQuestion===null||validQuery(value.nextQuestion)))evaluationFailure('FOLLOWUP_INVALID');
+  for(const claim of value.claims){const rule=claimRejection(claim,sources);if(rule)evaluationFailure(rule);}
+  return value;
+}
+// At the model boundary only, reject individual proposals independently. Return
+// fixed rule/index diagnostics; never disclose or rewrite the rejected content.
+export function selectSourceEvaluation(value,sources){
+  evaluationShape(value);
+  // Limitations may qualify the whole assessment. Never silently erase them.
+  if(!value.limitations.every(item=>text(item,240)))evaluationFailure('LIMITATION_INVALID');
+  const validation={version:1,candidates:value.claims.length,accepted:0,rejections:[],metadataRejections:[]};
+  const claims=value.claims.filter((claim,index)=>{
+    const rule=claimRejection(claim,sources);if(rule)validation.rejections.push({index,rule});return !rule;
+  });
+  const validFollowup=value.nextQuestion===null||validQuery(value.nextQuestion);
+  if(!validFollowup)validation.metadataRejections.push({field:'nextQuestion',rule:'FOLLOWUP_INVALID'});
+  const evaluation={claims,limitations:value.limitations,nextQuestion:validFollowup?value.nextQuestion:null};
+  validateSourceEvaluation(evaluation,sources);validation.accepted=claims.length;
+  return {evaluation,validation};
+}
+export function validateSourceEvaluationDiagnostics(value){
+  if(!object(value)||Object.keys(value).sort().join(',')!=='accepted,candidates,metadataRejections,rejections,version'||value.version!==1||!Number.isSafeInteger(value.candidates)||value.candidates<0||value.candidates>3||!Number.isSafeInteger(value.accepted)||value.accepted<0||value.accepted>value.candidates||!Array.isArray(value.rejections)||value.rejections.length!==value.candidates-value.accepted||!Array.isArray(value.metadataRejections)||value.metadataRejections.length>1)evaluationFailure('EVALUATION_DIAGNOSTIC_INVALID');
+  const indices=new Set();
+  for(const item of value.rejections){
+    if(!object(item)||Object.keys(item).sort().join(',')!=='index,rule'||!Number.isSafeInteger(item.index)||item.index<0||item.index>=value.candidates||indices.has(item.index)||!SOURCE_EVALUATION_RULES.includes(item.rule))evaluationFailure('EVALUATION_DIAGNOSTIC_INVALID');indices.add(item.index);
+  }
+  for(const item of value.metadataRejections){
+    if(!object(item)||Object.keys(item).sort().join(',')!=='field,rule'||item.field!=='nextQuestion'||item.rule!=='FOLLOWUP_INVALID')evaluationFailure('EVALUATION_DIAGNOSTIC_INVALID');
+  }
+  return value;
 }
 export function validateAcquisition(value){
   if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.sources)||value.sources.length>3||!Number.isSafeInteger(value.requests)||value.requests<1||value.requests>2||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>196608||!text(value.responseId,160))fail();

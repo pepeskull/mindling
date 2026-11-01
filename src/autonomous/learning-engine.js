@@ -194,7 +194,9 @@ export class AutonomousLearningEngine {
     });
     current=await this.patch(task.id,run,item=>{item.researchExecution.clientDispatched=true;if(!checkpoint)item.researchExecution.toolState='DISPATCHED';});
     const result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
-    const acquired=result.acquisition,observedAt=Date.now(),pending=[],rejections=[];
+    const acquired=result.acquisition,observedAt=Date.now(),pending=[];
+    const validation=result.execution?.validation;
+    const rejections=(validation?.rejections||[]).map(({index,rule})=>({index,code:rule}));
     for(const source of acquired.sources)if(await digest(source.text)!==source.hash)throw Error('Source evidence hash did not match.');
     for(const claim of acquired.evaluation.claims){
       const source=acquired.sources.find(item=>item.id===claim.sourceId),reason=evidenceRejection(claim,source,task,observedAt);
@@ -202,11 +204,11 @@ export class AutonomousLearningEngine {
       const validAt=claim.validAt===null?null:Date.parse(claim.validAt+'T00:00:00Z');
       pending.push({quote:claim.quote,quoteHash:await digest(claim.quote),sourceURL:source.url,sourceHash:source.hash,observedAt,validAt,category:claim.category,topic:claim.topic});
     }
-    if(!acquired.evaluation.claims.length)rejections.push({code:acquired.sources.length?'NO_MODEL_CANDIDATES':'NO_CITED_PASSAGES'});
+    if(!acquired.evaluation.claims.length&&!rejections.length)rejections.push({code:acquired.sources.length?'NO_MODEL_CANDIDATES':'NO_CITED_PASSAGES'});
     current=await this.patch(task.id,run,item=>{
       if(result.execution){item.serviceDiagnostic=result.execution;this.recordExecution(item,result.execution);}
       delete item.pendingSourceEvidence;
-      item.evidenceDiagnostics={version:1,candidates:acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
+      item.evidenceDiagnostics={version:1,candidates:validation?.candidates??acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
       item.totalBytes=(item.totalBytes||0)+acquired.bytes;item.status='EVALUATING';item.code='EVALUATING';item.message='Checking tool-cited research against canonical memory.';item.limitations=acquired.evaluation.limitations;item.nextQuestion=acquired.evaluation.nextQuestion;item.responseId=acquired.responseId;item.completedToolCalls=acquired.requests;
       if(pending.length)item.pendingEvidence=pending;else delete item.pendingEvidence;
       for(const source of acquired.sources){const metadata={url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,excerpt:source.text,...(source.passages?{passages:source.passages}:{}),authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId};const existing=item.sourceReferences.find(ref=>ref.url===source.url);if(existing)Object.assign(existing,metadata);else item.sourceReferences.push(metadata);}
