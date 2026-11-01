@@ -13,6 +13,8 @@ import { defaultPermissions, validatePermissions } from './research-permissions.
 import { INFORMATION_CAPABILITY, publicResearchTopic } from './research-contract.js';
 import { requestResearchPlanning, requestResearchAcquisition, requestResearchCapabilities, requestResearchEvaluation } from '../cognition/reasoning-client.js';
 import { beginClarification, cancelTaskClarification } from '../learning/clarification.js';
+import { CLIENT_RESEARCH_CODES, clientResearchFailure } from './client-diagnostics.js';
+import { validateResearchReceipt } from '../cognition/research-receipt.js';
 
 const engines=new WeakMap();
 export function learningEngine(app){let engine=engines.get(app);if(!engine){engine=new AutonomousLearningEngine(app);engines.set(app,engine);}return engine;}
@@ -25,15 +27,15 @@ const activityFor=mode=>mode===LEARNING_MODES.DEEP?'DEEP_TRAINING':mode===LEARNI
 export class AutonomousLearningEngine {
   constructor(app){
     this.app=app;this.abort=new AbortController();this.session=crypto.randomUUID();this.followers=new Map();this.queue=new Set();this.reviewedTopics=new Map();
-    document.addEventListener('visibilitychange',()=>{if(document.hidden)this.active?.controller.abort();else this.recover();},{signal:this.abort.signal});
-    window.addEventListener('pagehide',()=>this.active?.controller.abort(),{signal:this.abort.signal});
-    window.addEventListener('offline',()=>this.active?.controller.abort(),{signal:this.abort.signal});
+    document.addEventListener('visibilitychange',()=>{if(document.hidden)this.active?.controller.abort('HIDDEN');else this.recover();},{signal:this.abort.signal});
+    window.addEventListener('pagehide',()=>this.active?.controller.abort('PAGEHIDE'),{signal:this.abort.signal});
+    window.addEventListener('offline',()=>this.active?.controller.abort('OFFLINE'),{signal:this.abort.signal});
     window.addEventListener('online',()=>this.recover(),{signal:this.abort.signal});
   }
   async loadPermissions(fresh=false){
     const id=this.app.state?.mind?.id;if(!id)return defaultPermissions('');
     if(!fresh&&this.permissionIdentity===id)return this.permissionLoading||this.preferences;
-    if(this.permissionIdentity!==id){this.active?.controller.abort();this.preferences=defaultPermissions(id);this.queue.clear();this.reviewedTopics.clear();}this.permissionIdentity=id;
+    if(this.permissionIdentity!==id){this.active?.controller.abort('ACCESS_CHANGED');this.preferences=defaultPermissions(id);this.queue.clear();this.reviewedTopics.clear();}this.permissionIdentity=id;
     const loading=(this.app.db||this.app.store).researchPermissions(id).then(value=>{if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');const checked=validatePermissions(value,id);if(checked.revision>=this.preferences.revision)this.preferences=checked;return this.preferences;}).finally(()=>{if(this.permissionLoading===loading)this.permissionLoading=null;});
     this.permissionLoading=loading;return loading;
   }
@@ -45,7 +47,7 @@ export class AutonomousLearningEngine {
   notify(task){this.app.dashboard?.showResearchResult(task,this.requestId(task),this.reply(task));}
   async setAccess(enabled){
     this.app.external?.assertWritable();const id=this.app.state.mind?.id;if(!id||this.disposed)throw Error('Mindling unavailable.');
-    this.active?.controller.abort();clearTimeout(this.wakeTimer);const prefs=await (this.app.db||this.app.store).saveResearchPermissions(id,{enabled});
+    this.active?.controller.abort('ACCESS_CHANGED');clearTimeout(this.wakeTimer);const prefs=await (this.app.db||this.app.store).saveResearchPermissions(id,{enabled});
     if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');this.preferences=validatePermissions(prefs,id);this.permissionIdentity=id;this.app.renderState();
     if(enabled)this.recover();return prefs;
   }
@@ -56,7 +58,17 @@ export class AutonomousLearningEngine {
       if(task.engineVersion===4&&!terminal(task)&&known){
         this.patch(task.id,task.run,item=>{item.status='BLOCKED';item.code=item.lastFailureCode=known.errorCategory;item.lastFailurePhase=known.phase;item.message=researchFailureMessage(known,!!item.pendingSourceEvidence);item.retryAt??=Date.now()+AUTONOMY.retryDelay;}).catch(()=>{});continue;
       }
-      if(task.engineVersion===4&&!terminal(task)&&interrupted&&!canRetryResearch(task)){this.patch(task.id,task.run,item=>{item.lastFailurePhase=item.lastFailurePhase||item.status;item.status='BLOCKED';item.code=item.lastFailureCode||'REQUEST_INTERRUPTED';item.message=SERVICE_MESSAGES[item.code]||'Research interrupted; unknown remote work remains reserved.';}).catch(()=>{});continue;}if(task.engineVersion===4&&!terminal(task)&&(['PERMISSION_REQUIRED','ACCESS_DISABLED','INTERRUPTED','QUEUED','OFFLINE'].includes(task.code)||interrupted||aborted))this.startIfAuthorized(task);}
+      if(task.engineVersion===4&&!terminal(task)&&interrupted&&!canRetryResearch(task)){
+        this.patch(task.id,task.run,item=>{
+          item.status='BLOCKED';
+          const receipt=item.researchExecution;
+          const matched=item.serviceDiagnostic?.correlationId===receipt?.correlationId&&item.serviceDiagnostic?.operation===receipt?.operation;
+          if(!matched&&receipt?.clientDispatched&&receipt.correlationId&&receipt.operation){
+            const failure=clientResearchFailure('TRANSPORT_INTERRUPTED',{id:receipt.correlationId,mode:receipt.operation,phase:'TRANSPORT'});
+            item.clientDiagnostic=failure.clientDiagnostic;item.code=item.lastFailureCode=failure.code;item.lastFailurePhase='TRANSPORT';item.message=failure.message;if(receipt.operation==='research-acquire'){receipt.outcomeUnknown=true;receipt.toolState='OUTCOME_UNKNOWN';}
+          }else{item.lastFailurePhase=item.lastFailurePhase||item.status;item.code=item.lastFailureCode||'REQUEST_INTERRUPTED';item.message=SERVICE_MESSAGES[item.code]||'Research interrupted; unknown remote work remains reserved.';}
+        }).catch(()=>{});continue;
+      }if(task.engineVersion===4&&!terminal(task)&&(['PERMISSION_REQUIRED','ACCESS_DISABLED','INTERRUPTED','QUEUED','OFFLINE'].includes(task.code)||interrupted||aborted||task.pendingSourceEvaluation||task.pendingEvidence?.length))this.startIfAuthorized(task);}
     this.schedule();
   }
   startIfAuthorized(task){
@@ -120,7 +132,7 @@ export class AutonomousLearningEngine {
     const mind=this.assertLive(this.app.state.mind?.id),task=tasksFor(mind).find(item=>item.id===id);if(!task)throw Error('This research task is unavailable.');
     if(['forget-memory','correct-memory'].includes(action))return this.manageKnowledge(task,action,payload);
     if(action==='clarify')return this.clarification(task);
-    if(action==='cancel'){cancelTaskClarification(this.app,id);this.queue.delete(id);this.reviewedTopics.delete(id);if(this.active?.id===id)this.active.controller.abort();return this.patch(id,null,item=>{if(terminal(item))return;item.run=crypto.randomUUID();item.status='CANCELLED';item.code='CANCELLED';item.message='Research cancelled. Existing knowledge was preserved.';});}
+    if(action==='cancel'){cancelTaskClarification(this.app,id);this.queue.delete(id);this.reviewedTopics.delete(id);if(this.active?.id===id)this.active.controller.abort('CANCELLED');return this.patch(id,null,item=>{if(terminal(item))return;item.run=crypto.randomUUID();item.status='CANCELLED';item.code='CANCELLED';item.message='Research cancelled. Existing knowledge was preserved.';});}
     if(terminal(task))throw Error('This task has finished.');
     if(task.engineVersion!==4&&action!=='consent')throw Error('This historical task is preserved. Submit the topic again to use autonomous web research.');
     if(action==='consent'){
@@ -132,7 +144,7 @@ export class AutonomousLearningEngine {
     if(!['retry','continue'].includes(action))throw Error('Unknown research action.');
     if(!canRetryResearch(task))throw Error(SERVICE_MESSAGES.BUDGET_EXHAUSTED);
     if(!(await this.loadPermissions(true)).enabled)throw Error('Allow Mindling planning in Settings before continuing this historical or interrupted task.');
-    const next=await this.patch(id,null,item=>{if(item.engineVersion===2&&item.planningCalls===undefined){item.planningCalls=Math.min(item.attempts,2);item.modelCalls=item.planningCalls;}item.attempts++;item.engineVersion=4;item.code='QUEUED';item.status='BLOCKED';item.message='Mindling planning queued under current authorization.';});this.startIfAuthorized(next);return next;
+    const next=await this.patch(id,null,item=>{if(item.engineVersion===2&&item.planningCalls===undefined){item.planningCalls=Math.min(item.attempts,2);item.modelCalls=item.planningCalls;}if(!item.pendingSourceEvaluation&&!item.pendingEvidence?.length)item.attempts++;item.engineVersion=4;item.code='QUEUED';item.status='BLOCKED';item.message='Mindling planning queued under current authorization.';});this.startIfAuthorized(next);return next;
   }
   context(task,topic){const scope=task.scope||{};return {...(task.autonomous?{autonomous:true}:{}),topic,mode:task.mode,freshness:task.timeSensitive,scope:{criterion:scope.metric||null,geography:scope.regions||[scope.region].filter(Boolean),geographyMode:scope.regionMode||null,period:scope.period||null,quantity:Number.isSafeInteger(scope.count)&&scope.count>0?scope.count:null}};}
   grant(prefs){return {mindlingId:this.app.state.mind.id,capability:INFORMATION_CAPABILITY,revision:prefs.revision};}
@@ -141,7 +153,7 @@ export class AutonomousLearningEngine {
   }
   async run(task,topic){
     if(this.active)return;this.assertLive(task.mindlingId);
-    const controller=new AbortController(),run=crypto.randomUUID();this.active={id:task.id,run,controller};const deadline=setTimeout(()=>controller.abort(),120000);
+    const controller=new AbortController(),run=crypto.randomUUID();this.active={id:task.id,run,controller};const deadline=setTimeout(()=>controller.abort('RUN_DEADLINE'),120000);
     try{
       let current=await this.patch(task.id,null,item=>{if(terminal(item))throw Error('Task finished.');item.run=run;item.session=this.session;item.attempts=Math.max(1,item.attempts);});
       let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
@@ -158,71 +170,128 @@ export class AutonomousLearningEngine {
         if(current.code==='MODEL_CLARIFICATION'){if(!current.autonomous&&this.app.dashboard?.canContinueResearch(this.requestId(current)))this.app.dashboard.showClarification(this.clarification(current).talkResponse);return;}
       }
       await this.sources(current,run,controller);
-    }catch(error){try{
-      const code=error.diagnostic?.errorCategory||(navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'REQUEST_INTERRUPTED':Object.hasOwn(SERVICE_MESSAGES,error.code||error.message)?error.code||error.message:/^INFORMATION_[A-Z_]+$/.test(error.code||'')?error.code:'PLANNING_UNAVAILABLE');
+    }catch(error){
+      if(error.clientDiagnostic){this.clientFailure={taskId:task.id,run,diagnostic:error.clientDiagnostic};console.warn(JSON.stringify({event:'mindling.research.client',...error.clientDiagnostic}));}
+      try{
+      const code=error.clientDiagnostic?.code||error.diagnostic?.errorCategory||(navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'REQUEST_INTERRUPTED':Object.hasOwn(SERVICE_MESSAGES,error.code||error.message)?error.code||error.message:/^INFORMATION_[A-Z_]+$/.test(error.code||'')?error.code:'PLANNING_UNAVAILABLE');
       const blocked=await this.patch(task.id,run,item=>{
         if(terminal(item))return;
         // Keep the original failure instead of replacing it with a failed retry preflight.
         if(code==='BUDGET_EXHAUSTED'&&item.lastFailureCode){item.retryBlockedReason=code;item.status='BLOCKED';return;}
-        item.lastFailurePhase=error.diagnostic?.phase||(item.code==='PLANNING'?'PLANNING':item.status);item.status='BLOCKED';item.code=code;item.lastFailureCode=code;
+        item.lastFailurePhase=error.clientDiagnostic?.phase||error.diagnostic?.phase||(item.code==='PLANNING'?'PLANNING':item.status);item.status='BLOCKED';item.code=code;item.lastFailureCode=code;
         item.retryAt=Date.now()+AUTONOMY.retryDelay*Math.max(1,item.attempts);
+        if(error.clientDiagnostic){item.clientDiagnostic=error.clientDiagnostic;}
+        if(error.execution){item.serviceDiagnostic=error.execution;this.recordExecution(item,error.execution);}
         if(error.diagnostic){item.serviceDiagnostic=error.diagnostic;this.recordExecution(item,error.diagnostic);}
-        else if(item.researchExecution&&['RESERVED','DISPATCHED'].includes(item.researchExecution.toolState)){item.researchExecution.toolState='OUTCOME_UNKNOWN';item.researchExecution.outcomeUnknown=true;}
+        else if(!error.execution&&!item.pendingSourceEvaluation&&!item.pendingEvidence?.length&&item.researchExecution&&['RESERVED','DISPATCHED'].includes(item.researchExecution.toolState)){item.researchExecution.toolState='OUTCOME_UNKNOWN';item.researchExecution.outcomeUnknown=true;}
         if(error.checkpoint&&JSON.stringify(error.checkpoint.request)===JSON.stringify(item.sourcePlan?.request)){
           item.pendingSourceEvidence=error.checkpoint;
           const acquired=error.checkpoint.evidence;item.completedToolCalls=acquired.requests;item.completedWork=[...new Set([...item.completedWork,'retrieval','source'])];
           for(const source of acquired.sources)if(!item.sourceReferences.some(ref=>ref.url===source.url))item.sourceReferences.push({url:source.url,title:source.title,provider:source.provider,type:source.type,hash:source.hash,status:'pending-analysis',authorizedAt:Date.now(),observedAt:Date.now()});
         }
         if(error.recoveryBlockedReason)item.retryBlockedReason=error.recoveryBlockedReason;
-        item.message=error.diagnostic?researchFailureMessage(error.diagnostic,!!item.pendingSourceEvidence):code==='OFFLINE'?'Research paused — Offline.':SERVICE_MESSAGES[code]||'Research paused. The task details preserve the service failure.';
+        item.message=error.clientDiagnostic?CLIENT_RESEARCH_CODES[code]:error.diagnostic?researchFailureMessage(error.diagnostic,!!item.pendingSourceEvidence):code==='OFFLINE'?'Research paused — Offline.':SERVICE_MESSAGES[code]||'Research paused. The task details preserve the service failure.';
       });this.notify(blocked);
-    }catch{/* A newer run, cancellation or identity owns the task. */}}
+    }catch{
+      const receipt=error.execution||error.diagnostic;
+      const diagnostic=error.clientDiagnostic||(receipt&&['research-acquire','research-evaluate'].includes(receipt.operation)?clientResearchFailure('CHECKPOINT_PERSISTENCE_FAILED',{id:receipt.correlationId,mode:receipt.operation,phase:'CHECKPOINT_PERSISTENCE',received:true,status:null}).clientDiagnostic:null);
+      if(diagnostic){
+        this.clientFailure={taskId:task.id,run,diagnostic,serverDiagnostic:receipt};
+        console.warn(JSON.stringify({event:'mindling.research.client.persistence',...diagnostic}));
+      }
+      if(receipt)console.warn(JSON.stringify({event:'mindling.research.server-receipt',...receipt}));
+      // A changed run/identity is never overwritten, even to record an error.
+    }}
     finally{clearTimeout(deadline);this.reviewedTopics.delete(task.id);if(this.active?.controller===controller)this.active=null;if(!this.disposed&&!this.app.disposed)this.app.renderState();this.schedule();}
+  }
+  async saveResearchReceipt(task,run,id,result,prefs,authorizedAt){
+    const receivedAt=Date.now(),mode=result.execution.operation;
+    const failure=code=>Object.assign(clientResearchFailure(code,{id,mode,phase:'CHECKPOINT_PERSISTENCE',received:true,validated:true,status:200}),{execution:result.execution});
+    if(this.disposed||this.app.disposed||this.app.state.mind?.id!==task.mindlingId)throw failure('STALE_RESEARCH_RESPONSE');
+    try{
+      await this.app.change(state=>{
+        if(this.disposed||this.app.disposed||state.mind?.id!==task.mindlingId||state.mind.life.lifeState!=='ALIVE')throw failure('STALE_RESEARCH_RESPONSE');
+        const next=structuredClone(state),item=writableTasks(next.mind).find(value=>value.id===task.id);
+        if(!item||item.run!==run||terminal(item)||item.researchExecution?.correlationId!==id||item.researchExecution.operation!==mode)throw failure('STALE_RESEARCH_RESPONSE');
+        item.serviceDiagnostic=result.execution;delete item.clientDiagnostic;this.recordExecution(item,result.execution);
+        if(result.sourceCheckpoint){
+          item.pendingSourceEvidence=result.sourceCheckpoint;
+          item.pendingSourceEvaluation={version:1,evaluation:result.acquisition.evaluation,receivedAt,authorizedAt};
+        }
+        for(const source of result.acquisition.sources){
+          const metadata={url:source.url,title:source.title,provider:source.provider,type:source.type,hash:source.hash,status:'received-awaiting-checks',authorizedAt,observedAt:receivedAt};
+          const previous=item.sourceReferences.find(ref=>ref.url===source.url);if(previous)Object.assign(previous,metadata);else item.sourceReferences.push(metadata);
+        }
+        item.status='EVALUATING';item.code='RECEIVED';item.message='Correlated research evidence was received and saved for local checks.';
+        if(result.acquisition.sources.length)item.completedWork=[...new Set([...item.completedWork,'retrieval','source'])];
+        item.updatedAt=Math.max(item.createdAt,receivedAt);
+        if(!validTask(item,task.mindlingId))throw failure('CHECKPOINT_PERSISTENCE_FAILED');
+        return next;
+      },{preserveGameplay:true,researchGrant:this.grant(prefs)});
+    }catch(error){if(error.clientDiagnostic)throw error;throw failure('CHECKPOINT_PERSISTENCE_FAILED');}
+    return tasksFor(this.app.state.mind).find(item=>item.id===task.id);
   }
   async sources(task,run,controller){
     const block=async(code,message)=>{const stopped=await this.patch(task.id,run,item=>{item.status='BLOCKED';item.code=code;item.message=message;});this.notify(stopped);return stopped;};
-    if(!task.pendingEvidence?.length){
+    if(!task.pendingEvidence?.length&&!task.pendingSourceEvaluation){
       if(task.sourcePlan.sourceCategory!=='web')return block('SOURCE_UNSUPPORTED','Research paused — This request cannot be safely researched.');
       if(!task.sourcePlan.available){const id=await digest(JSON.stringify([task.id,run,'capabilities'])),result=await requestResearchCapabilities({id,context:{},signal:controller.signal});if(!result.information.available)return block('INFORMATION_UNCONFIGURED','Research paused — Web information access is not configured.');task=await this.patch(task.id,run,item=>{item.sourcePlan.available=true;});}
     }
     let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
-    if(task.pendingEvidence?.length)return this.integrate(task,run,controller,prefs);
-    const authorizedAt=Date.now(),checkpoint=task.pendingSourceEvidence,remainingCalls=2-(task.sourceRequests||0);
-    if(!checkpoint&&remainingCalls<1)throw Error('BUDGET_EXHAUSTED');
-    const context=checkpoint?{checkpoint}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan};
-    const id=await digest(JSON.stringify([task.id,run,checkpoint?'source-evaluation':'web-search',context]));
-    let current=await this.patch(task.id,run,item=>{
-      const calls=checkpoint?1:2;if((item.modelCalls||0)+calls>LIMITS.inferenceCalls||(item.evaluationCalls||0)>=2)throw Error('BUDGET_EXHAUSTED');
-      item.modelCalls=(item.modelCalls||0)+calls;item.evaluationCalls=(item.evaluationCalls||0)+1;
-      if(!checkpoint){item.sourceRequests+=remainingCalls;item.researchExecution={version:1,reserved:remainingCalls,toolState:'RESERVED',clientDispatched:false,upstreamDispatched:null,completed:0,failed:0,outcomeUnknown:false};}
-      item.researchExecution.correlationId=id;item.researchExecution.operation=checkpoint?'research-evaluate':'research-acquire';
-      item.status=checkpoint?'EVALUATING':'RESEARCHING';item.code=checkpoint?'EVALUATING':'SEARCHING';item.message=checkpoint?'Evaluating the previously retrieved signed evidence; no new search.':'Researching public sources and comparing cited evidence.';
-    });
-    current=await this.patch(task.id,run,item=>{item.researchExecution.clientDispatched=true;if(!checkpoint)item.researchExecution.toolState='DISPATCHED';});
-    const result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
-    const acquired=result.acquisition,observedAt=Date.now(),pending=[];
+    if(task.pendingEvidence?.length){
+      try{return await this.integrate(task,run,controller,prefs);}catch(error){throw Object.assign(clientResearchFailure(controller.signal.aborted||document.hidden?'INTEGRATION_PAUSED':'INTEGRATION_FAILED',{id:task.researchExecution.correlationId,mode:task.researchExecution.operation,phase:'INTEGRATION',received:true,validated:true,status:200,reason:controller.signal.reason}),{execution:task.serviceDiagnostic});}
+    }
+    let authorizedAt=Date.now(),observedAt=Date.now(),current=task,result;
+    if(task.pendingSourceEvaluation){
+      const saved=task.pendingSourceEvaluation,checkpoint=task.pendingSourceEvidence;
+      authorizedAt=saved.authorizedAt;observedAt=saved.receivedAt;
+      result={service:'mindling-reasoning-service',kind:'research-acquisition',acquisition:{...checkpoint.evidence,evaluation:saved.evaluation},execution:task.serviceDiagnostic,sourceCheckpoint:checkpoint};
+      const mode=task.researchExecution.operation,id=task.researchExecution.correlationId;
+      const context=mode==='research-acquire'?{request:task.sourcePlan.request,plan:task.plan}:{checkpoint};
+      validateResearchReceipt(result,{id,mode,context});
+    }else{
+      const checkpoint=task.pendingSourceEvidence,remainingCalls=2-(task.sourceRequests||0);
+      if(!checkpoint&&remainingCalls<1)throw Error('BUDGET_EXHAUSTED');
+      const context=checkpoint?{checkpoint}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan};
+      const id=await digest(JSON.stringify([task.id,run,checkpoint?'source-evaluation':'web-search',context]));
+      current=await this.patch(task.id,run,item=>{
+        const calls=checkpoint?1:2;if((item.modelCalls||0)+calls>LIMITS.inferenceCalls||(item.evaluationCalls||0)>=2)throw Error('BUDGET_EXHAUSTED');
+        item.modelCalls=(item.modelCalls||0)+calls;item.evaluationCalls=(item.evaluationCalls||0)+1;
+        if(!checkpoint){item.sourceRequests+=remainingCalls;item.researchExecution={version:1,reserved:remainingCalls,toolState:'RESERVED',clientDispatched:false,upstreamDispatched:null,completed:0,failed:0,outcomeUnknown:false};}
+        item.researchExecution.correlationId=id;item.researchExecution.operation=checkpoint?'research-evaluate':'research-acquire';
+        item.status=checkpoint?'EVALUATING':'RESEARCHING';item.code=checkpoint?'EVALUATING':'SEARCHING';item.message=checkpoint?'Evaluating the previously retrieved signed evidence; no new search.':'Researching public sources and comparing cited evidence.';
+      });
+      current=await this.patch(task.id,run,item=>{item.researchExecution.clientDispatched=true;if(!checkpoint)item.researchExecution.toolState='DISPATCHED';});
+      result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal});
+      current=await this.saveResearchReceipt(task,run,id,result,prefs,authorizedAt);
+      observedAt=current.pendingSourceEvaluation?.receivedAt||Date.now();
+    }
+    const clientFailure=(code,phase)=>Object.assign(clientResearchFailure(code,{id:current.researchExecution.correlationId,mode:current.researchExecution.operation,phase,received:true,validated:true,status:200,reason:controller.signal.reason}),{execution:result.execution});
+    if(controller.signal.aborted||document.hidden||navigator.onLine===false)throw clientFailure('INTEGRATION_PAUSED','INTEGRATION');
+    const acquired=result.acquisition,pending=[];
     const validation=result.execution?.validation;
     const rejections=(validation?.rejections||[]).map(({index,rule})=>({index,code:rule}));
-    for(const source of acquired.sources)if(await digest(source.text)!==source.hash)throw Error('Source evidence hash did not match.');
+    for(const source of acquired.sources)if(await digest(source.text)!==source.hash)throw clientFailure('EVIDENCE_VALIDATION_FAILED','EVIDENCE_VALIDATION');
     for(const claim of acquired.evaluation.claims){
-      const source=acquired.sources.find(item=>item.id===claim.sourceId),reason=evidenceRejection(claim,source,task,observedAt);
+      const source=acquired.sources.find(item=>item.id===claim.sourceId),reason=evidenceRejection(claim,source,task,Date.now());
       if(reason){rejections.push({sourceId:claim.sourceId,code:reason});continue;}
       const validAt=claim.validAt===null?null:Date.parse(claim.validAt+'T00:00:00Z');
       pending.push({quote:claim.quote,quoteHash:await digest(claim.quote),sourceURL:source.url,sourceHash:source.hash,observedAt,validAt,category:claim.category,topic:claim.topic});
     }
     if(!acquired.evaluation.claims.length&&!rejections.length)rejections.push({code:acquired.sources.length?'NO_MODEL_CANDIDATES':'NO_CITED_PASSAGES'});
-    current=await this.patch(task.id,run,item=>{
+    try{current=await this.patch(task.id,run,item=>{
+      if(terminal(item)||item.researchExecution?.correlationId!==result.execution.correlationId)throw clientFailure('STALE_RESEARCH_RESPONSE','EVIDENCE_PERSISTENCE');
       if(result.execution){item.serviceDiagnostic=result.execution;this.recordExecution(item,result.execution);}
-      delete item.pendingSourceEvidence;
+      delete item.pendingSourceEvidence;delete item.pendingSourceEvaluation;
       item.evidenceDiagnostics={version:1,candidates:validation?.candidates??acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
       item.totalBytes=(item.totalBytes||0)+acquired.bytes;item.status='EVALUATING';item.code='EVALUATING';item.message='Checking tool-cited research against canonical memory.';item.limitations=acquired.evaluation.limitations;item.nextQuestion=acquired.evaluation.nextQuestion;item.responseId=acquired.responseId;item.completedToolCalls=acquired.requests;
       if(pending.length)item.pendingEvidence=pending;else delete item.pendingEvidence;
-      for(const source of acquired.sources){const metadata={url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,excerpt:source.text,...(source.passages?{passages:source.passages}:{}),authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId};const existing=item.sourceReferences.find(ref=>ref.url===source.url);if(existing)Object.assign(existing,metadata);else item.sourceReferences.push(metadata);}
+      for(const source of acquired.sources){const metadata={url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,...(source.passages?{passages:source.passages}:{excerpt:source.text}),authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId};const existing=item.sourceReferences.find(ref=>ref.url===source.url);if(existing)Object.assign(existing,metadata);else item.sourceReferences.push(metadata);}
       if(acquired.requests)item.completedWork=[...new Set([...item.completedWork,'retrieval'])];
       if(acquired.sources.length)item.completedWork=[...new Set([...item.completedWork,'source','evidence'])];
-    },{researchGrant:this.grant(prefs)});
+    },{researchGrant:this.grant(prefs)});}catch(error){if(error.clientDiagnostic)throw error;throw clientFailure('EVIDENCE_PERSISTENCE_FAILED','EVIDENCE_PERSISTENCE');}
     if(!pending.length)return block('NO_EVIDENCE',`Research paused — Insufficient evidence. ${rejectionExplanation(rejections[0]?.code)} No research knowledge was saved.`);
-    return this.integrate(current,run,controller,prefs);
+    try{return await this.integrate(current,run,controller,prefs);}catch(error){if(error.clientDiagnostic)throw error;throw clientFailure(controller.signal.aborted||document.hidden?'INTEGRATION_PAUSED':'INTEGRATION_FAILED','INTEGRATION');}
   }
   recordExecution(task,diagnostic){
     const receipt=task.researchExecution;if(!receipt)return;
@@ -298,12 +367,12 @@ export class AutonomousLearningEngine {
     const prefs=await this.loadPermissions(true);if(!prefs.enabled)return;
     const now=Date.now(),tasks=tasksFor(this.app.state.mind);
     const retry=tasks.find(task=>task.engineVersion===4&&!terminal(task)&&retryableServiceFailure(task)&&(task.retryAt||0)<=now&&canRetryResearch(task));
-    if(retry){const next=await this.patch(retry.id,null,item=>{item.attempts++;item.code='QUEUED';});this.startIfAuthorized(next);return;}
+    if(retry){const next=await this.patch(retry.id,null,item=>{if(!item.pendingSourceEvaluation&&!item.pendingEvidence?.length)item.attempts++;item.code='QUEUED';});this.startIfAuthorized(next);return;}
     const topic=nextOpportunity(this.app.state.mind,now);
     if(topic){const interpretation=understandInput(`Learn about ${topic}`,'TEACH');if(!interpretation.clarification){const task=await this.prepare(interpretation,`autonomous:${crypto.randomUUID()}`,{autonomous:true});this.startIfAuthorized(task);return;}}
     this.schedule();
   }
   get status(){return autonomousStatus(this);}
   get diagnostics(){return autonomousDiagnostics(this);}
-  destroy(){clearTimeout(this.wakeTimer);this.disposed=true;this.active?.controller.abort();this.abort.abort();this.queue.clear();this.reviewedTopics.clear();}
+  destroy(){clearTimeout(this.wakeTimer);this.disposed=true;this.active?.controller.abort('DISPOSED');this.abort.abort();this.queue.clear();this.reviewedTopics.clear();}
 }

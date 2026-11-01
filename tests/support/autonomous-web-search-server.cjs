@@ -7,12 +7,15 @@ const analysisAttempts=new Map();
 const sourceEvaluationFixture=require('./source-evaluation-fixtures.cjs');
 const gamingFixture=require('./gaming-research-fixture.cjs');
 let gamingMode='invalid';
+const successFixture=require('./research-success-fixture.cjs');
+let successEnabled=false,successDelay=0;
 globalThis.fetch=async(target,options)=>{
   if(target==='https://api.openai.com/v1/models/opaque-model')return Response.json({id:'opaque-model'});
   if(!['https://api.openai.com/v1/responses','https://api.openai.com/v1/chat/completions'].includes(target))throw Error('External network forbidden in integration fixture');
   const body=JSON.parse(options.body);
   if(target.endsWith('/responses')){
     const {request}=JSON.parse(body.input);
+    if(successEnabled&&request.topic==='Gaming'){if(successDelay){const delay=successDelay;successDelay=0;await new Promise(resolve=>setTimeout(resolve,delay));}return Response.json(successFixture.searchPayload());}
     if(request.topic==='Gaming')return Response.json(gamingFixture.searchPayload());
     if(request.topic.startsWith('source validation'))return Response.json(sourceEvaluationFixture.searchPayload());
     if(request.topic.includes('no hosted action'))return Response.json({id:'resp_synthetic_no_tool',status:'completed',output:[]});
@@ -30,6 +33,7 @@ globalThis.fetch=async(target,options)=>{
     return Response.json({id:'resp_synthetic_local',status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url}]}},{type:'message',status:'completed',content:[{type:'output_text',text:quote+' [1]',annotations:[{type:'url_citation',start_index:quote.length+1,end_index:quote.length+4,title:'Explicit synthetic source fixture',url}]}]}]});
   }
   const data=JSON.parse(body.messages[1].content),name=body.response_format.json_schema.name;
+  if(successEnabled&&name==='mindling_source_evaluation'&&data.request.topic==='Gaming')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(successFixture.evaluation(data.sources))}}]});
   if(name==='mindling_source_evaluation'&&data.request.topic==='Gaming')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(gamingFixture.evaluation(data.sources,gamingMode==='invalid'?['x'.repeat(241)]:[gamingFixture.limitation],true))}}]});
   if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('source validation')){
     const topic=data.request.topic,used=analysisAttempts.get(topic)||0;analysisAttempts.set(topic,used+1);
@@ -48,7 +52,8 @@ let requestNumber=0;
 const server=createServer(async(req,res)=>{
  try{
   const url=new URL(req.url,'http://localhost');
-  if(url.pathname==='/tests/gaming-mode'&&req.method==='POST'){let body='';for await(const chunk of req)body+=chunk;gamingMode=JSON.parse(body).mode==='valid'?'valid':'invalid';res.writeHead(204).end();return;}
+  if(url.pathname==='/tests/gaming-mode'&&req.method==='POST'){let body='';for await(const chunk of req)body+=chunk;successEnabled=false;gamingMode=JSON.parse(body).mode==='valid'?'valid':'invalid';res.writeHead(204).end();return;}
+  if(url.pathname==='/tests/receipt-mode'&&req.method==='POST'){let body='';for await(const chunk of req)body+=chunk;successEnabled=true;successDelay=JSON.parse(body).delayed?23087:0;res.writeHead(204).end();return;}
   if(url.pathname==='/api/mindling/reason'){
     req.headers['x-forwarded-for']=`synthetic-fixture-${++requestNumber}`;
     let body='';for await(const chunk of req){body+=chunk;if(body.length>65536){res.writeHead(413).end();return;}}req.body=JSON.parse(body||'null');res.status=code=>{res.statusCode=code;return res;};res.json=value=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(value));return res;};return await handler(req,res);
@@ -58,4 +63,5 @@ const server=createServer(async(req,res)=>{
   const data=await fs.readFile(file);res.setHeader('Content-Type',mime[path.extname(file)]||'text/plain');res.end(data);
  }catch{if(!res.writableEnded)res.writeHead(404).end();}
 });
-server.listen(8765,'127.0.0.1',()=>process.stdout.write('Synthetic local integration server on 8765; no external API calls\n'));
+const port=Number(process.env.MINDLING_TEST_PORT)||8765;
+server.listen(port,'127.0.0.1',()=>process.stdout.write(`Synthetic local integration server on ${port}; no external API calls\n`));
