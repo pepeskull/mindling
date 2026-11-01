@@ -1,4 +1,4 @@
-import { SERVICE_MESSAGES, canRetryResearch, retryableServiceFailure } from './service-diagnostics.js';
+import { SERVICE_MESSAGES, canRetryResearch, retryableServiceFailure, matchingEvaluationFailure, researchFailureMessage } from './service-diagnostics.js';
 import { AUTONOMY, dayKey, nextOpportunity, autonomousStatus, autonomousDiagnostics } from './autonomous-schedule.js';
 import { EVENTS } from '../app/events.js';
 import { evidenceRejection, canonicalRejection, rejectionExplanation } from './research-evidence.js';
@@ -51,7 +51,12 @@ export class AutonomousLearningEngine {
   }
   recover(){
     if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||!this.preferences?.enabled)return;
-    for(const task of tasksFor(this.app.state.mind)){const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;if(task.engineVersion===4&&!terminal(task)&&interrupted&&!canRetryResearch(task)){this.patch(task.id,task.run,item=>{item.lastFailurePhase=item.lastFailurePhase||item.status;item.status='BLOCKED';item.code=item.lastFailureCode||'REQUEST_INTERRUPTED';item.message=SERVICE_MESSAGES[item.code]||'Research interrupted; unknown remote work remains reserved.';}).catch(()=>{});continue;}if(task.engineVersion===4&&!terminal(task)&&(['PERMISSION_REQUIRED','ACCESS_DISABLED','INTERRUPTED','QUEUED','OFFLINE'].includes(task.code)||interrupted||aborted))this.startIfAuthorized(task);}
+    for(const task of tasksFor(this.app.state.mind)){const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;
+      const known=interrupted&&matchingEvaluationFailure(task);
+      if(task.engineVersion===4&&!terminal(task)&&known){
+        this.patch(task.id,task.run,item=>{item.status='BLOCKED';item.code=item.lastFailureCode=known.errorCategory;item.lastFailurePhase=known.phase;item.message=researchFailureMessage(known,!!item.pendingSourceEvidence);item.retryAt??=Date.now()+AUTONOMY.retryDelay;}).catch(()=>{});continue;
+      }
+      if(task.engineVersion===4&&!terminal(task)&&interrupted&&!canRetryResearch(task)){this.patch(task.id,task.run,item=>{item.lastFailurePhase=item.lastFailurePhase||item.status;item.status='BLOCKED';item.code=item.lastFailureCode||'REQUEST_INTERRUPTED';item.message=SERVICE_MESSAGES[item.code]||'Research interrupted; unknown remote work remains reserved.';}).catch(()=>{});continue;}if(task.engineVersion===4&&!terminal(task)&&(['PERMISSION_REQUIRED','ACCESS_DISABLED','INTERRUPTED','QUEUED','OFFLINE'].includes(task.code)||interrupted||aborted))this.startIfAuthorized(task);}
     this.schedule();
   }
   startIfAuthorized(task){
@@ -154,7 +159,7 @@ export class AutonomousLearningEngine {
       }
       await this.sources(current,run,controller);
     }catch(error){try{
-      const code=navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'REQUEST_INTERRUPTED':Object.hasOwn(SERVICE_MESSAGES,error.code||error.message)?error.code||error.message:/^INFORMATION_[A-Z_]+$/.test(error.code||'')?error.code:'PLANNING_UNAVAILABLE';
+      const code=error.diagnostic?.errorCategory||(navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'REQUEST_INTERRUPTED':Object.hasOwn(SERVICE_MESSAGES,error.code||error.message)?error.code||error.message:/^INFORMATION_[A-Z_]+$/.test(error.code||'')?error.code:'PLANNING_UNAVAILABLE');
       const blocked=await this.patch(task.id,run,item=>{
         if(terminal(item))return;
         // Keep the original failure instead of replacing it with a failed retry preflight.
@@ -168,7 +173,8 @@ export class AutonomousLearningEngine {
           const acquired=error.checkpoint.evidence;item.completedToolCalls=acquired.requests;item.completedWork=[...new Set([...item.completedWork,'retrieval','source'])];
           for(const source of acquired.sources)if(!item.sourceReferences.some(ref=>ref.url===source.url))item.sourceReferences.push({url:source.url,title:source.title,provider:source.provider,type:source.type,hash:source.hash,status:'pending-analysis',authorizedAt:Date.now(),observedAt:Date.now()});
         }
-        item.message=code==='OFFLINE'?'Research paused — Offline.':SERVICE_MESSAGES[code]||'Research paused. The task details preserve the service failure.';
+        if(error.recoveryBlockedReason)item.retryBlockedReason=error.recoveryBlockedReason;
+        item.message=error.diagnostic?researchFailureMessage(error.diagnostic,!!item.pendingSourceEvidence):code==='OFFLINE'?'Research paused — Offline.':SERVICE_MESSAGES[code]||'Research paused. The task details preserve the service failure.';
       });this.notify(blocked);
     }catch{/* A newer run, cancellation or identity owns the task. */}}
     finally{clearTimeout(deadline);this.reviewedTopics.delete(task.id);if(this.active?.controller===controller)this.active=null;if(!this.disposed&&!this.app.disposed)this.app.renderState();this.schedule();}

@@ -1,4 +1,5 @@
 import { citedPassages, supportsClaimDate } from './evidence-dates.js';
+import { limitationSchema, limitationFailureFor } from './research-limitations.js';
 // Shared by the existing inference endpoint and browser. No external tool is
 // inferred from model output; source access is a separate configured capability.
 export const INFORMATION_CAPABILITY='mindling-web-search-v1';
@@ -46,7 +47,7 @@ export function publicSourceURL(value){
   url.hash='';return url.href;
 }
 const claimSchema={type:'object',additionalProperties:false,required:['sourceId','quote','category','topic','reason','validAt'],properties:{sourceId:{type:'string'},quote:{type:'string',minLength:40,maxLength:700},category:{type:'string',minLength:1,maxLength:80},topic:{type:'string',minLength:1,maxLength:100},reason:{type:'string',minLength:1,maxLength:240},validAt:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'}}};
-export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:{type:'string',minLength:1,maxLength:240},maxItems:3},nextQuestion:{type:['string','null'],minLength:1,maxLength:120}}};
+export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:limitationSchema,maxItems:3},nextQuestion:{type:['string','null'],minLength:1,maxLength:120}}};
 export function sourceEvaluationSchemaFor(sources){
   const schema=structuredClone(sourceEvaluationSchema);
   schema.properties.claims.items.properties.sourceId.enum=sources.map(source=>source.id);
@@ -55,7 +56,13 @@ export function sourceEvaluationSchemaFor(sources){
 // The schema constrains shape/length/IDs; exact attribution and calendar support
 // remain application checks. Quotes are never trimmed, paraphrased or repaired.
 export const SOURCE_EVALUATION_RULES=Object.freeze(['CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
-const evaluationFailure=detail=>{throw Object.assign(Error('Mindling could not validate the source evaluation. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail});};
+const evaluationFailure=(detail,metadata={})=>{throw Object.assign(Error('Mindling could not validate the source evaluation. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail,...metadata});};
+function validateLimitations(values){
+  for(const [index,value] of values.entries()){
+    const limitationFailure=limitationFailureFor(value,index);
+    if(limitationFailure)evaluationFailure('LIMITATION_INVALID',{limitationFailure});
+  }
+}
 function evaluationShape(value){
   if(!object(value)||Object.keys(value).sort().join(',')!=='claims,limitations,nextQuestion'||!Array.isArray(value.claims)||value.claims.length>3||!Array.isArray(value.limitations)||value.limitations.length>3)evaluationFailure('EVALUATION_FIELDS_INVALID');
 }
@@ -80,7 +87,7 @@ function claimRejection(claim,sources){
 // Strict validation is used again in the browser and for signed checkpoints.
 export function validateSourceEvaluation(value,sources){
   evaluationShape(value);
-  if(!value.limitations.every(item=>text(item,240)))evaluationFailure('LIMITATION_INVALID');
+  validateLimitations(value.limitations);
   if(!(value.nextQuestion===null||validQuery(value.nextQuestion)))evaluationFailure('FOLLOWUP_INVALID');
   for(const claim of value.claims){const rule=claimRejection(claim,sources);if(rule)evaluationFailure(rule);}
   return value;
@@ -90,7 +97,7 @@ export function validateSourceEvaluation(value,sources){
 export function selectSourceEvaluation(value,sources){
   evaluationShape(value);
   // Limitations may qualify the whole assessment. Never silently erase them.
-  if(!value.limitations.every(item=>text(item,240)))evaluationFailure('LIMITATION_INVALID');
+  validateLimitations(value.limitations);
   const validation={version:1,candidates:value.claims.length,accepted:0,rejections:[],metadataRejections:[]};
   const claims=value.claims.filter((claim,index)=>{
     const rule=claimRejection(claim,sources);if(rule)validation.rejections.push({index,rule});return !rule;
