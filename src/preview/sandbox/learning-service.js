@@ -3,8 +3,8 @@ import { LEARNING_SERVICE, learningContext, localExactAssessment, validateServic
 
 const ENDPOINT = '/api/mindling/learn';
 
-export async function requestLearningAssessment(text, mind, { fetcher = fetch, timeout = 15000 } = {}) {
-  const context = learningContext(text, mind), exact = localExactAssessment(text, mind);
+export async function requestLearningAssessment(text, mind, { fetcher = fetch, timeout = 15000, correctionTargetId=null } = {}) {
+  const context = learningContext(text, mind,{correctionTargetId}), exact = correctionTargetId?null:localExactAssessment(text, mind);
   if (exact) return {version:2,relationship:'SAME_MEMORY',operation:'REINFORCE_EXISTING',responseAction:'ACKNOWLEDGE',kind:context.candidates.find(m=>m.id===exact.relatedMemoryId)?.kind||'claim',certainty:'asserted',concept:'',category:'',categoryId:'',topic:'',relatedMemoryId:exact.relatedMemoryId,confidence:1};
   const correlationId=crypto.randomUUID();
   const controller = new AbortController(), timer = setTimeout(() => controller.abort(), timeout);

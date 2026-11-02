@@ -1,3 +1,4 @@
+import { repairCorrectionMetadata } from '../learning/correction-metadata-repair.js';
 import { knowledgeTalk } from '../cognition/talk-response.js';
 import { interpretInteraction } from '../learning/clarification.js';
 import { learningEngine, stopLearning, learningSession, researchPermissions, syncResearchPermissions } from '../autonomous/learning-engine.js';
@@ -37,7 +38,7 @@ export class MindlingApp extends EvolutionPreview {
   async start() {
     await this.db.open();
     if (this.disposed) { this.db.close(); return; }
-    this.state = await this.db.changeGameplay(s => advanceGameplay(s));
+    this.state = await this.db.changeGameplay(s => repairCorrectionMetadata(advanceGameplay(s)));
     if (this.disposed) { this.db.close(); return; }
     this.seedModel = this.state.mind ? { nodes: this.state.mind.nodes, synapses: this.state.mind.synapses, stage:this.state.mind.stage } : null;
     this.stabilityRow = document.createElement('div');

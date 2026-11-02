@@ -1,3 +1,4 @@
+import { editableMemoryText } from '../../learning/correction-content.js';
 import { retrievePreviewMemories, candidateMetadata } from './memory-retrieval.js';
 import { validateAssessment } from './memory-decision.js';
 import { validateText } from '../../learning/text.js';
@@ -9,9 +10,11 @@ const EVIDENCE = new Set(['none', 'lexical_overlap', 'semantic_match', 'exact_ma
 
 const clean = (value, maximum) => typeof value === 'string' && value === value.trim() && value.length <= maximum ? value : null;
 
-export function learningContext(text, mind) {
+export function learningContext(text, mind, {correctionTargetId=null}={}) {
   validateText(text,{allowQuestion:true});
-  const active = (mind.memories || []).filter(memory => typeof memory.content === 'string');
+  const target=correctionTargetId?(mind.memories||[]).find(memory=>memory.id===correctionTargetId):null;
+  if(correctionTargetId&&!target)throw Error('The correction target changed.');
+  const active = (mind.memories || []).filter(memory => typeof memory.content === 'string'&&memory.id!==correctionTargetId);
   const ranked = retrievePreviewMemories(text, active, { limit: 8, mind }).map(item => item.memory);
   if(ranked.some(m=>typeof m.id!=='string'||!m.id||m.id.length>100))throw Error('Saved memory identifiers are invalid. No Energy or XP changed.');
   const candidates = ranked.map(memory => ({
@@ -23,13 +26,14 @@ export function learningContext(text, mind) {
     ...candidateMetadata(memory),
     complete:memory.content.length<=500
   }));
+  const correction=target?{memoryId:target.id,content:editableMemoryText(target).trim(),category:(mind.categories||[]).find(category=>category.id===target.categoryId)?.name||target.category||'',categoryId:target.categoryId||'',topic:target.topic||''}:null;
   const categories = [];
-  for (const category of [...(mind.categories || []), ...active.map(memory => ({ id: memory.categoryId, name: memory.category }))]) {
+  for (const category of [...(correction?[{id:correction.categoryId,name:correction.category}]:[]),...(mind.categories || []), ...active.map(memory => ({ id: memory.categoryId, name: memory.category }))]) {
     if (typeof category?.id !== 'string' || !category.id || typeof category.name !== 'string' || !category.name.trim()) continue;
     if (!categories.some(item => item.id === category.id)) categories.push({ id: category.id.slice(0, 100), name: category.name.trim().slice(0, 80) });
     if (categories.length === 12) break;
   }
-  return { input: text.trim(), candidates, categories };
+  return { input: text.trim(), candidates, categories,...(correction?{correction}:{}) };
 }
 
 export function localExactAssessment(text, mind) {

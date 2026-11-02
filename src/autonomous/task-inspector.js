@@ -1,3 +1,4 @@
+import { editableMemoryText } from '../learning/correction-content.js';
 import { rejectionExplanation } from './research-evidence.js';
 import { taskProgress, taskStatusLabel } from './tasks.js';
 import { memoryNodeId } from '../memory/graph-data.js';
@@ -5,6 +6,7 @@ import { matchingEvaluationFailure } from './service-diagnostics.js';
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
 export function renderTaskInspector(host,node,{onAction=null,refresh=()=>{},memories=[]}={}){
   const task=node.task,legacy=task.engineVersion!==4,active=!['COMPLETED','CANCELLED','FAILED'].includes(task.status),status=el('p',undefined,'learning-task-feedback');status.setAttribute('role','status');
+  status.dataset.learningTask=task.id;
   const actionButton=(label,action)=>{const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{await onAction(action,task.id);refresh();}catch(error){status.textContent=error.message||'Research unavailable.';}finally{button.disabled=false;}});host.append(button);};
   host.append(el('span',`${task.mode.replaceAll('_',' ')} · ${taskStatusLabel(task)}`,'memory-status-chip research-status'),el('p',task.objective,'inspector-memory-text'));
   const progress=el('progress');progress.max=1;progress.value=taskProgress(task);progress.setAttribute('aria-label','Task work completed, not knowledge mastery');
@@ -33,9 +35,9 @@ export function renderTaskInspector(host,node,{onAction=null,refresh=()=>{},memo
   for(const id of task.knowledgeIds){
     const record=memories.find(memory=>memory.recordId===id&&!memory.historical&&memory.raw.research?.taskId===task.id);if(!record)continue;
     const section=el('details');section.append(el('summary','Manage retained knowledge'));
-    const text=el('textarea');text.maxLength=2000;text.value=record.raw.research.evidenceText||record.raw.content;text.setAttribute('aria-label','Correct this learned claim');
-    section.append(text,el('p','Corrections use normal Teach costs and are stored as user-provided claims. Removing knowledge preserves historical source/task records.','memory-content-status'));
-    for(const [action,label]of [['correct-memory','Save correction'],['forget-memory','Remove learned memory']]){const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{const result=await onAction(action,task.id,{memoryId:id,text:text.value});status.textContent=result.message;refresh();}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});section.append(button);}host.append(section);
+    const text=el('textarea');text.maxLength=2000;text.value=editableMemoryText(record.raw);text.setAttribute('aria-label','Correct this learned claim');
+    section.append(el('p',`Original source: ${record.raw.research.sourceURL||'not recorded'} · Observed: ${Number.isSafeInteger(record.raw.research.observedAt)&&Number.isFinite(new Date(record.raw.research.observedAt).getTime())?new Date(record.raw.research.observedAt).toISOString():'not recorded'}`,'memory-content-status'),text,el('p','Corrections use normal Teach costs and are stored as user-provided claims. Removing knowledge preserves historical source/task records.','memory-content-status'));
+    for(const [action,label]of [['correct-memory','Save correction'],['forget-memory','Remove learned memory']]){const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{const result=await onAction(action,task.id,{memoryId:id,text:text.value});if(result.changed!==false)refresh();const feedback=[...host.querySelectorAll('.learning-task-feedback')].find(node=>node.dataset.learningTask===task.id);if(feedback)feedback.textContent=result.message;}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});section.append(button);}host.append(section);
   }
   if(!active)return;
   if(['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code))actionButton('Clarify request','clarify');
