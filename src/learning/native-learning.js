@@ -1,3 +1,4 @@
+import { meaningfulKnowledgeLabels, isNotesLabel } from './knowledge-labels.js';
 import { pathwayContext, learningTiePriority } from '../pathways/pathways.js';
 import {features,normalize,overlap,sentences,validateText,NATIVE_VERSION} from './text.js';
 import {knowledgeIndex,retrieveMemories} from './knowledge.js';
@@ -26,13 +27,11 @@ function categoryFor(text,mind,index,related) {
     return {category,score:nameMatch?1:Math.max(0,...members.map(item=>item.score)),members};
   }).sort((a,b)=>b.score-a.score||String(a.category.id).localeCompare(String(b.category.id)));
   const top=ranked[0];
-  if(top&&top.score>=.55&&(!ranked[1]||top.score-ranked[1].score>=.12))return {id:top.category.id,name:top.category.name,confidence:top.score};
-  // A label is a lexical excerpt, not a guessed discipline or verified taxonomy.
-  const keywords=f.terms.filter(term=>/\p{L}/u.test(term)).sort((a,b)=>(index.frequencies.get(b)||0)-(index.frequencies.get(a)||0));
-  const keyword=keywords.find(term=>term.length<=40);
-  const name=keyword?`Notes: ${keyword}`:'Unclassified claims';
-  const existing=categories.find(category=>normalize(category.name)===normalize(name));
-  return {id:existing?.id||'',name:existing?.name||name,confidence:.35};
+  if(top&&!isNotesLabel(top.category.name)&&top.score>=.55&&(!ranked[1]||top.score-ranked[1].score>=.12)){const topics=[...new Set(top.members.map(item=>item.memory).filter(meaningfulKnowledgeLabels).map(memory=>memory.topic))];return {id:top.category.id,name:top.category.name,confidence:top.score,topic:topics.length===1?topics[0]:null};}
+  // Native fallback has no semantic classification evidence. Do not turn
+  // arbitrary input words into a discipline or topic.
+  const existing=categories.find(category=>category.name==='Unclassified claims');
+  return {id:existing?.id||'',name:'Unclassified claims',confidence:.35,topic:null};
 }
 export function analyzeNative(text,mind,{allowQuestion=false}={}) {
   if(typeof text!=='string'||text.length>2000||!normalize(text))throw Error('Share a short, readable claim. No Energy or XP changed.');
@@ -53,11 +52,12 @@ export function analyzeNative(text,mind,{allowQuestion=false}={}) {
     }
   }
   const category=categoryFor(text,mind,index,related),keywords=input.features.terms.slice(0,12);
-  const topic=keywords.slice(0,4).join(' ').slice(0,100)||'Unclassified claim';
+  const concept=keywords.slice(0,4).join(' ').slice(0,100)||'Unclassified claim';
+  const topic=category.topic||'Unclassified claim';
   // An existing, observed association can support a lexical connection; not a fact.
   const observedConnections=keywords.flatMap((left,i)=>keywords.slice(i+1).map(right=>({terms:[left,right].sort()})))
     .filter(edge=>index.associations.has(JSON.stringify(edge.terms))).slice(0,12);
-  return {memory:text.trim(),concept:topic,area:category.name,kind:related.length>=2&&observedConnections.length>=2?'understanding':'concept',category:category.name,categoryId:category.id,topic,
+  return {memory:text.trim(),concept,area:category.name,kind:related.length>=2&&observedConnections.length>=2?'understanding':'concept',category:category.name,categoryId:category.id,topic,
     relationship:related.length?'related':'new',relatedMemoryId:related[0]?.memory.id||'',
     relatedMemoryIds:related.map(item=>item.memory.id),
     native:{version:NATIVE_VERSION,verification:'unverified-player-claim',provenance:{source:'player',method:'local-lexical'},

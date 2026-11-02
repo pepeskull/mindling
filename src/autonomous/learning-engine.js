@@ -1,3 +1,4 @@
+import { correctMemory, belongsToResearchTask } from '../learning/memory-corrections.js';
 import { SERVICE_MESSAGES, canRetryResearch, retryableServiceFailure, matchingEvaluationFailure, researchFailureMessage } from './service-diagnostics.js';
 import { AUTONOMY, dayKey, nextOpportunity, autonomousStatus, autonomousDiagnostics } from './autonomous-schedule.js';
 import { EVENTS } from '../app/events.js';
@@ -337,26 +338,20 @@ export class AutonomousLearningEngine {
   }
   follow(task,requestId){this.followers.set(task.id,requestId);if(this.followers.size>LIMITS.tasks)this.followers.delete(this.followers.keys().next().value);}
   async manageKnowledge(task,action,{memoryId,text}={}){
-    const id=crypto.randomUUID(),identity=task.mindlingId;
-    if(action==='correct-memory'&&(typeof text!=='string'||!text.trim()||text.length>2000))throw Error('Enter a readable correction of at most 2,000 characters.');
+    const identity=task.mindlingId;
+    if(action==='correct-memory')return correctMemory(this.app,{memoryId,text},{journal:!!this.app.db,guard:()=>{
+      this.assertLive(identity);if(!belongsToResearchTask(this.app.state.mind,memoryId,task.id))throw Error('This memory does not belong to the selected research task.');
+    }});
     await this.app.change(state=>{
       this.assertLive(identity);const next=structuredClone(state),memory=next.mind.memories.find(memory=>memory.id===memoryId&&memory.research?.taskId===task.id);
       if(!memory||memory.supersededBy||memory.intelligence?.current===false)throw Error('This retained research memory changed.');
       if(memory.research?.quoteHash)next.mind.researchExclusions=[...new Set([...(next.mind.researchExclusions||[]),memory.research.quoteHash])].slice(-1000);
-      if(action==='forget-memory'){
-        next.mind.memories=next.mind.memories.filter(item=>item.id!==memoryId);
-        for(const item of next.mind.memories)item.relatedMemoryIds=(item.relatedMemoryIds||[]).filter(key=>key!==memoryId);
-        for(const saved of next.mind.learningTasks||[])saved.knowledgeIds=saved.knowledgeIds.filter(key=>key!==memoryId);
-        return next;
-      }
-      // Manual corrections use the existing Teach reducer/costs. They are player
-      // claims, never relabelled as statements from the original web source.
-      memory.intelligence={...memory.intelligence,current:false};memory.supersededBy=id;
-      const corrected=learn(next,{id,text:text.trim(),mindId:identity,activity:'TEACH'}),replacement=corrected.mind.memories.find(item=>item.id===id);
-      if(!replacement)throw Error('The correction was not accepted as distinct canonical knowledge.');
-      replacement.correctsMemoryId=memoryId;replacement.relatedMemoryIds=[...new Set([...(replacement.relatedMemoryIds||[]),memoryId])];return corrected;
+      next.mind.memories=next.mind.memories.filter(item=>item.id!==memoryId);
+      for(const item of next.mind.memories)item.relatedMemoryIds=(item.relatedMemoryIds||[]).filter(key=>key!==memoryId);
+      for(const saved of next.mind.learningTasks||[])saved.knowledgeIds=saved.knowledgeIds.filter(key=>key!==memoryId);
+      return next;
     },{preserveGameplay:true});
-    return {accepted:true,message:action==='forget-memory'?'Research memory removed from current knowledge. Historical task/source records are retained.':'Correction saved as a user-provided claim using normal Teach costs; the original is historical.'};
+    return {accepted:true,message:'Research memory removed from current knowledge. Historical task/source records are retained.'};
   }
   schedule(){
     clearTimeout(this.wakeTimer);if(this.disposed||this.app.disposed||!this.preferences?.enabled||document.hidden)return;

@@ -1,4 +1,5 @@
 import { normalize } from '../learning/text.js';
+import { isNotesLabel } from '../learning/knowledge-labels.js';
 export { normalize } from '../learning/text.js';
 
 // Legacy contents and variants remain readable without rewriting any old fields.
@@ -7,6 +8,7 @@ export const exactMemory = (memories, text) => memories.find(memory =>
     .some(value => typeof value === 'string' && normalize(value) === normalize(text)));
 
 export function assignCategory(mind, memory, claim) {
+  if(isNotesLabel(claim.category))throw Error('A subject-based knowledge area is required. Existing knowledge is unchanged.');
   mind.categories ||= [];
   let category = mind.categories.find(c => c.id === claim.categoryId);
   if (!category && claim.categoryId) {

@@ -1,3 +1,4 @@
+import { isNotesLabel } from '../../learning/knowledge-labels.js';
 import { atomicStatements, updatePart, updateInput, mutableAttribute } from './atomic-memory.js';
 import { normalize } from '../../learning/text.js';
 // Provider-free decision contract shared by the server, normal app and Stage Preview.
@@ -30,6 +31,7 @@ export function validateDecision(raw, context, {targetPart=-1}={}) {
   if(['CREATE_NEW','LINK_TO_EXISTING','UPDATE_EXISTING'].includes(raw.operation)&&/\b(might|maybe|perhaps|heard|uncertain|possibly|kanske|möjligen)\b/iu.test(context.input)&&raw.certainty!=='uncertain')failure('UNCERTAINTY_NOT_PRESERVED');
   if(['REINFORCE_EXISTING','LINK_TO_EXISTING','UPDATE_EXISTING','FLAG_CONTRADICTION'].includes(raw.operation)&&(!target||target.current===false))failure('TARGET_NOT_CURRENT');
   if(['CREATE_NEW','LINK_TO_EXISTING','UPDATE_EXISTING'].includes(raw.operation)&&(!raw.concept||!raw.category||!raw.topic||raw.confidence<.65))failure(raw.confidence<.65?'CONFIDENCE_TOO_LOW':'SPECIFIC_LABELS_REQUIRED');
+  if(['CREATE_NEW','LINK_TO_EXISTING','UPDATE_EXISTING'].includes(raw.operation)&&isNotesLabel(raw.category))failure('SUBJECT_LABELS_REQUIRED');
   if(raw.operation==='REINFORCE_EXISTING'&&raw.confidence<.88)failure('CONFIDENCE_TOO_LOW');
   // Models cannot replace facts, verified knowledge, or change the type of a saved preference/goal.
   if(raw.operation==='UPDATE_EXISTING'&&(!['preference','goal'].includes(raw.kind)||!updatePart(target,raw.kind,targetPart)||raw.certainty!=='asserted'||raw.confidence<.85))failure('UPDATE_NOT_AUTHORIZED');

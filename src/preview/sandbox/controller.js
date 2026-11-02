@@ -1,3 +1,4 @@
+import { repairCorrectionMetadata } from '../../learning/correction-metadata-repair.js';
 import { knowledgeTalk } from '../../cognition/talk-response.js';
 import { interpretInteraction } from '../../learning/clarification.js';
 import { learningEngine, stopLearning, learningSession, researchPermissions, syncResearchPermissions } from '../../autonomous/learning-engine.js';
@@ -29,7 +30,7 @@ export class SandboxPreview extends EvolutionPreview {
       source:id=>{this.external?.assertWritable();return store.trainingSource(id);},
       save:record=>{this.external?.assertWritable();return store.saveTraining(record);}
     }});
-    this.store=store;this.state=await this.store.change(s=>s?advanceSandbox(s):createSandbox());
+    this.store=store;this.state=await this.store.change(s=>repairCorrectionMetadata(s?advanceSandbox(s):createSandbox()));
     if(this.disposed){store.close();return;}
     this.stabilityRow=document.createElement('div');this.stabilityRow.className='life-attribute';this.stabilityRow.dataset.lifeAttribute='neuralStability';
     this.stabilityRow.innerHTML='<svg class="life-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l3-7 4 14 3-7h4"/></svg><label>Neural Stability</label><strong>—</strong><progress aria-label="Neural Stability" max="100" value="100">100%</progress>';
