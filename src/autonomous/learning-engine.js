@@ -1,3 +1,5 @@
+import { researchRelation, claimEvidence, addSupportingEvidence, retainConflict, replacementAllowed } from './memory-evolution.js';
+import { validateResearchClaim } from './tasks.js';
 import { correctMemory, belongsToResearchTask } from '../learning/memory-corrections.js';
 import { SERVICE_MESSAGES, canRetryResearch, retryableServiceFailure, matchingEvaluationFailure, researchFailureMessage } from './service-diagnostics.js';
 import { AUTONOMY, dayKey, nextOpportunity, autonomousStatus, autonomousDiagnostics } from './autonomous-schedule.js';
@@ -312,10 +314,22 @@ export class AutonomousLearningEngine {
       const knowledge=[],memoryRejections=[];let formed=0;
       for(const claim of evidence){
         if((next.mind.researchExclusions||[]).includes(claim.quoteHash)){memoryRejections.push({code:'EXCLUDED_BY_USER',quoteHash:claim.quoteHash});continue;}
-        const duplicate=next.mind.memories.find(memory=>!memory.supersededBy&&memory.intelligence?.current!==false&&memory.kind!=='historical'&&memory.intelligence?.kind!=='historical'&&memory.research?.quoteHash===claim.quoteHash);if(duplicate){knowledge.push(duplicate.id);continue;}
         const id=`${task.id.slice(0,40)}:${claim.quoteHash.slice(0,40)}`,content=`Source observation (${new Date(claim.observedAt).toISOString()}) from ${claim.sourceURL}: ${claim.quote}`;
         const authorization={taskId:task.id,run,url:claim.sourceURL,sourceHash:claim.sourceHash,observedAt:claim.observedAt,validAt:claim.validAt,quote:claim.quote,quoteHash:claim.quoteHash,content,classification:{category:claim.category,topic:claim.topic}};
-        try{const candidate=learn(next,{id,text:claim.quote,mindId:task.mindlingId,activity:activity==='TALK'?'TEACH':activity,autonomous:authorization});if(candidate.mind.memories.some(memory=>memory.id===id)){next=candidate;knowledge.push(id);formed++;}else memoryRejections.push({code:'CANONICAL_DUPLICATE_OR_UNCERTAIN',quoteHash:claim.quoteHash});}catch(error){memoryRejections.push({code:canonicalRejection(error),quoteHash:claim.quoteHash});}
+        validateResearchClaim(next,authorization);
+        const relation=researchRelation(next.mind,claim),support=claimEvidence(claim,current);
+        if(relation.kind==='support'){if(addSupportingEvidence(relation.target,support)==='capacity')memoryRejections.push({code:'SUPPORT_CAPACITY',quoteHash:claim.quoteHash});else knowledge.push(relation.target.id);continue;}
+        if(relation.kind==='uncertain'){memoryRejections.push({code:'CANONICAL_DUPLICATE_OR_UNCERTAIN',quoteHash:claim.quoteHash});continue;}
+        if(relation.kind==='conflict'){
+          if(!relation.target){memoryRejections.push({code:'CANONICAL_CONFLICT',quoteHash:claim.quoteHash});continue;}
+          try{retainConflict(relation.target,support);}catch{memoryRejections.push({code:'CONFLICT_CAPACITY',quoteHash:claim.quoteHash});continue;}
+          if(current.timeSensitive||current.limitations?.length||!replacementAllowed(next.mind,relation.target,claim)){memoryRejections.push({code:'CANONICAL_CONFLICT',quoteHash:claim.quoteHash});continue;}
+          authorization.supersedes=relation.target.id;
+        }
+        try{const candidate=learn(next,{id,text:claim.quote,mindId:task.mindlingId,activity:activity==='TALK'?'TEACH':activity,autonomous:authorization});if(candidate.mind.memories.some(memory=>memory.id===id)){next=candidate;const created=next.mind.memories.find(memory=>memory.id===id);
+          for(const relatedId of relation.relatedIds||[]){const related=next.mind.memories.find(memory=>memory.id===relatedId);if(!related)continue;created.relatedMemoryIds=[...new Set([...(created.relatedMemoryIds||[]),relatedId])];related.relatedMemoryIds=[...new Set([...(related.relatedMemoryIds||[]),id])];}
+          if(authorization.supersedes)for(let i=memoryRejections.length-1;i>=0;i--)if(memoryRejections[i].code==='CANONICAL_CONFLICT'&&memoryRejections[i].quoteHash===claim.quoteHash)memoryRejections.splice(i,1);
+          knowledge.push(id);formed++;}else memoryRejections.push({code:'CANONICAL_DUPLICATE_OR_UNCERTAIN',quoteHash:claim.quoteHash});}catch(error){memoryRejections.push({code:canonicalRejection(error),quoteHash:claim.quoteHash});}
       }
       current=writableTasks(next.mind).find(item=>item.id===task.id);
       if(formed&&!current.autonomous&&!current.energyCharged){if(activity==='TALK'||next.mind.processed.includes(current.requestId))throw Error('The original activity charge is unavailable.');next.mind.energy=spendEnergy(energyAt(next.mind.energy,next.now),LIFE_RULES.activity[activity].energyCost,next.now);stimulatePreviewLife(next.mind.life,activity,next.now);next.mind.processed.push(current.requestId);current.energyCharged=true;}
@@ -329,7 +343,7 @@ export class AutonomousLearningEngine {
   reply(task){
     const sv=/[åäö]|\b(?:vilket|sverige|lär)\b/iu.test(task.objective),completed=task.status==='COMPLETED';
     const memories=completed?task.knowledgeIds.map(id=>this.app.state.mind.memories.find(memory=>memory.id===id&&!memory.supersededBy&&memory.intelligence?.current!==false)).filter(Boolean):[];
-    const sources=task.sourceReferences.filter(source=>memories.some(memory=>memory.research?.sourceURL===source.url)).map(({url,title,publishedAt})=>({url,title:title||url,publishedAt}));
+    const sources=task.sourceReferences.filter(source=>memories.some(memory=>memory.research?.sourceURL===source.url||memory.researchSupport?.some(e=>e.taskId===task.id&&e.sourceURL===source.url))).map(({url,title,publishedAt})=>({url,title:title||url,publishedAt}));
     const quotes=memories.map(memory=>{const position=memory.content.indexOf(': ',memory.content.indexOf(' from '));return position>=0?memory.content.slice(position+2):memory.content;});
     const found=task.sourceReferences.some(source=>source.hash),unsupported=task.code==='SOURCE_UNSUPPORTED',active=['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status);
     const paused=unsupported?(sv?'Jag kan inte verifiera den här frågan med de tillgängliga källorna.':'I can’t verify this question with the available sources.'):found?(sv?'Jag hittade källor, men kunde inte säkert behålla ytterligare kunskap från dem. Dina befintliga minnen är oförändrade.':'I found sources, but couldn’t safely retain additional knowledge from them. Your existing memories are unchanged.'):active?(sv?'Jag undersöker vilket underlag som finns för din fråga.':'I’m checking the available evidence for your request.'):(sv?'Jag förstår vad du vill lära dig, men kan inte hämta tillräckligt tillförlitliga källor just nu. Forskningsuppgiften är pausad.':'I understand what you want to learn, but I can’t retrieve reliable supporting sources right now. The research task is paused.');

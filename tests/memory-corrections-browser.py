@@ -25,7 +25,7 @@ with sync_playwright() as p:
           const {createSandbox,newMindling}=await import('/src/preview/sandbox/engine.js');
           const {AutonomousLearningEngine}=await import('/src/autonomous/learning-engine.js');
           const {understandInput}=await import('/src/learning/input-understanding.js');
-          const {renderTaskInspector}=await import('/src/autonomous/task-inspector.js');
+          const {renderTaskDiagnostics}=await import('/src/autonomous/task-inspector.js');
           const {graphData}=await import('/src/memory/graph-data.js');
           const check=(v,m)=>{if(!v)throw Error(m);};
           const store=await (preview?new PreviewStore():new MindlingDatabase()).open();
@@ -41,7 +41,7 @@ with sync_playwright() as p:
           check(app.state.mind.memories.every(m=>m.category==='Genre comparison'&&m.topic==='Common video game genres'),'research classification changed');
           const original=app.state.mind.memories.find(m=>m.research.evidenceText===claim);check(original,'fixture quote not retained');
           const host=document.createElement('section');document.body.replaceChildren(host);
-          const render=()=>{host.replaceChildren();renderTaskInspector(host,{task:app.state.mind.learningTasks.find(t=>t.id===task.id)},{onAction:engine.act.bind(engine),refresh:render,memories:graphData(app.state.mind).memories});};
+          const render=()=>{host.replaceChildren();renderTaskDiagnostics(host,{task:app.state.mind.learningTasks.find(t=>t.id===task.id)},{onAction:engine.act.bind(engine),refresh:render,memories:graphData(app.state.mind).memories});};
           render();host.querySelector('details:has(textarea)').open=true;
           check(host.querySelector('textarea').value===claim,'generated source prefix appears in editable claim');
           check(host.textContent.includes('Original source: '+original.research.sourceURL),'read-only source metadata missing');

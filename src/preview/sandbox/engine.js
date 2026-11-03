@@ -1,3 +1,5 @@
+import { assertResearchReplacement, linkResearchSuccessor } from '../../autonomous/memory-evolution.js';
+import { editableMemoryText } from '../../learning/correction-content.js';
 import { growCanonical, repairCanonicalPositions } from '../../brain/canonical-growth.js';
 import { reclassifyPathwayEvidence } from '../../pathways/pathways.js';
 import { PATHWAYS, DEFAULT_ORIGINS, recordPathwayLearning } from '../../pathways/pathways.js';
@@ -60,7 +62,9 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   if(typeof id!=='string'||!id||id.length>100||(m.processed.includes(id)||m.memories.some(v=>v.id===id)))throw Error('Learning event already processed or invalid');
   const research=autonomous?validateResearchClaim(state,autonomous):null;
   if(research&&(assessment||text!==autonomous.quote))throw Error('Research must use the evaluated source excerpt.');
-  const a=assessment ? serviceLearningAnalysis(text,m,assessment) : analyzeNative(text,m);
+  const replaced=research&&autonomous.supersedes?assertResearchReplacement(state,autonomous):null;
+  const analysisMind=replaced?{...m,memories:m.memories.filter(memory=>memory.id!==replaced.id).map(memory=>({...memory,content:editableMemoryText(memory)}))}:m;
+  const a=assessment ? serviceLearningAnalysis(text,m,assessment) : analyzeNative(text,analysisMind);
   if(research&&a.decision)throw Error('Research cannot bypass canonical conflict or safety checks.');
   if(a.decision)return applyMemoryDecision(state,{id,text,mindId,activity},a.decision,{XP});
   if(a.relationship==='repeated')return research?structuredClone(state):reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
@@ -73,7 +77,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   const next=structuredClone(state),n=next.mind;if(!research)stimulatePreviewLife(n.life,activity,next.now);n.energy=cost?spendEnergy(energy,cost,next.now):energy;n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);if(!research)n.milestones.push(a.concept);
   if(research){a.memory=autonomous.content;if(autonomous.classification){a.category=autonomous.classification.category;a.categoryId='';a.area=a.category;a.topic=autonomous.classification.topic;}}
   n.history.push({id,day,at:next.now,xp:award,kind:research?'research':a.kind==='understanding'?'concept':a.kind,assessmentKind:a.kind,source:research?'AUTONOMOUS':a.service?'SERVICE':'NATIVE',concept:a.concept,...(research?{taskId:research.id}:{})});
-  const associations=growCanonical(n,id);
+  const associations=replaced?{neuronIds:[...(replaced.neuronIds||[])],synapseIds:[...(replaced.synapseIds||[])]}:growCanonical(n,id);
   const related=a.relatedMemoryIds.filter(id=>n.memories.some(memory=>memory.id===id&&!memory.supersededBy));
   n.memories.push({id,content:a.memory,contentIntegrity:capturedContent(a.memory),concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:associations.neuronIds,synapseIds:associations.synapseIds,relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
   const memory=n.memories.at(-1);
@@ -88,6 +92,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
     memory.native.verification=verification;memory.native.provenance={...memory.native.provenance,source:synthesis?'tool-cited-report':'authorized-document',method:synthesis?'source-supported-synthesis':'extractive-source-attribution'};
   }
 
+  if(replaced)linkResearchSuccessor(n,n.memories.find(item=>item.id===replaced.id),memory);
   recordPathwayLearning(n,memory,{eventId:id,activity,at:next.now});
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];

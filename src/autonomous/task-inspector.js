@@ -2,9 +2,11 @@ import { editableMemoryText } from '../learning/correction-content.js';
 import { rejectionExplanation } from './research-evidence.js';
 import { taskProgress, taskStatusLabel } from './tasks.js';
 import { memoryNodeId } from '../memory/graph-data.js';
+import { memoryButton } from '../memory/memory-label.js';
+import { learningSummary } from './learning-summary.js';
 import { matchingEvaluationFailure } from './service-diagnostics.js';
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
-export function renderTaskInspector(host,node,{onAction=null,refresh=()=>{},memories=[]}={}){
+export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},memories=[]}={}){
   const task=node.task,legacy=task.engineVersion!==4,active=!['COMPLETED','CANCELLED','FAILED'].includes(task.status),status=el('p',undefined,'learning-task-feedback');status.setAttribute('role','status');
   status.dataset.learningTask=task.id;
   const actionButton=(label,action)=>{const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{await onAction(action,task.id);refresh();}catch(error){status.textContent=error.message||'Research unavailable.';}finally{button.disabled=false;}});host.append(button);};
@@ -44,4 +46,18 @@ export function renderTaskInspector(host,node,{onAction=null,refresh=()=>{},memo
   else if(legacy)host.append(el('p','Submit the topic again to start research with the current information tool.','memory-content-status'));
   else if(['INTERRUPTED','PLANNING_UNAVAILABLE','INFORMATION_UNCONFIGURED'].includes(task.code)&&task.attempts<2)actionButton('Retry interrupted planning','retry');
   actionButton('Cancel task','cancel');
+}
+
+// The normal neural surface deliberately projects only user-relevant progress.
+export function renderTaskInspector(host,node,{onAction=null,memories=[]}={}){
+  const task=node.task,summary=learningSummary(task,memories);
+  host.append(el('h4',summary.subject),el('p',`${task.mode.replaceAll('_',' ')} · ${summary.status}`,'memory-status-chip'));
+  const progress=el('progress');progress.max=100;progress.value=summary.progress;progress.setAttribute('aria-label','Learning progress');host.append(progress,el('p',`Progress: ${summary.progress}%`),el('p',`${summary.retained} new memories · ${summary.sources} sources`),el('p',summary.message));
+  for(const id of task.knowledgeIds){const memory=memories.find(item=>item.recordId===id);if(memory)host.append(memoryButton(memory));}
+  if(onAction&&!['COMPLETED','CANCELLED','FAILED'].includes(task.status)){
+    const status=el('p');status.setAttribute('role','status');
+    for(const [action,label] of [...(['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code)?[['clarify','Clarify request']]:[]),['cancel','Cancel learning']]){
+      const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{await onAction(action,task.id);}catch{status.textContent='Unable to update learning. Please try again.';}finally{button.disabled=false;}});host.append(button);
+    }host.append(status);
+  }
 }

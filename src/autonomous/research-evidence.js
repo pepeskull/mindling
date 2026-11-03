@@ -20,6 +20,8 @@ export const REJECTION_REASONS=Object.freeze({
   SCOPE_MISMATCH:'The claim does not satisfy the original geographic or exclusion constraints.',
   NON_FACTUAL_CLAIM:'The proposed passage is a question or instruction rather than a factual teaching claim.',
   EXCLUDED_BY_USER:'This exact learned claim was removed or corrected by the user.',
+  SUPPORT_CAPACITY:'The retained support limit was reached; existing evidence was preserved.',
+  CONFLICT_CAPACITY:'The unresolved conflict limit was reached; existing evidence was preserved.',
   CANONICAL_CONFLICT:'The claim conflicts with current stored knowledge; no automatic replacement was made.',
   CANONICAL_DUPLICATE_OR_UNCERTAIN:'Canonical checks could not safely establish a distinct new claim.',
   CANONICAL_VALIDATION:'Canonical memory validation did not accept the proposed claim.'

@@ -25,7 +25,7 @@ export function graphData(state={}) {
     if(!topics.has(topicKey)){topics.set(topicKey,{id:topicKey,kind:'topic',label:topicLabel,areaId:areaKey,memoryIds:[]});area.topicIds.push(topicKey);}
     area.memoryIds.push(id);topics.get(topicKey).memoryIds.push(id);
     const historical=Boolean(memory.supersededBy||memory.intelligence?.current===false||memory.kind==='historical'||memory.intelligence?.kind==='historical');
-    nodes.push({id:memoryNodeId(id),recordId:id,kind:'memory',label:string(memory.content)||'Memory text unavailable',areaId:areaKey,topicId:topicKey,historical,raw:memory});
+    nodes.push({id:memoryNodeId(id),recordId:id,kind:'memory',label:string(memory.content)||'Memory text unavailable',areaLabel:area.label,areaId:areaKey,topicId:topicKey,historical,raw:memory});
     edges.push({from:topicKey,to:memoryNodeId(id),kind:'hierarchy'});
   }
   const add=(from,to,kind)=>{
