@@ -55,7 +55,7 @@ export async function correctMemory(app,{memoryId,text},{guard=()=>{},journal=fa
       const next=structuredClone(state),mind=next.mind,original=mind.memories.find(memory=>memory.id===memoryId),at=new Date(state.now).toISOString();
       const replacement=recordMemory(mind,{id,text:input,decision,event:{id,activity:'TEACH'},at,associations:{neuronIds:original.neuronIds||[],synapseIds:original.synapseIds||[]}});
       replacement.correctsMemoryId=memoryId;replacement.provenance={source:'player',method:'explicit-memory-correction'};
-      replacement.relatedMemoryIds=[...new Set([...(original.relatedMemoryIds||[]),memoryId])].filter(value=>typeof value==='string'&&value!==id);
+      replacement.relatedMemoryIds=[...new Set([...(replacement.relatedMemoryIds||[]),...(original.relatedMemoryIds||[]),memoryId])].filter(value=>typeof value==='string'&&value!==id);
       for(const neighbor of mind.memories)if(neighbor.id!==memoryId&&neighbor.id!==id&&replacement.relatedMemoryIds.includes(neighbor.id))neighbor.relatedMemoryIds=[...new Set([...(neighbor.relatedMemoryIds||[]),id])];
       original.supersededBy=id;original.supersededAt=at;original.intelligence={...original.intelligence,current:false};
       if(original.research?.quoteHash)mind.researchExclusions=[...new Set([...(mind.researchExclusions||[]),original.research.quoteHash])].slice(-1000);

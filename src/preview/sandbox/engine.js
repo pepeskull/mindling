@@ -1,3 +1,4 @@
+import { connectSemanticMemory } from '../../semantic/memory-connections.js';
 import { assertResearchReplacement, linkResearchSuccessor } from '../../autonomous/memory-evolution.js';
 import { editableMemoryText } from '../../learning/correction-content.js';
 import { growCanonical, repairCanonicalPositions } from '../../brain/canonical-growth.js';
@@ -78,7 +79,8 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   if(research){a.memory=autonomous.content;if(autonomous.classification){a.category=autonomous.classification.category;a.categoryId='';a.area=a.category;a.topic=autonomous.classification.topic;}}
   n.history.push({id,day,at:next.now,xp:award,kind:research?'research':a.kind==='understanding'?'concept':a.kind,assessmentKind:a.kind,source:research?'AUTONOMOUS':a.service?'SERVICE':'NATIVE',concept:a.concept,...(research?{taskId:research.id}:{})});
   const associations=replaced?{neuronIds:[...(replaced.neuronIds||[])],synapseIds:[...(replaced.synapseIds||[])]}:growCanonical(n,id);
-  const related=a.relatedMemoryIds.filter(id=>n.memories.some(memory=>memory.id===id&&!memory.supersededBy));
+  // Lexical retrieval candidates are not authority for persistent links.
+  const related=[];
   n.memories.push({id,content:a.memory,contentIntegrity:capturedContent(a.memory),concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:associations.neuronIds,synapseIds:associations.synapseIds,relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
   const memory=n.memories.at(-1);
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
@@ -93,6 +95,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   }
 
   if(replaced)linkResearchSuccessor(n,n.memories.find(item=>item.id===replaced.id),memory);
+  connectSemanticMemory(n,memory.id);
   recordPathwayLearning(n,memory,{eventId:id,activity,at:next.now});
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];

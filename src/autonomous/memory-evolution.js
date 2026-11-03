@@ -35,7 +35,7 @@ export function researchRelation(mind,claim){
   // Existing native checks supply conservative conflict/uncertain handling.
   // Their lexical relationships are never used as authority for replacement.
   const view={...mind,memories:active.map(m=>({...m,content:editableMemoryText(m)}))};
-  try{const analysis=analyzeNative(claim.quote,view);return {kind:'new',target:null,relatedIds:analysis.relatedMemoryIds||[]};}catch(error){
+  try{analyzeNative(claim.quote,view);return {kind:'new',target:null};}catch(error){
     if(/conflict/i.test(error.message)){
       const target=active.find(m=>{try{analyzeNative(claim.quote,{...mind,memories:[{...m,content:editableMemoryText(m)}]});return false;}catch(e){return /conflict/i.test(e.message);}});
       return {kind:'conflict',target};

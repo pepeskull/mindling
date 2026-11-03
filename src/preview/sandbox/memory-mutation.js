@@ -30,7 +30,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
       associations??=formationAssociations(mind,event.id);
       const id=formed?`${event.id}:${item.statement}`:event.id;
       const memory=recordMemory(mind,{id,text,decision:d,event,at,associations});
-      if(target){memory.relatedMemoryIds.push(target.id);target.relatedMemoryIds=[...new Set([...(target.relatedMemoryIds||[]),memory.id])];}
+      if(target){memory.relatedMemoryIds=[...new Set([...memory.relatedMemoryIds,target.id])];target.relatedMemoryIds=[...new Set([...(target.relatedMemoryIds||[]),memory.id])];}
       formed??=memory;changed=true;affected.add(memory.id);
     }else if(operation==='UPDATE_EXISTING'){
       const selection=updatePart({...target,kind:target.intelligence?.kind||target.kind||'claim'},d.kind,item.targetPart);

@@ -2,6 +2,7 @@
 // Explicitly synthetic upstream for local integration tests. No external requests.
 const {createServer}=require('node:http'),fs=require('node:fs/promises'),path=require('node:path'),{handler}=require('../../src/server/mindling-reasoning.cjs');
 const evolutionFixture=require('./memory-evolution-fixture.cjs');
+const semanticFixture=require('./semantic-research-fixture.cjs');
 const root=path.resolve(__dirname,'../..');
 const learningHandler=require('../../api/mindling/learn.js'),correctionFixture=require('./memory-correction-fixture.cjs');
 process.env.SERVICE_API='synthetic-local-only';process.env.SERVICE_MODEL='opaque-model';process.env.MINDLING_WEB_SEARCH='enabled';
@@ -17,6 +18,7 @@ globalThis.fetch=async(target,options)=>{
   const body=JSON.parse(options.body);
   if(target.endsWith('/responses')){
     const {request}=JSON.parse(body.input);
+    if(request.topic.startsWith('semantic crypto'))return Response.json(semanticFixture.searchPayload());
     if(request.topic.startsWith('evolution '))return Response.json(evolutionFixture.searchPayload(request.topic));
     if(request.topic==='video game genres')return Response.json(correctionFixture.searchPayload());
     if(successEnabled&&request.topic==='Gaming'){if(successDelay){const delay=successDelay;successDelay=0;await new Promise(resolve=>setTimeout(resolve,delay));}return Response.json(successFixture.searchPayload());}
@@ -37,6 +39,7 @@ globalThis.fetch=async(target,options)=>{
     return Response.json({id:'resp_synthetic_local',status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url}]}},{type:'message',status:'completed',content:[{type:'output_text',text:quote+' [1]',annotations:[{type:'url_citation',start_index:quote.length+1,end_index:quote.length+4,title:'Explicit synthetic source fixture',url}]}]}]});
   }
   const data=JSON.parse(body.messages[1].content),name=body.response_format.json_schema.name;
+  if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('semantic crypto'))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(semanticFixture.evaluation(data.sources))}}]});
   if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('evolution '))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(evolutionFixture.evaluation(data.sources))}}]});
   if(name==='mindling_source_evaluation'&&data.request.topic==='video game genres')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(correctionFixture.sourceEvaluation(data.sources))}}]});
   if(name==='mindling_memory_assessment')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(correctionFixture.assessment(data))}}]});

@@ -119,21 +119,30 @@ export function validateSourceEvaluationDiagnostics(value){
   }
   return value;
 }
+const acquisitionFailure=detail=>{throw Object.assign(Error('Research evidence failed validation. No unsupported knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail});};
 export function validateAcquisition(value){
-  if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.sources)||value.sources.length>3||!Number.isSafeInteger(value.requests)||value.requests<1||value.requests>2||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>196608||!text(value.responseId,160))fail();
+  if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.sources)||value.sources.length>3||!Number.isSafeInteger(value.requests)||value.requests<1||value.requests>2||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>196608)acquisitionFailure('ACQUISITION_FIELDS_INVALID');
+  if(!text(value.responseId,160))acquisitionFailure('RESPONSE_ID_INVALID');
   for(const source of value.sources){
-    if(!object(source)||!/^web:[a-f0-9]{64}$/.test(source.id)||source.provider!==INFORMATION_PROVIDER||publicSourceURL(source.url)!==source.url||source.domain!==new URL(source.url).hostname||!text(source.title,240)||source.type!=='web-search-synthesis'||source.status!=='tool-cited'||!Number.isSafeInteger(source.observedAt)||source.observedAt<0||!text(source.text,2400)||!/^[a-f0-9]{64}$/.test(source.hash)||source.publishedAt!==null)fail();
-    if(source.passages!==undefined&&(!Array.isArray(source.passages)||!source.passages.length||source.passages.length>6||!source.passages.every(passage=>text(passage,2400))||source.passages.join(' ')!==source.text))fail();
+    if(!object(source)||!/^web:[a-f0-9]{64}$/.test(source.id))acquisitionFailure('SOURCE_ID_INVALID');
+    try{if(publicSourceURL(source.url)!==source.url||source.domain!==new URL(source.url).hostname)throw Error();}catch{acquisitionFailure('SOURCE_URL_INVALID');}
+    if(!text(source.title,240))acquisitionFailure('SOURCE_TITLE_INVALID');
+    if(source.provider!==INFORMATION_PROVIDER||source.type!=='web-search-synthesis'||source.status!=='tool-cited'||!Number.isSafeInteger(source.observedAt)||source.observedAt<0||source.publishedAt!==null)acquisitionFailure('SOURCE_METADATA_INVALID');
+    if(!text(source.text,2400))acquisitionFailure('SOURCE_TEXT_INVALID');
+    if(!/^[a-f0-9]{64}$/.test(source.hash))acquisitionFailure('SOURCE_HASH_INVALID');
+    if(source.passages!==undefined&&(!Array.isArray(source.passages)||!source.passages.length||source.passages.length>6||!source.passages.every(passage=>text(passage,2400))||source.passages.join(' ')!==source.text))acquisitionFailure('SOURCE_PASSAGES_INVALID');
   }
   validateSourceEvaluation(value.evaluation,value.sources);return value;
 }
 // Public, signed source evidence only; never credentials or a private conversation.
 // The browser validates shape; only the server can verify the HMAC proof.
 export function validateResearchCheckpoint(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='evidence,expiresAt,originalId,plan,request,signature,version'||value.version!==1||!Number.isSafeInteger(value.expiresAt)||!/^[a-f0-9]{64}$/.test(value.originalId)||!/^[a-f0-9]{64}$/.test(value.signature))fail();
-  validatePlanningContext(value.request);validateAcquisition(value.evidence);
-  if(!Array.isArray(value.plan)||value.plan.length>3||!value.plan.every(item=>text(item,160)))fail();
-  if(value.evidence.evaluation.claims.length||value.evidence.evaluation.limitations.length||value.evidence.evaluation.nextQuestion!==null||JSON.stringify(value).length>24000)fail();return value;
+  if(!object(value)||Object.keys(value).sort().join(',')!=='evidence,expiresAt,originalId,plan,request,signature,version'||value.version!==1||!Number.isSafeInteger(value.expiresAt)||!/^[a-f0-9]{64}$/.test(value.originalId)||!/^[a-f0-9]{64}$/.test(value.signature))acquisitionFailure('CHECKPOINT_FIELDS_INVALID');
+  try{validatePlanningContext(value.request);}catch{acquisitionFailure('CHECKPOINT_REQUEST_INVALID');}
+  validateAcquisition(value.evidence);
+  if(!Array.isArray(value.plan)||value.plan.length>3||!value.plan.every(item=>text(item,160)))acquisitionFailure('CHECKPOINT_PLAN_INVALID');
+  if(value.evidence.evaluation.claims.length||value.evidence.evaluation.limitations.length||value.evidence.evaluation.nextQuestion!==null)acquisitionFailure('CHECKPOINT_EVALUATION_INVALID');
+  if(JSON.stringify(value).length>24000)acquisitionFailure('CHECKPOINT_SIZE_LIMIT');return value;
 }
 export function validateResearchEvaluationContext(value){
   if(!object(value)||Object.keys(value).join(',')!=='checkpoint')fail();validateResearchCheckpoint(value.checkpoint);return value;

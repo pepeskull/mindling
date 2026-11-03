@@ -81,9 +81,20 @@ async function handler(req, res) {
     if(['research-acquire','research-evaluate'].includes(body.mode)){
       phase='INFORMATION';trace.phase=phase;
       const request=body.mode==='research-evaluate'?recoverable.request:context.request;
-      const acquired=body.mode==='research-evaluate'?recoverable.evidence:await information.search(context,apiKey,model,controller.signal,trace);
+      let acquired=body.mode==='research-evaluate'?recoverable.evidence:await information.search(context,apiKey,model,controller.signal,trace);
       if(JSON.stringify(acquired).includes(apiKey))throw http.fail('RESPONSE_PARSE_ERROR','CREDENTIAL_REDACTION');
-      if(acquired.sources.length&&body.mode==='research-acquire')recoverable=checkpoints.seal(acquired,request,body.id,apiKey,context.plan||[]);
+      trace.phase='ACQUISITION_VALIDATION';research.validateAcquisition(acquired);
+      if(acquired.sources.length&&body.mode==='research-acquire'){
+        trace.phase='CHECKPOINT_VALIDATION';
+        let candidate=checkpoints.seal(acquired,request,body.id,apiKey,context.plan||[]);
+        // Legacy-compatible single-passage representation removes redundant
+        // JSON only when needed. No text, boundary, hash or source is dropped.
+        if(JSON.stringify(candidate).length>24000){
+          acquired={...acquired,sources:acquired.sources.map(source=>{const copy={...source};if(copy.passages?.length===1&&copy.passages[0]===copy.text)delete copy.passages;return copy;})};
+          candidate=checkpoints.seal(acquired,request,body.id,apiKey,context.plan||[]);
+        }
+        research.validateResearchCheckpoint(candidate);recoverable=candidate;
+      }
       let evaluation={claims:[],limitations:['No safely attributable cited evidence was returned by web search.'],nextQuestion:null};
       if(acquired.sources.length){
         const proposed=await completion('SOURCE_EVALUATION',
@@ -93,9 +104,10 @@ async function handler(req, res) {
         const selected=research.selectSourceEvaluation(proposed,acquired.sources);
         evaluation=selected.evaluation;trace.validation=selected.validation;
       }
-      const result={...acquired,evaluation};research.validateAcquisition(result);
+      const result={...acquired,evaluation};trace.phase='RESPONSE_VALIDATION';research.validateAcquisition(result);
       const detail=!evaluation.claims.length?'INSUFFICIENT_EVIDENCE':trace.validation?.rejections.length||trace.validation?.metadataRejections.length?'EVALUATION_FILTERED':'COMPLETED';
-      if(recoverable)research.validateResearchCheckpoint(recoverable);
+      if(recoverable){trace.phase='CHECKPOINT_VALIDATION';research.validateResearchCheckpoint(recoverable);}
+      trace.phase='SOURCE_EVALUATION';
       const execution=report(result.sources.length?null:'NO_CITABLE_EVIDENCE',detail);
       trace.phase='RESPONSE_SERIALIZATION';
       return res.status(200).json({service:SERVICE,kind:'research-acquisition',acquisition:result,execution,...(recoverable?{sourceCheckpoint:recoverable}:{})});

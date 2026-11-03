@@ -39,7 +39,9 @@ async function search({request,queries,remainingCalls,plan},apiKey,model,signal,
       for(const annotation of annotations){
         let url;try{url=contract.publicSourceURL(annotation.url);}catch{drop('UNSAFE_URL');continue;}
         if(!urls.has(url)){drop('NOT_IN_TOOL_SOURCES');continue;}
-        if(typeof annotation.title!=='string'||!annotation.title.trim()||annotation.title.length>240){drop('INVALID_TITLE');continue;}
+        // Display-title layout may vary; this never changes a cited passage/hash.
+        const title=typeof annotation.title==='string'?annotation.title.replace(/[ \t\r\n]+/g,' ').trim():'';
+        if(!title||title.length>240||/[\p{Cc}\p{Cf}]/u.test(title)){drop('INVALID_TITLE');continue;}
         const start=part.text.lastIndexOf('\n\n',annotation.start_index),from=start<0?0:start+2,finish=part.text.indexOf('\n\n',annotation.end_index),to=finish<0?part.text.length:finish;
         // Quotes below are from the tool-cited MODEL REPORT, never claimed as raw page quotes.
         let text=part.text.slice(from,to);
@@ -53,7 +55,7 @@ async function search({request,queries,remainingCalls,plan},apiKey,model,signal,
           source.passages.push(text);source.text=source.passages.join(' ');source.hash=hash(source.text);source.id=`web:${hash(url+'\n'+source.text)}`;
         }else{
           if(sources.length>=3){drop('SOURCE_LIMIT');continue;}
-          sources.push({id:`web:${hash(url+'\n'+text)}`,provider:PROVIDER,url,title:annotation.title.trim(),domain:new URL(url).hostname,publisher:null,publishedAt:null,observedAt,type:'web-search-synthesis',status:'tool-cited',text,passages:[text],hash:hash(text)});
+          sources.push({id:`web:${hash(url+'\n'+text)}`,provider:PROVIDER,url,title,domain:new URL(url).hostname,publisher:null,publishedAt:null,observedAt,type:'web-search-synthesis',status:'tool-cited',text,passages:[text],hash:hash(text)});
         }
         diagnostics.retainedPassages++;
       }
