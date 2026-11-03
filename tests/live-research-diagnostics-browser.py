@@ -14,7 +14,7 @@ with sync_playwright() as p:
       const {createSandbox,newMindling,talk}=await import('/src/preview/sandbox/engine.js');
       const {AutonomousLearningEngine}=await import('/src/autonomous/learning-engine.js');
       const {understandInput}=await import('/src/learning/input-understanding.js');
-      const {renderTaskInspector}=await import('/src/autonomous/task-inspector.js');
+      const {renderTaskDiagnostics}=await import('/src/autonomous/task-inspector.js');
       const {graphData}=await import('/src/memory/graph-data.js');
       const check=(value,message)=>{if(!value)throw Error(message);};
       const store=await new PreviewStore().open();await store.change(()=>newMindling(createSandbox(),{confirmed:true,id:'live-diagnostics-test'}));
@@ -37,7 +37,7 @@ with sync_playwright() as p:
       check(insufficient.evidenceDiagnostics.rejections[0].code==='MISSING_AS_OF_DATE'&&app.state.mind.memories.length===0,'undated fact escaped validation');
       check(engine.status==='PAUSED'&&engine.diagnostics.taskId===automatic.id,'manual insufficient evidence incorrectly turned autonomy into ERROR');
       check(app.state.mind.energy.remaining===energyAfterTalk&&app.state.mind.lifetimeXP===0,'research charged extra Energy/XP');
-      const host=document.createElement('section');renderTaskInspector(host,{task:insufficient},{memories:[]});
+      const host=document.createElement('section');renderTaskDiagnostics(host,{task:insufficient},{memories:[]});
       check(host.textContent.includes('a season or retrieval date is insufficient')&&host.textContent.includes('no second source comparison')&&host.textContent.includes('not the number of completed or billed calls'),'inspector hid evidence/budget reasons');
       // Complete authoritative single-source fact: date outside quote but same cited paragraph.
       await app.change(state=>talk(state,'What are the dated standings in the selected Spanish league?',{id:'manual-dated'}));

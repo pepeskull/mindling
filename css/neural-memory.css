@@ -143,3 +143,17 @@
 .memory-inspector .research-status { color: var(--text-secondary); border-color: var(--border-subtle); }
 .memory-inspector progress { display: block; width: 100%; accent-color: var(--text-muted); }
 .learning-task-feedback { color: var(--text-secondary); overflow-wrap: anywhere; }
+
+/* Semantic memory entries share the existing glass surfaces and focus rules. */
+.compact-memory{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;min-width:0}
+.compact-memory .memory-entry-title{font-size:10px;font-weight:500;overflow-wrap:anywhere}
+.compact-memory .memory-entry-area{grid-column:1;font-size:9px;color:var(--text-muted);overflow-wrap:anywhere}
+.compact-memory .memory-entry-state{grid-column:2;grid-row:1 / span 2;align-self:center;font-size:8px;color:var(--text-muted)}
+.neural-memory-view .memory-science-note{justify-content:space-between}
+[data-memory-maintenance],.memory-maintenance button{background:transparent;border:1px solid var(--border-subtle);border-radius:var(--radius);color:var(--text-secondary);font:inherit;padding:6px 10px;cursor:pointer}
+.memory-maintenance{color:var(--text-primary);background:linear-gradient(135deg,rgba(16,18,20,.67),rgba(6,7,8,.55));border:1px solid var(--border-subtle);border-radius:var(--radius);backdrop-filter:blur(22px) saturate(115%);-webkit-backdrop-filter:blur(22px) saturate(115%);width:min(900px,90vw);max-height:85dvh;overflow:auto;padding:24px;font-size:11px}
+.memory-maintenance::backdrop{background:rgba(0,0,0,.65)}
+.memory-maintenance pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:10px}
+.memory-maintenance details{margin-top:16px;border-top:1px solid var(--border-subtle);padding-top:12px}
+.memory-maintenance textarea{width:100%;min-height:100px;background:var(--border-subtle);color:var(--text-primary);border:1px solid var(--border-subtle);font:inherit}
+.memory-maintenance button:focus-visible,.compact-memory:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

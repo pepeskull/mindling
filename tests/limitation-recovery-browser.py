@@ -14,7 +14,7 @@ with sync_playwright() as p:
       const {MindlingDatabase}=await import('/src/storage/database.js');
       const {createSandbox,newMindling}=await import('/src/preview/sandbox/engine.js');
       const {AutonomousLearningEngine}=await import('/src/autonomous/learning-engine.js');
-      const {renderTaskInspector}=await import('/src/autonomous/task-inspector.js');
+      const {renderTaskDiagnostics}=await import('/src/autonomous/task-inspector.js');
       const check=(v,m)=>{if(!v)throw Error(m);};
       const wait=async fn=>{const deadline=performance.now()+10000;while(!fn()){if(performance.now()>deadline)throw Error('Gaming recovery timeout');await new Promise(r=>setTimeout(r,10));}};
       const operations=[],fetcher=globalThis.fetch;let simulateOffline=true;
@@ -44,7 +44,7 @@ with sync_playwright() as p:
         check(task.serviceDiagnostic.detail==='LIMITATION_INVALID'&&task.serviceDiagnostic.limitationFailure.rule==='TOO_LONG','limitation subrule lost');
         check(task.completedToolCalls===2&&task.sourceRequests===2&&task.pendingSourceEvidence?.evidence.sources.length===2,'two completed calls/signed evidence lost');
         check(app.state.mind.memories.length===0&&app.state.mind.energy.remaining===initial.energy&&app.state.mind.lifetimeXP===initial.xp,'failure mutated knowledge or rewards');
-        const host=document.createElement('section');renderTaskInspector(host,{task});check(host.textContent.includes('RESPONSE_PARSE_ERROR · SOURCE_EVALUATION · LIMITATION_INVALID'),'inspector hides real category');
+        const host=document.createElement('section');renderTaskDiagnostics(host,{task});check(host.textContent.includes('RESPONSE_PARSE_ERROR · SOURCE_EVALUATION · LIMITATION_INVALID'),'inspector hides real category');
         const signature=task.pendingSourceEvidence.signature,count=operations.length,searches=operations.filter(m=>m==='research-acquire').length;
         // Reopen a saved task carrying the misleading legacy interruption label,
         // but retain its matching, validated server receipt. Recovery must use it.
