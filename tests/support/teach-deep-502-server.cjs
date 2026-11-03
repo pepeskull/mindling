@@ -35,4 +35,5 @@ const server=createServer(async(req,res)=>{
     const data=await fs.readFile(file);res.setHeader('Content-Type',mime[path.extname(file)]||'text/plain');res.end(data);
   }catch{if(!res.writableEnded)res.writeHead(404).end();}
 });
-server.listen(8767,'127.0.0.1',()=>process.stdout.write('Local learning-handler fixture on 8767; external requests forbidden\n'));
+const port=Number(process.env.MINDLING_TEST_PORT)||8767;
+server.listen(port,'127.0.0.1',()=>process.stdout.write(`Local learning-handler fixture on ${port}; external requests forbidden\n`));

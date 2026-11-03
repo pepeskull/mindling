@@ -326,8 +326,7 @@ export class AutonomousLearningEngine {
           if(current.timeSensitive||current.limitations?.length||!replacementAllowed(next.mind,relation.target,claim)){memoryRejections.push({code:'CANONICAL_CONFLICT',quoteHash:claim.quoteHash});continue;}
           authorization.supersedes=relation.target.id;
         }
-        try{const candidate=learn(next,{id,text:claim.quote,mindId:task.mindlingId,activity:activity==='TALK'?'TEACH':activity,autonomous:authorization});if(candidate.mind.memories.some(memory=>memory.id===id)){next=candidate;const created=next.mind.memories.find(memory=>memory.id===id);
-          for(const relatedId of relation.relatedIds||[]){const related=next.mind.memories.find(memory=>memory.id===relatedId);if(!related)continue;created.relatedMemoryIds=[...new Set([...(created.relatedMemoryIds||[]),relatedId])];related.relatedMemoryIds=[...new Set([...(related.relatedMemoryIds||[]),id])];}
+        try{const candidate=learn(next,{id,text:claim.quote,mindId:task.mindlingId,activity:activity==='TALK'?'TEACH':activity,autonomous:authorization});if(candidate.mind.memories.some(memory=>memory.id===id)){next=candidate;
           if(authorization.supersedes)for(let i=memoryRejections.length-1;i>=0;i--)if(memoryRejections[i].code==='CANONICAL_CONFLICT'&&memoryRejections[i].quoteHash===claim.quoteHash)memoryRejections.splice(i,1);
           knowledge.push(id);formed++;}else memoryRejections.push({code:'CANONICAL_DUPLICATE_OR_UNCERTAIN',quoteHash:claim.quoteHash});}catch(error){memoryRejections.push({code:canonicalRejection(error),quoteHash:claim.quoteHash});}
       }
@@ -361,7 +360,7 @@ export class AutonomousLearningEngine {
       if(!memory||memory.supersededBy||memory.intelligence?.current===false)throw Error('This retained research memory changed.');
       if(memory.research?.quoteHash)next.mind.researchExclusions=[...new Set([...(next.mind.researchExclusions||[]),memory.research.quoteHash])].slice(-1000);
       next.mind.memories=next.mind.memories.filter(item=>item.id!==memoryId);
-      for(const item of next.mind.memories)item.relatedMemoryIds=(item.relatedMemoryIds||[]).filter(key=>key!==memoryId);
+      for(const item of next.mind.memories){item.relatedMemoryIds=(item.relatedMemoryIds||[]).filter(key=>key!==memoryId);if(Array.isArray(item.semanticAssociations))item.semanticAssociations=item.semanticAssociations.filter(entry=>entry.memoryId!==memoryId);}
       for(const saved of next.mind.learningTasks||[])saved.knowledgeIds=saved.knowledgeIds.filter(key=>key!==memoryId);
       return next;
     },{preserveGameplay:true});
