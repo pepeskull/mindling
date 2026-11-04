@@ -31,3 +31,12 @@ export function correctionComparison(value){
   return result;
 }
 export const unchangedCorrection=(text,memory)=>correctionComparison(submittedCorrectionText(text,memory))===correctionComparison(editableMemoryText(memory));
+
+export function currentMemoryVersion(memories,id){
+  const byId=new Map(memories.map(m=>[m.id,m])),seen=new Set();let memory=byId.get(id);
+  while(memory?.supersededBy&&!seen.has(memory.id)){
+    seen.add(memory.id);const next=byId.get(memory.supersededBy);
+    if(!next||next.correctsMemoryId!==memory.id)break;memory=next;
+  }
+  return memory;
+}

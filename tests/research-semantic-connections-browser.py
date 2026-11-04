@@ -49,7 +49,7 @@ with sync_playwright() as p:
         assert 'Source observation' not in inspector.inner_text() and 'https://' not in inspector.inner_text() and inspector.locator('textarea').count()==0
         solana=links.filter(has_text='Solana Blockchain Concepts');solana.focus();page.keyboard.press('Enter')
         assert page.locator('#memory-inspector-title').inner_text()=='Solana Blockchain Concepts'
-        page.get_by_role('button',name='Memory maintenance',exact=True).click();dialog=page.get_by_role('dialog',name='Memory maintenance');dialog.get_by_text('Stored memory records',exact=True).click()
+        page.keyboard.press('Alt+Shift+M');dialog=page.get_by_role('dialog',name='Memory maintenance');dialog.get_by_text('Stored memory records',exact=True).click()
         stored=json.loads(dialog.locator('pre').inner_text());assert stored==repaired['mind']['memories'];assert all(m['research']['sourceHash'] for m in stored[:3])
         page.keyboard.press('Escape');page.reload();page.wait_for_function("document.querySelector('[data-life-status-title]')?.textContent.includes('Semantic Connections')")
         again=page.evaluate(read,preview);assert again['mind']['memories']==repaired['mind']['memories'];assert len(requests)==calls

@@ -1,4 +1,4 @@
-import { editableMemoryText } from '../learning/correction-content.js';
+import { currentMemoryVersion, editableMemoryText } from '../learning/correction-content.js';
 import { rejectionExplanation } from './research-evidence.js';
 import { taskProgress, taskStatusLabel } from './tasks.js';
 import { memoryNodeId } from '../memory/graph-data.js';
@@ -35,11 +35,12 @@ export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},me
   task.knowledgeIds.forEach((id,index)=>{const button=el('button',`View retained ${task.engineVersion===4?'research claim':'source excerpt'} ${index+1}`,'related-memory-button');button.type='button';button.dataset.selectMemory=memoryNodeId(id);host.append(button);});host.append(status);
   if(!onAction){host.append(el('p','This saved view is read-only.','memory-content-status'));return;}
   for(const id of task.knowledgeIds){
-    const record=memories.find(memory=>memory.recordId===id&&!memory.historical&&memory.raw.research?.taskId===task.id);if(!record)continue;
+    const original=memories.find(memory=>memory.recordId===id&&memory.raw.research?.taskId===task.id);
+    const active=original&&currentMemoryVersion(memories.map(m=>m.raw),id),record=active&&memories.find(m=>m.recordId===active.id&&!m.historical);if(!record)continue;
     const section=el('details');section.append(el('summary','Manage retained knowledge'));
     const text=el('textarea');text.maxLength=2000;text.value=editableMemoryText(record.raw);text.setAttribute('aria-label','Correct this learned claim');
-    section.append(el('p',`Original source: ${record.raw.research.sourceURL||'not recorded'} · Observed: ${Number.isSafeInteger(record.raw.research.observedAt)&&Number.isFinite(new Date(record.raw.research.observedAt).getTime())?new Date(record.raw.research.observedAt).toISOString():'not recorded'}`,'memory-content-status'),text,el('p','Corrections use normal Teach costs and are stored as user-provided claims. Removing knowledge preserves historical source/task records.','memory-content-status'));
-    for(const [action,label]of [['correct-memory','Save correction'],['forget-memory','Remove learned memory']]){const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{const result=await onAction(action,task.id,{memoryId:id,text:text.value});if(result.changed!==false)refresh();const feedback=[...host.querySelectorAll('.learning-task-feedback')].find(node=>node.dataset.learningTask===task.id);if(feedback)feedback.textContent=result.message;}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});section.append(button);}host.append(section);
+    section.append(el('p',`Original source: ${original.raw.research.sourceURL||'not recorded'} · Observed: ${Number.isSafeInteger(original.raw.research.observedAt)&&Number.isFinite(new Date(original.raw.research.observedAt).getTime())?new Date(original.raw.research.observedAt).toISOString():'not recorded'}`,'memory-content-status'),text,el('p','Corrections use normal Teach costs and are stored as user-provided claims. Removing knowledge preserves historical source/task records.','memory-content-status'));
+    for(const [action,label]of [['correct-memory','Save correction'],['forget-memory','Remove learned memory']]){if(action==='forget-memory'&&record.recordId!==id)continue;const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{const result=await onAction(action,task.id,{memoryId:record.recordId,text:text.value});if(result.changed!==false)refresh();const feedback=[...host.querySelectorAll('.learning-task-feedback')].find(node=>node.dataset.learningTask===task.id);if(feedback)feedback.textContent=result.message;}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});section.append(button);}host.append(section);
   }
   if(!active)return;
   if(['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code))actionButton('Clarify request','clarify');

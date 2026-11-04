@@ -33,7 +33,7 @@ with sync_playwright() as p:
           check(JSON.stringify(app.state.mind.nodes)===nodes&&JSON.stringify(app.state.mind.synapses)===synapses,'correction fabricated neural growth');
           const unchanged=JSON.stringify(app.state.mind.memories),support=await run('duplicate',false);check(support.status==='COMPLETED'&&JSON.stringify(app.state.mind.memories)===unchanged,'repeat duplicated versions or support');
           check(app.state.mind.energy.remaining===10&&app.state.mind.lifetimeXP===0,'automatic maintenance charged/rewarded');
-          const complement=await run('complement',false);check(complement.status==='COMPLETED'&&app.state.mind.memories.length===3,'complement missing');check(app.state.mind.energy.remaining===8&&app.state.mind.lifetimeXP===0,'ordinary Teach research accounting changed');
+          const complement=await run('complement',false);check(complement.status==='COMPLETED'&&app.state.mind.memories.length===3,'complement missing');check(app.state.mind.energy.remaining===8&&app.state.mind.lifetimeXP===5,'ordinary Teach research accounting changed');
           check(JSON.stringify(app.state.player)===identity&&JSON.stringify(app.state.mind.originPathways)===origins,'identity/origins changed');
           const graph=graphData(app.state.mind),edges=graph.edges.map(e=>[e.kind,...[e.from,e.to].sort()].join(':'));check(new Set(edges).size===edges.length,'duplicate graph edges');
           check(app.state.mind.learningTasks.every(t=>(t.sourceRequests||0)<=2&&(t.modelCalls||0)<=4),'budget ceilings changed');
@@ -69,7 +69,7 @@ with sync_playwright() as p:
         assert inspector.locator('progress').get_attribute('value')=='71'
         assert '0 new memories' in inspector.inner_text()
         # Detailed evidence/admin operations exist only after explicit maintenance.
-        page.get_by_role('button',name='Memory maintenance',exact=True).click()
+        page.keyboard.press('Alt+Shift+M')
         dialog=page.get_by_role('dialog',name='Memory maintenance');assert dialog.is_visible()
         assert dialog.evaluate("d=>getComputedStyle(d).boxShadow")=='none'
         dialog.get_by_text('Stored memory records',exact=True).click();raw=json.loads(dialog.locator('pre').inner_text());assert raw==saved['mind']['memories']

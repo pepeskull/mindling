@@ -1,6 +1,7 @@
 import {editableMemoryText,submittedCorrectionText,unchangedCorrection} from './correction-content.js';
 import {learningContext} from '../preview/sandbox/learning-assessment.js';
 import {requestLearningAssessment} from '../preview/sandbox/learning-service.js';
+import {connectSemanticMemory} from '../semantic/memory-connections.js';
 import {recordMemory} from '../preview/sandbox/memory-records.js';
 import {XP} from '../preview/sandbox/engine.js';
 import {developmentStatistics} from './knowledge.js';
@@ -53,15 +54,15 @@ export async function correctMemory(app,{memoryId,text},{guard=()=>{},journal=fa
       if(JSON.stringify(target.memory)!==snapshot||JSON.stringify(learningContext(input,state.mind,{correctionTargetId:memoryId}))!==context)throw Error('Relevant knowledge changed. Reopen the memory and submit again.');
       const {energy,cost,day}=correctionBudget(state);
       const next=structuredClone(state),mind=next.mind,original=mind.memories.find(memory=>memory.id===memoryId),at=new Date(state.now).toISOString();
-      const replacement=recordMemory(mind,{id,text:input,decision,event:{id,activity:'TEACH'},at,associations:{neuronIds:original.neuronIds||[],synapseIds:original.synapseIds||[]}});
+      const replacement=recordMemory(mind,{id,text:input,decision,event:{id,activity:'TEACH'},at,associations:{neuronIds:original.neuronIds||[],synapseIds:original.synapseIds||[]},connect:false});
       replacement.correctsMemoryId=memoryId;replacement.provenance={source:'player',method:'explicit-memory-correction'};
-      replacement.relatedMemoryIds=[...new Set([...(replacement.relatedMemoryIds||[]),...(original.relatedMemoryIds||[]),memoryId])].filter(value=>typeof value==='string'&&value!==id);
+      replacement.relatedMemoryIds=[...new Set([...(replacement.relatedMemoryIds||[]),...(original.relatedMemoryIds||[]).filter(id=>!original.semanticAssociations?.some(edge=>edge.memoryId===id)),memoryId])].filter(value=>typeof value==='string'&&value!==id);
       for(const neighbor of mind.memories)if(neighbor.id!==memoryId&&neighbor.id!==id&&replacement.relatedMemoryIds.includes(neighbor.id))neighbor.relatedMemoryIds=[...new Set([...(neighbor.relatedMemoryIds||[]),id])];
-      original.supersededBy=id;original.supersededAt=at;original.intelligence={...original.intelligence,current:false};
+      original.supersededBy=id;original.supersededAt=at;original.intelligence={...original.intelligence,current:false};connectSemanticMemory(mind,replacement.id);
       if(original.research?.quoteHash)mind.researchExclusions=[...new Set([...(mind.researchExclusions||[]),original.research.quoteHash])].slice(-1000);
       mind.energy=spendEnergy(energy,cost,state.now);stimulatePreviewLife(mind.life,'TEACH',state.now);mind.lastLearning=state.now;
       mind.stageXP+=XP.correction;mind.lifetimeXP+=XP.correction;mind.processed.push(id);
-      mind.history.push({id,day,at:state.now,xp:XP.correction,kind:'correction',source:'SERVICE',operation:'CORRECT_MEMORY',memoryIds:[memoryId,id],energySpent:cost});
+      mind.history.push({id,day,at:state.now,xp:XP.correction,kind:'correction',concept:decision.concept||decision.topic,activity:'TEACH',source:'SERVICE',operation:'CORRECT_MEMORY',memoryIds:[memoryId,id],energySpent:cost});
       mind.nativeKnowledge=developmentStatistics(mind.memories);mind.areas=[...new Set(mind.memories.map(memory=>memory.areaSuggestion).filter(Boolean))];return next;
     },{preserveGameplay:true,...(journal?{journal:{id,type:'TEACH'}}:{})});
   }catch(error){if(error.code==='CORRECTION_NO_CHANGE')return noChange();throw error;}

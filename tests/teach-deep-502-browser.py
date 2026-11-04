@@ -47,6 +47,11 @@ with sync_playwright() as p:
             assert len(saved['mind']['memories'])==count, saved['mind']['history']
             assert saved['mind']['energy']['remaining']==energy, saved['mind']['energy']
             assert saved['mind']['lifetimeXP']==xp
+            assert sum(e['xp'] for e in saved['mind']['history'])==xp
+            assert page.evaluate('''async(s)=>{const {BrainEngine}=await import('/src/brain/brain-engine.js');const b=new BrainEngine({emit(){}});return b.hydrate(s.mind).lifetimeXP;}''',saved)==xp
+            page.locator('[data-view="development"]').click()
+            assert str(xp) in page.locator('#development-view').inner_text()
+            page.locator('[data-view="dashboard"]').click()
         original=saved['mind']['memories'][0]['content']
         assert original==TEACH.split('. Remember')[0]+'.'
         assert saved['mind']['memories'][1]['id'] in saved['mind']['memories'][0]['relatedMemoryIds']

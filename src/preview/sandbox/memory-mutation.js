@@ -30,7 +30,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
       associations??=formationAssociations(mind,event.id);
       const id=formed?`${event.id}:${item.statement}`:event.id;
       const memory=recordMemory(mind,{id,text,decision:d,event,at,associations});
-      if(target){memory.relatedMemoryIds=[...new Set([...memory.relatedMemoryIds,target.id])];target.relatedMemoryIds=[...new Set([...(target.relatedMemoryIds||[]),memory.id])];}
+      if(target){memory.modelAssociations=[{memoryId:target.id,operation:'LINK_TO_EXISTING'}];memory.relatedMemoryIds=[...new Set([...memory.relatedMemoryIds,target.id])];target.relatedMemoryIds=[...new Set([...(target.relatedMemoryIds||[]),memory.id])];}
       formed??=memory;changed=true;affected.add(memory.id);
     }else if(operation==='UPDATE_EXISTING'){
       const selection=updatePart({...target,kind:target.intelligence?.kind||target.kind||'claim'},d.kind,item.targetPart);
@@ -53,7 +53,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
     results.push(operation);
   }
   const siblings=mind.memories.filter(memory=>memory.submissionId===event.id);
-  for(const memory of siblings){memory.coSubmittedMemoryIds=siblings.filter(other=>other.id!==memory.id).map(other=>other.id);memory.relatedMemoryIds=[...new Set([...memory.relatedMemoryIds,...memory.coSubmittedMemoryIds])];}
+  for(const memory of siblings){memory.coSubmittedMemoryIds=siblings.filter(other=>other.id!==memory.id).map(other=>other.id);}
   if(mind.memories.length>1000)throw Error('Sandbox memory capacity reached');
   const cost=changed?LIFE_RULES.activity[event.activity].energyCost:0;
   const energy=energyAt(state.mind.energy,state.now);

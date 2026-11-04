@@ -122,7 +122,7 @@ export class SandboxPreview extends EvolutionPreview {
       if(interpretation.requiresResearch){
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
         const task=await learningEngine(this).prepare(interpretation,id,{taskId:input.taskId,guard:input.guard});learningEngine(this).startIfAuthorized(task);
-        this.status(`${task.message} No XP awarded. No additional Energy spent.`);
+        this.status(`${task.message} Rewards apply only after qualifying learning is saved.`);
         document.querySelector('#mindling-input').value='';
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return {accepted:true,message:task.message};
       }
