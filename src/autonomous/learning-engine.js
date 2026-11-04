@@ -1,3 +1,4 @@
+import { activityReward } from '../economy/xp.js';
 import { researchRelation, claimEvidence, addSupportingEvidence, retainConflict, replacementAllowed } from './memory-evolution.js';
 import { validateResearchClaim } from './tasks.js';
 import { correctMemory, belongsToResearchTask } from '../learning/memory-corrections.js';
@@ -5,7 +6,7 @@ import { SERVICE_MESSAGES, canRetryResearch, retryableServiceFailure, matchingEv
 import { AUTONOMY, dayKey, nextOpportunity, autonomousStatus, autonomousDiagnostics } from './autonomous-schedule.js';
 import { EVENTS } from '../app/events.js';
 import { evidenceRejection, canonicalRejection, rejectionExplanation } from './research-evidence.js';
-import { learn, learningReward, XP } from '../preview/sandbox/engine.js';
+import { learn, XP } from '../preview/sandbox/engine.js';
 import { stimulatePreviewLife } from '../preview/sandbox/life.js';
 import { understandInput, knowledgeGap, LEARNING_MODES } from '../learning/input-understanding.js';
 import { trainingContext } from '../training/retrieval.js';
@@ -333,9 +334,9 @@ export class AutonomousLearningEngine {
       current=writableTasks(next.mind).find(item=>item.id===task.id);
       if(formed&&!current.autonomous&&!current.energyCharged){if(activity==='TALK'||next.mind.processed.includes(current.requestId))throw Error('The original activity charge is unavailable.');next.mind.energy=spendEnergy(energyAt(next.mind.energy,next.now),LIFE_RULES.activity[activity].energyCost,next.now);stimulatePreviewLife(next.mind.life,activity,next.now);next.mind.processed.push(current.requestId);current.energyCharged=true;}
       // Directly requested Teach/Deep research has the same one-activity
-      // concept reward as supplied teaching. Background research remains 0 XP.
+      // activity reward as supplied teaching. Background research remains 0 XP.
       if(formed&&current.autonomous===false&&activity!=='TALK'&&!current.learningRewarded&&!next.mind.history.some(e=>e.requestId===current.requestId&&e.xp>0)){
-        const award=learningReward('concept'),day=Math.floor(next.now/86400000),earned=next.mind.history.filter(e=>e.day===day).reduce((sum,e)=>sum+e.xp,0);
+        const award=activityReward(activity),day=Math.floor(next.now/86400000),earned=next.mind.history.filter(e=>e.day===day).reduce((sum,e)=>sum+e.xp,0);
         if(earned+award>XP.daily)throw Error('Daily XP limit reached.');
         const event=next.mind.history.find(e=>e.taskId===current.id&&e.memoryIds===undefined&&e.kind==='research'&&knowledge.includes(e.id));
         if(!event)throw Error('Committed learning reward event is unavailable.');

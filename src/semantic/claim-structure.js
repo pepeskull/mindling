@@ -21,19 +21,32 @@ function predicate(value){
 // canonical record; ambiguous or uncertain prose is never completed by guessing.
 export function claimStructure(memory){
   const content=editableMemoryText(memory),facts=[],contexts=new Set(),strongContexts=new Set();let defined=null,subjectLabel=null;
-  if(features(content).negative||blocked.test(content)||/["“”`?]/u.test(content))return {facts,contexts,strongContexts,subjectLabel};
+  // Uncertainty, fictional framing and quoted discourse can scope the entire record.
+  if(blocked.test(content)||/["“”`?]/u.test(content))return {facts,contexts,strongContexts,subjectLabel};
+  const partsOfRecord=sentences(content).slice(0,8),negatedSubjects=new Set();
+  for(const sentence of partsOfRecord){
+    if(!features(sentence).negative)continue;
+    const negative=sentence.match(/^(.+?)\s+(?:is|are|does|do|has|have|can|will)\s+(?:not|never|no)\b/iu),subject=negative&&nounPhrase(negative[1]);
+    // Unknown negation scope can qualify the whole report. Do not guess.
+    if(!subject||['it','this','they','these','those'].includes(subject))return {facts,contexts,strongContexts,subjectLabel};
+    negatedSubjects.add(subject);
+  }
   const scope=(value,{weak=false,headType=false}={})=>{const p=nounPhrase(value);if(!specific(p))return;contexts.add(p);if(!weak)strongContexts.add(p);if(headType&&p.includes(' ')&&specific(entityHead(p))){contexts.add(entityHead(p));if(!weak)strongContexts.add(entityHead(p));}};
-  for(const match of content.matchAll(/([\p{L}][\p{L}-]*)['’]s\s+[\p{L}]/gu))scope(match[1]);
-  for(const sentence of sentences(content).slice(0,8)){
-    if(sentence.length>700)continue;
+  for(const sentence of partsOfRecord){
+    // A report can contain an explicit proposition followed by a disclaimer or
+    // contrast. Reject that sentence, not unrelated supported sentences; never
+    // delete negation/qualifiers inside a proposition to manufacture a positive.
+    if(sentence.length>700||features(sentence).negative||blocked.test(sentence)||/["“”`?]/u.test(sentence)){defined=null;continue;}
     const parts=sentence.replace(/[.]$/u,'').split(/(?:;\s*|,?\s+by which\s+|,?\s+that\s+|,?\s+which\s+)/iu);
     for(const part of parts.slice(0,3)){
       const m=part.match(clause);if(!m)continue;
       let subject=nounPhrase(m[1]),object=nounPhrase(m[3].split(/\s+(?:to|for|whose|which|that|against|before|after|through|by|into|when|issued|deployed|recorded|arranged|located)\b|[,—]/iu)[0]);
       if(object==='it'&&defined)object=defined;
+      if(negatedSubjects.has(subject)||negatedSubjects.has(object)){defined=null;continue;}
       if(!subject||!object||subject===object||['it','they','this','these','those'].includes(subject)||['it','them','this','these','those'].includes(object))continue;
       const pred=predicate(m[2].toLowerCase());subjectLabel??=m[1].replace(/^(?:a|an|the|each|every)\s+/iu,'').trim();
-      if(pred==='defines'&&specific(subject))defined=subject;
+      if(pred==='defines'&&specific(subject))defined=subject;else if(subject!==defined)defined=null;
+      for(const match of part.matchAll(/([\p{L}][\p{L}-]*)['’]s\s+[\p{L}]/gu))scope(match[1]);
       // Explicit container/operation subjects and noun qualifiers provide scope,
       // rather than deriving a domain from a prompt or a classification title.
       if(subject.includes(' ')){const words=subject.split(' ');for(let i=1;i<words.length;i++)scope(words.slice(0,i).join(' '),{weak:true});}

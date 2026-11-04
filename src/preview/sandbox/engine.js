@@ -1,3 +1,5 @@
+import { XP, activityReward } from '../../economy/xp.js';
+export { XP } from '../../economy/xp.js';
 import { connectSemanticMemory } from '../../semantic/memory-connections.js';
 import { assertResearchReplacement, linkResearchSuccessor } from '../../autonomous/memory-evolution.js';
 import { editableMemoryText } from '../../learning/correction-content.js';
@@ -20,7 +22,7 @@ import { STAGES } from '../evolution-model.js';
 import { validateResearchClaim } from '../../autonomous/tasks.js';
 export const HOUR = 3600000, DAY = 24 * HOUR;
 export const RULES = Object.freeze([ [1,75,6], [2,125,10], [3,175,15], [4,225,20], [5,300,25], [7,400,30], [0,0,0] ].map(([days,xp,concepts]) => Object.freeze({days,xp,concepts})));
-export const XP = Object.freeze({ concept:5, understanding:12, correction:3, daily:100 });
+// Legacy classification helper for existing consumers; gameplay uses activityReward.
 export function learningReward(kind,{independentlyVerified=false}={}){return kind==='understanding'?(independentlyVerified?XP.understanding:XP.concept):XP[kind]??0;}
 export function upgradeGrowth(mind,now){repairCanonicalPositions(mind,now);reclassifyPathwayEvidence(mind,now);mind.energy=setEnergyStage(mind.energy,mind.stage,now);}
 export class VirtualClock {
@@ -69,7 +71,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   if(research&&a.decision)throw Error('Research cannot bypass canonical conflict or safety checks.');
   if(a.decision)return applyMemoryDecision(state,{id,text,mindId,activity},a.decision,{XP});
   if(a.relationship==='repeated')return research?structuredClone(state):reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
-  const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=research?0:learningReward(a.kind);
+  const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=research?0:activityReward(activity);
   if(award>0&&earned+award>XP.daily)throw Error('Daily XP limit reached');
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
   const cost=research?0:LIFE_RULES.activity[activity].energyCost;
@@ -77,7 +79,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   if(m.memories.length>=1000)throw Error('Sandbox memory capacity reached');
   const next=structuredClone(state),n=next.mind;if(!research)stimulatePreviewLife(n.life,activity,next.now);n.energy=cost?spendEnergy(energy,cost,next.now):energy;n.stageXP+=award;n.lifetimeXP+=award;n.lastLearning=next.now;n.processed.push(id);if(!research)n.milestones.push(a.concept);
   if(research){a.memory=autonomous.content;if(autonomous.classification){a.category=autonomous.classification.category;a.categoryId='';a.area=a.category;a.topic=autonomous.classification.topic;}}
-  n.history.push({id,day,at:next.now,xp:award,kind:research?'research':a.kind==='understanding'?'concept':a.kind,assessmentKind:a.kind,source:research?'AUTONOMOUS':a.service?'SERVICE':'NATIVE',concept:a.concept,...(research?{taskId:research.id}:{})});
+  n.history.push({id,day,at:next.now,xp:award,kind:research?'research':a.kind==='understanding'?'concept':a.kind,assessmentKind:a.kind,activity,source:research?'AUTONOMOUS':a.service?'SERVICE':'NATIVE',concept:a.concept,...(research?{taskId:research.id}:{})});
   const associations=replaced?{neuronIds:[...(replaced.neuronIds||[])],synapseIds:[...(replaced.synapseIds||[])]}:growCanonical(n,id);
   // Lexical retrieval candidates are not authority for persistent links.
   const related=[];
@@ -124,17 +126,20 @@ export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity
   n.nativeKnowledge=developmentStatistics(n.memories);
   return next;
 }
-export function talk(state,text,{id=crypto.randomUUID()}={}) {
+export function talk(state,text,{id=crypto.randomUUID(),rewardEligible=false}={}) {
   const m=state.mind,key=normalize(text);
   if(!m||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
   if(typeof id!=='string'||!id||id.length>100||m.processed.includes(id)||m.memories.some(v=>v.id===id))throw Error('Activity event already processed or invalid');
   if(typeof text!=='string'||text.length>2000||key.length<20||new Set(key.split(' ')).size<4)throw Error('Share a meaningful thought of at least four words');
   if((m.activityHistory||[]).some(e=>e.key===key&&state.now-e.at<DAY))throw Error('Share a different thought; repeated input earns no stimulation today');
-  const day=Math.floor(state.now/DAY),energy=energyAt(m.energy,state.now);
+  const day=Math.floor(state.now/DAY),energy=energyAt(m.energy,state.now),award=rewardEligible?activityReward('TALK'):0;
+  if(award&&m.history.filter(e=>e.day===day).reduce((sum,e)=>sum+e.xp,0)+award>XP.daily)throw Error('Daily XP limit reached');
   if(energy.remaining<1)throw Error('Not enough Energy; wait for regeneration');
   const next=structuredClone(state),n=next.mind;
   stimulatePreviewLife(n.life,'TALK',next.now);n.processed.push(id);n.energy=spendEnergy(energy,1,next.now);
   n.activityHistory=[...(n.activityHistory||[]),{at:next.now,key,type:'TALK'}].slice(-200);
+  n.stageXP+=award;n.lifetimeXP+=award;
+  n.history.push({id,day,at:next.now,xp:award,kind:'talk',activity:'TALK',energySpent:1});
   const recalled=retrieveMemories(text,n.memories);
   n.nativeRecall={at:next.now,memoryIds:recalled.map(item=>item.memory.id),method:'lexical',verification:'unverified-player-claims'};
   return next;

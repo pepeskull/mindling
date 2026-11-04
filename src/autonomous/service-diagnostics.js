@@ -1,3 +1,4 @@
+import { validateExtractionDiagnostics } from './extraction-diagnostics.js';
 import { validateLimitationFailure } from './research-limitations.js';
 import { validateSourceEvaluationDiagnostics } from './research-contract.js';
 export const SERVICE_MESSAGES=Object.freeze({
@@ -16,9 +17,10 @@ export const SERVICE_MESSAGES=Object.freeze({
   RATE_LIMITED:'The information service rate limit was reached. Work remains within its existing budget.'
 });
 export function validateServiceDiagnostic(value){
-  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['correlationId','operation','phase','endpoint','upstreamStatus','upstreamRequestId','errorCategory','detail','durationMs','searchRequested','searchDispatched','searchCompleted','completed','failed','outcomeUnknown','sourceCount','fallbackReason','modelConfirmed','validation','limitationFailure','observedToolEvents'].includes(key)))throw Error('Invalid service diagnostic');
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).some(key=>!['correlationId','operation','phase','endpoint','upstreamStatus','upstreamRequestId','errorCategory','detail','durationMs','searchRequested','searchDispatched','searchCompleted','completed','failed','outcomeUnknown','sourceCount','fallbackReason','modelConfirmed','validation','limitationFailure','observedToolEvents','extraction'].includes(key)))throw Error('Invalid service diagnostic');
   if(!/^[a-f0-9]{64}$/.test(value.correlationId)||!['research','research-acquire','research-evaluate','research-capabilities'].includes(value.operation)||!['SERVICE','MODEL','PLANNING','INFORMATION','ACQUISITION_VALIDATION','CHECKPOINT_VALIDATION','RESPONSE_VALIDATION','SOURCE_EVALUATION','RESPONSE_SERIALIZATION'].includes(value.phase)||![null,'models','responses','completions'].includes(value.endpoint)||!(value.upstreamStatus===null||Number.isSafeInteger(value.upstreamStatus)&&value.upstreamStatus>=100&&value.upstreamStatus<=599)||value.errorCategory!==null&&!Object.hasOwn(SERVICE_MESSAGES,value.errorCategory)||!/^[A-Z_]{1,60}$/.test(value.detail)||!Number.isSafeInteger(value.durationMs)||value.durationMs<0||value.durationMs>120000||['searchRequested','searchDispatched','searchCompleted','outcomeUnknown'].some(key=>typeof value[key]!=='boolean')||['completed','failed'].some(key=>!Number.isSafeInteger(value[key])||value[key]<0||value[key]>64)||!Number.isSafeInteger(value.sourceCount)||value.sourceCount<0||value.sourceCount>3||value.fallbackReason!=='none'||value.modelConfirmed!==undefined&&typeof value.modelConfirmed!=='boolean'||value.upstreamRequestId!==undefined&&!/^[A-Za-z0-9_-]{1,120}$/.test(value.upstreamRequestId))throw Error('Invalid service diagnostic');
   if(value.observedToolEvents!==undefined&&(!Number.isSafeInteger(value.observedToolEvents)||value.observedToolEvents<0||value.observedToolEvents>10000))throw Error('Invalid observed tool count');
+  if(value.extraction!==undefined)validateExtractionDiagnostics(value.extraction);
   if(value.validation!==undefined)validateSourceEvaluationDiagnostics(value.validation);
   if(value.limitationFailure!==undefined)validateLimitationFailure(value.limitationFailure);
   return value;

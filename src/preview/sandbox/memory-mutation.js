@@ -1,3 +1,4 @@
+import { activityReward } from '../../economy/xp.js';
 import { recordPathwayLearning } from '../../pathways/pathways.js';
 import { capturedContent } from '../../memory/content-integrity.js';
 import { energyAt, spendEnergy } from '../../economy/energy.js';
@@ -58,7 +59,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
   const cost=changed?LIFE_RULES.activity[event.activity].energyCost:0;
   const energy=energyAt(state.mind.energy,state.now);
   if(energy.remaining<cost)throw Error('Not enough Energy; wait for regeneration');
-  const award=event.activity==='TALK'?0:updated?XP.correction:formed?XP.concept:0;
+  const award=event.activity==='TALK'?0:updated||formed?activityReward(event.activity):0;
   const day=Math.floor(state.now/86400000),earned=state.mind.history.filter(entry=>entry.day===day).reduce((sum,entry)=>sum+entry.xp,0);
   if(award>0&&earned+award>XP.daily)throw Error('Daily XP limit reached');
   mind.energy=cost?spendEnergy(energy,cost,state.now):energy;
@@ -67,7 +68,7 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
   mind.processed.push(event.id);
   const operation=results.length===1?results[0]:'BATCH';
   const stored=operations.filter(item=>['CREATE_NEW','LINK_TO_EXISTING','UPDATE_EXISTING','FLAG_CONTRADICTION'].includes(item.decision.operation));
-  const history={id:event.id,day,at:state.now,xp:award,kind:updated?'correction':formed?'concept':results.includes('REINFORCE_EXISTING')?'reinforcement':'decision',source:'SERVICE',operation,operations:results,energySpent:cost,memoryIds:[...affected],concept:formed?.concept,responseAction:operations.find(item=>item.decision.responseAction==='CLARIFY')?.decision.responseAction||operations[0].decision.responseAction};
+  const history={id:event.id,activity:event.activity,day,at:state.now,xp:award,kind:updated?'correction':formed?'concept':results.includes('REINFORCE_EXISTING')?'reinforcement':'decision',source:'SERVICE',operation,operations:results,energySpent:cost,memoryIds:[...affected],concept:formed?.concept,responseAction:operations.find(item=>item.decision.responseAction==='CLARIFY')?.decision.responseAction||operations[0].decision.responseAction};
   // Do not retain unrelated no-change/rejected fragments as raw personal provenance.
   if(changed)history.input=stored.length===operations.length?event.text:stored.map(item=>statements[item.statement]).join(' ');
   mind.history.push(history);

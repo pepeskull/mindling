@@ -26,7 +26,7 @@ function relationship(left,right){
     if(a.object===b.subject&&['defines','uses'].includes(a.predicate))candidates.push({rule:a.predicate==='defines'?'definition-subject':'dependency-subject',entity:a.object});
     if(b.object===a.subject&&['defines','uses'].includes(b.predicate))candidates.push({rule:b.predicate==='defines'?'definition-subject':'dependency-subject',entity:b.object});
     if(a.predicate==='uses'&&b.predicate==='uses'&&a.object===b.object&&a.subject!==b.subject)candidates.push({rule:'shared-dependency',entity:a.object});
-    if(a.subject===b.subject&&a.predicate!==b.predicate&&a.predicate!=='defines'&&b.predicate!=='defines')candidates.push({rule:'complementary-subject',entity:a.subject});
+    if(a.subject===b.subject&&a.predicate!==b.predicate&&!genericEntity.has(a.subject))candidates.push({rule:'complementary-subject',entity:a.subject});
     if(a.predicate==='contains'&&b.owner===a.subject&&(a.object===b.component||a.object.endsWith(' '+b.component)))candidates.push({rule:'part-description',entity:b.component});
     if(b.predicate==='contains'&&a.owner===b.subject&&(b.object===a.component||b.object.endsWith(' '+a.component)))candidates.push({rule:'part-description',entity:a.component});
   }

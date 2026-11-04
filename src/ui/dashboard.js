@@ -1,3 +1,4 @@
+import { activityReward } from '../economy/xp.js';
 import { StageChip } from './stage-chip.js';
 import { stageMorphologyCounts } from '../renderer/stage-presentation.js';
 import { LEARNING_INPUT_LIMIT } from '../memory/content-integrity.js';
@@ -37,6 +38,12 @@ export class Dashboard {
   #onCancelClarification;
 
   constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, readOnly = false } = {}) {
+    for(const node of document.querySelectorAll('[data-activity-mode], [data-input-mode]')){
+      const mode=node.dataset.activityMode||node.dataset.inputMode,policy=LIFE_RULES.activity[mode];if(!policy)continue;
+      const reward=activityReward(mode),label=`${policy.label}: ${policy.energyCost} Energy · +${reward} XP`;
+      node.title=label;node.setAttribute('aria-label',label);
+      const small=node.querySelector('small');if(small)small.textContent=`${policy.energyCost} Energy · +${reward} XP`;
+    }
     this.#onResearchAccess=onResearchAccess;this.onLearningTask=onLearningTask;this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
     this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
     this.primaryView='dashboard';
