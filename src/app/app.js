@@ -1,4 +1,4 @@
-import { reconcileSemanticConnections } from '../semantic/memory-connections.js';
+import { reconcileSemanticConnections, semanticHydrationStatus } from '../semantic/memory-connections.js';
 import { repairCorrectionMetadata } from '../learning/correction-metadata-repair.js';
 import { knowledgeTalk } from '../cognition/talk-response.js';
 import { interpretInteraction } from '../learning/clarification.js';
@@ -39,7 +39,10 @@ export class MindlingApp extends EvolutionPreview {
   async start() {
     await this.db.open();
     if (this.disposed) { this.db.close(); return; }
-    this.state = await this.db.changeGameplay(s => reconcileSemanticConnections(repairCorrectionMetadata(advanceGameplay(s))));
+    try{
+      this.state = await this.db.changeGameplay(s => reconcileSemanticConnections(repairCorrectionMetadata(advanceGameplay(s))));
+      semanticHydrationStatus('COMMITTED');
+    }catch(error){semanticHydrationStatus('FAILED');throw error;}
     if (this.disposed) { this.db.close(); return; }
     this.seedModel = this.state.mind ? { nodes: this.state.mind.nodes, synapses: this.state.mind.synapses, stage:this.state.mind.stage } : null;
     this.stabilityRow = document.createElement('div');
