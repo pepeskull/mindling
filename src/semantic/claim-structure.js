@@ -25,12 +25,19 @@ export function claimStructure(memory){
   if(view.reason)diagnostics[view.reason]=1;
   // Uncertainty, fictional framing and quoted discourse can scope the entire record.
   if(/\b(?:fictional|imaginary|metaphor)\b/iu.test(content)||/["“”`?]/u.test(content)){diagnostics.UNCERTAIN_OR_QUOTED=1;return {facts,operations,diagnostics,contexts,strongContexts,subjectLabel};}
-  const partsOfRecord=sentences(content).slice(0,8),negatedSubjects=new Set();
+  const partsOfRecord=sentences(content).slice(0,8),negatedSubjects=new Set(),uncertainTerms=new Set(),dependentSentences=new Set();
   for(const sentence of partsOfRecord){
     if(!features(sentence).negative)continue;
     const negative=sentence.match(/^(.+?)\s+(?:is|are|does|do|has|have|can|will)\s+(?:not|never|no)\b/iu),subject=negative&&nounPhrase(negative[1]);
     // Unknown negation scope can qualify the whole report. Do not guess.
-    if(!subject||['it','this','they','these','those'].includes(subject)){diagnostics.NEGATION_SCOPE_UNSUPPORTED=1;return {facts,operations,diagnostics,contexts,strongContexts,subjectLabel};}
+    if(!subject||['it','this','they','these','those'].includes(subject)){
+      diagnostics.NEGATION_SCOPE_UNSUPPORTED=(diagnostics.NEGATION_SCOPE_UNSUPPORTED||0)+1;
+      for(const term of features(sentence).terms)uncertainTerms.add(singular(term));
+      // Anaphoric negation can qualify preceding claims. Preserve that dependency;
+      // only independently named subjects outside the affected vocabulary survive.
+      if(/\b(?:it|this|they|these|those|above|previous|all)\b/iu.test(sentence))for(let i=0;i<partsOfRecord.indexOf(sentence);i++)dependentSentences.add(partsOfRecord[i]);
+      continue;
+    }
     negatedSubjects.add(subject);
   }
   const scope=(value,{weak=false,headType=false}={})=>{const p=nounPhrase(value);if(!specific(p))return;contexts.add(p);if(!weak)strongContexts.add(p);if(headType&&p.includes(' ')&&specific(entityHead(p))){contexts.add(entityHead(p));if(!weak)strongContexts.add(entityHead(p));}};
@@ -38,7 +45,7 @@ export function claimStructure(memory){
     // A report can contain an explicit proposition followed by a disclaimer or
     // contrast. Reject that sentence, not unrelated supported sentences; never
     // delete negation/qualifiers inside a proposition to manufacture a positive.
-    if(sentence.length>700||features(sentence).negative||blocked.test(sentence)||/\b(?:can|often|typically|staff view)\b/iu.test(sentence)||/["“”`?]/u.test(sentence)){defined=null;continue;}
+    if(dependentSentences.has(sentence)||sentence.length>700||features(sentence).negative||blocked.test(sentence)||/\b(?:can|often|typically|staff view)\b/iu.test(sentence)||/["“”`?]/u.test(sentence)){defined=null;continue;}
     const parts=sentence.replace(/[.]$/u,'').split(/(?:;\s*|,\s+and\s+|,?\s+by which\s+|,?\s+that\s+|,?\s+which\s+)/iu);
     for(const part of parts.slice(0,3)){
       // Passive grouping states the material and container, not an invented actor.
@@ -48,6 +55,7 @@ export function claimStructure(memory){
       const m=passive||purpose||part.match(clause);if(!m){diagnostics.UNSUPPORTED_GRAMMAR=(diagnostics.UNSUPPORTED_GRAMMAR||0)+1;continue;}
 
       let subject=nounPhrase(m[1]),object=nounPhrase(m[3].split(coordinatedVerb)[0].split(/\s+(?:to|for|whose|which|that|against|before|after|through|by|into|when|issued|deployed|recorded|arranged|located)\b|[,—]/iu)[0]);
+      if([subject,object].filter(Boolean).some(value=>value.split(' ').some(term=>uncertainTerms.has(term)))){diagnostics.NEGATION_DEPENDENCY=(diagnostics.NEGATION_DEPENDENCY||0)+1;defined=null;continue;}
       const pred=passive?({grouped:'group',stored:'store',assembled:'assemble',packed:'pack'}[m[2].toLowerCase()]):purpose?'purpose-'+m[2].toLowerCase():predicate(m[2].toLowerCase());
       if(subject&&!negatedSubjects.has(subject)&&!['it','they','this','these','those'].includes(subject))operations.push({actor:subject,predicate:pred});
       if(object==='it'&&defined)object=defined;
