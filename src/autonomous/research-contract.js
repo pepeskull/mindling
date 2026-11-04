@@ -1,3 +1,4 @@
+import { passageIssue } from '../memory/passage-integrity.js';
 import { citedPassages, supportsClaimDate } from './evidence-dates.js';
 import { limitationSchema, limitationFailureFor } from './research-limitations.js';
 // Shared by the existing inference endpoint and browser. No external tool is
@@ -55,7 +56,7 @@ export function sourceEvaluationSchemaFor(sources){
 }
 // The schema constrains shape/length/IDs; exact attribution and calendar support
 // remain application checks. Quotes are never trimmed, paraphrased or repaired.
-export const SOURCE_EVALUATION_RULES=Object.freeze(['CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
+export const SOURCE_EVALUATION_RULES=Object.freeze(['CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_INCOMPLETE','QUOTE_BOUNDARY_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
 const evaluationFailure=(detail,metadata={})=>{throw Object.assign(Error('Mindling could not validate the source evaluation. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail,...metadata});};
 function validateLimitations(values){
   for(const [index,value] of values.entries()){
@@ -70,8 +71,11 @@ function claimRejection(claim,sources){
   if(!object(claim)||Object.keys(claim).sort().join(',')!=='category,quote,reason,sourceId,topic,validAt')return 'CLAIM_FIELDS_INVALID';
   const source=sources.find(item=>item.id===claim.sourceId);
   if(!source)return 'SOURCE_ID_UNKNOWN';
+  if(passageIssue(claim.quote))return 'QUOTE_INCOMPLETE';
   if(!text(claim.quote,700)||claim.quote.length<40)return 'QUOTE_FORMAT_INVALID';
   if(!citedPassages(source).some(passage=>passage.includes(claim.quote)))return 'QUOTE_NOT_IN_CITED_PASSAGE';
+  // A substring must not cut a word or discard the end of its sentence.
+  if(!citedPassages(source).some(passage=>{const at=passage.indexOf(claim.quote);if(at<0)return false;const end=at+claim.quote.length;return (at===0||!/[\p{L}\p{N}]/u.test(passage[at-1]))&&(end===passage.length||/[.!?][\"’”']?$/u.test(claim.quote)&&/\s/u.test(passage[end]));}))return 'QUOTE_BOUNDARY_INVALID';
   if(!text(claim.category,80))return 'CATEGORY_INVALID';
   if(!text(claim.topic,100))return 'TOPIC_INVALID';
   if(!text(claim.reason,240))return 'REASON_INVALID';

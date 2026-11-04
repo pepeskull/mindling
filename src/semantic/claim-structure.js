@@ -24,7 +24,7 @@ export function claimStructure(memory){
   const view=semanticText(memory),content=view.text,facts=[],operations=[],diagnostics={},contexts=new Set(),strongContexts=new Set();let defined=null,subjectLabel=null;
   if(view.reason)diagnostics[view.reason]=1;
   // Uncertainty, fictional framing and quoted discourse can scope the entire record.
-  if(blocked.test(content)||/["“”`?]/u.test(content)){diagnostics.UNCERTAIN_OR_QUOTED=1;return {facts,operations,diagnostics,contexts,strongContexts,subjectLabel};}
+  if(/\b(?:fictional|imaginary|metaphor)\b/iu.test(content)||/["“”`?]/u.test(content)){diagnostics.UNCERTAIN_OR_QUOTED=1;return {facts,operations,diagnostics,contexts,strongContexts,subjectLabel};}
   const partsOfRecord=sentences(content).slice(0,8),negatedSubjects=new Set();
   for(const sentence of partsOfRecord){
     if(!features(sentence).negative)continue;
@@ -38,7 +38,7 @@ export function claimStructure(memory){
     // A report can contain an explicit proposition followed by a disclaimer or
     // contrast. Reject that sentence, not unrelated supported sentences; never
     // delete negation/qualifiers inside a proposition to manufacture a positive.
-    if(sentence.length>700||features(sentence).negative||blocked.test(sentence)||/["“”`?]/u.test(sentence)){defined=null;continue;}
+    if(sentence.length>700||features(sentence).negative||blocked.test(sentence)||/\b(?:can|often|typically|staff view)\b/iu.test(sentence)||/["“”`?]/u.test(sentence)){defined=null;continue;}
     const parts=sentence.replace(/[.]$/u,'').split(/(?:;\s*|,\s+and\s+|,?\s+by which\s+|,?\s+that\s+|,?\s+which\s+)/iu);
     for(const part of parts.slice(0,3)){
       // Passive grouping states the material and container, not an invented actor.

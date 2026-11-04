@@ -1,3 +1,4 @@
+import { passageIssue } from '../memory/passage-integrity.js';
 import { editableMemoryText } from '../learning/correction-content.js';
 // Analysis-only projection. Exact source-prefix recognition is shared with the
 // correction boundary; never infer provenance from a URL-shaped string alone.
@@ -6,6 +7,7 @@ export function semanticText(memory){
   if(raw.length>2000)return {text:'',reason:'TEXT_LIMIT'};
   let text=editableMemoryText(memory);
   if(/^Source observation \(/u.test(raw)&&text===raw)return {text:'',reason:'WRAPPER_UNRECOGNIZED'};
+  if(memory?.research&&passageIssue(text))return {text:'',reason:'SUSPECTED_TRUNCATION'};
   // Paired, bounded emphasis only. Words, qualifiers and punctuation stay intact.
   // Links, code, unmatched delimiters and embedded underscores are not stripped.
   text=text.replace(/\*\*([^*\n]{1,700})\*\*/gu,'$1').replace(/(?<![\p{L}\p{N}_])__([^_\n]{1,700})__(?![\p{L}\p{N}_])/gu,'$1');
