@@ -22,14 +22,14 @@ const legacy=(content=ORIGINAL,kind='claim')=>{
 };
 const apply=(state,text,assessment,id='submission',activity='TEACH')=>learn(state,{id,text,assessment,activity});
 
-test('real case 1: name and programming preference become linked atoms, charged/rewarded once',()=>{
+test('real case 1: name and programming preference retain submission provenance, charged/rewarded once',()=>{
   const before=fresh(),d=batch(ORIGINAL,[decision(),decision({kind:'preference'})]);
   const next=apply(before,ORIGINAL,d);
   assert.equal(next.mind.memories.length,2);assert.equal(next.mind.energy.remaining,8);assert.equal(next.mind.lifetimeXP,XP.concept);
   assert.equal(next.mind.milestones.length,1);assert.equal(next.mind.history.length,1);assert.equal(next.mind.history[0].input,ORIGINAL);
   assert.deepEqual(next.mind.memories.map(m=>m.content),['Jag heter Alex','mitt favoritprogrammeringsspråk är JavaScript.']);
   assert.deepEqual(next.mind.memories.map(m=>m.intelligence.kind),['claim','preference']);
-  assert.equal(next.mind.memories[0].submissionId,next.mind.memories[1].submissionId);assert.ok(next.mind.memories[0].relatedMemoryIds.includes(next.mind.memories[1].id));
+  assert.equal(next.mind.memories[0].submissionId,next.mind.memories[1].submissionId);assert.ok(next.mind.memories[0].coSubmittedMemoryIds.includes(next.mind.memories[1].id));assert.equal(next.mind.memories[0].relatedMemoryIds.length,0);
   assert.deepEqual(next.mind.memories[0].neuronIds,next.mind.memories[1].neuronIds);
   assert.equal(before.mind.energy.remaining,10);assert.equal(before.mind.memories.length,0);
 });

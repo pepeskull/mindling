@@ -20,7 +20,6 @@ export class NeuralDevelopmentScene {
     this.renderer.deceased=data.deceased;this.renderer.update({nodes:data.nodes,synapses:data.edges,stage:data.stageNumber});this.renderer.setReducedMotion(this.renderer.motion.matches||data.deceased);}
   setVisible(value){if(value&&!this.started){this.started=true;this.renderer.initialize(this.renderer.model).catch(()=>{if(!this.abort.signal.aborted)this.host.dataset.brainError='unavailable';});}this.renderer.setVisible(value);}
   control(action){
-    if(action==='focus'){if(this.renderer.focusSelection(this.selection))this.camera.zoomTo(Math.max(1.2,this.camera.zoom));return;}
     if(action==='fit'||action==='reset')this.renderer.resetFocus();
     if(action==='reset')this.camera.restorePose({rotation:{x:-.08,y:-.2},zoom:1,targetZoom:1});
     else this.camera.zoomTo(action==='fit'?1:this.camera.zoom*(action==='in'?VIEW_ZOOM.step:1/VIEW_ZOOM.step));

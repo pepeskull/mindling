@@ -13,7 +13,7 @@ export function withResearch(graph,state,canonical){
   const nodes=[...graph.nodes],edges=[...graph.edges],present=new Set(nodes.map(node=>node.id));
   for(const root of roots){
     nodes.push(root);
-    if(root.anchor&&present.has(root.anchor))edges.push({from:root.anchor,to:root.id,kind:'research'});
+    if(root.anchor&&present.has(root.anchor))edges.push({from:root.anchor,to:root.id,kind:'research',persisted:false,origin:'task-reference',taskId:root.taskId,sourceMemoryIds:[...root.task.referenceIds]});
     // Talk has exactly one node. Other modes expose bounded work groups;
     // rings derive from the actual completed units in each group.
     if(root.task.mode!=='TALK_RESEARCH'){
@@ -21,7 +21,7 @@ export function withResearch(graph,state,canonical){
       groups.forEach(([label,units],index)=>{
         const id=`${root.id}:${index}`;
         nodes.push({...root,id,label,root:false,parent:root.id,progress:units.filter(unit=>root.task.completedWork.includes(unit)).length/units.length});
-        edges.push({from:root.id,to:id,kind:'research'});
+        edges.push({from:root.id,to:id,kind:'research',persisted:false,origin:'task-work-group',taskId:root.taskId,sourceMemoryIds:[]});
       });
     }
   }

@@ -110,7 +110,7 @@ export class MindlingApp extends EvolutionPreview {
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
         const task=await learningEngine(this).prepare(interpretation,id,{taskId:input.taskId,guard:input.guard});
         learningEngine(this).startIfAuthorized(task);
-        return {accepted:true,message:`${task.message} No XP awarded. No additional Energy spent.`,learningTaskId:task.id};
+        return {accepted:true,message:`${task.message} Rewards apply only after qualifying learning is saved.`,learningTaskId:task.id};
       }
       if (activity === 'TALK') {
         const reply=await knowledgeTalk(this,text,id,{journal:true,interpretation,guard:input.guard});

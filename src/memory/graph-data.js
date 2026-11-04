@@ -1,3 +1,4 @@
+import { memoryLabel, contextualLabel, memoryContext } from './memory-label.js';
 // Read-only presentation projection. Never opens a database, classifies text or
 // guesses a relationship from similarity. Saved IDs are the only memory identity.
 const string=value=>typeof value==='string'?value.trim():'';
@@ -25,19 +26,26 @@ export function graphData(state={}) {
     if(!topics.has(topicKey)){topics.set(topicKey,{id:topicKey,kind:'topic',label:topicLabel,areaId:areaKey,memoryIds:[]});area.topicIds.push(topicKey);}
     area.memoryIds.push(id);topics.get(topicKey).memoryIds.push(id);
     const historical=Boolean(memory.supersededBy||memory.intelligence?.current===false||memory.kind==='historical'||memory.intelligence?.kind==='historical');
-    nodes.push({id:memoryNodeId(id),recordId:id,kind:'memory',label:string(memory.content)||'Memory text unavailable',areaLabel:area.label,areaId:areaKey,topicId:topicKey,historical,raw:memory});
-    edges.push({from:topicKey,to:memoryNodeId(id),kind:'hierarchy'});
+    nodes.push({id:memoryNodeId(id),recordId:id,kind:'memory',displayLabel:memoryLabel(memory).title,label:string(memory.content)||'Memory text unavailable',areaLabel:area.label,areaId:areaKey,topicId:topicKey,historical,raw:memory});
+    edges.push({from:topicKey,to:memoryNodeId(id),kind:'hierarchy',persisted:false,sourceMemoryIds:[id],origin:'topic-membership'});
   }
   const add=(from,to,kind)=>{
     if(typeof to!=='string'||!records.has(to)){if(to)dangling++;return;}
     if(from===to)return;
     const pair=[from,to].sort(compare),edgeKey=key(kind,pair);
     if(edgeKeys.has(edgeKey))return;
-    edgeKeys.add(edgeKey);pairs.add(key('pair',pair));
-    edges.push({from:memoryNodeId(from),to:memoryNodeId(to),kind});
+    edgeKeys.add(edgeKey);if(kind==='association')pairs.add(key('pair',pair));
+    const a=records.get(from),b=records.get(to),semantic=list(a.semanticAssociations).find(e=>e?.memoryId===to)||list(b.semanticAssociations).find(e=>e?.memoryId===from),model=list(a.modelAssociations).find(e=>e?.memoryId===to)||list(b.modelAssociations).find(e=>e?.memoryId===from);
+    edges.push({from:memoryNodeId(from),to:memoryNodeId(to),kind,persisted:true,sourceMemoryIds:pair,origin:kind==='association'?(semantic?'semanticAssociations':model?'modelAssociations':'relatedMemoryIds'):kind==='co-submitted'?'coSubmittedMemoryIds':kind==='history'?'version-metadata':'component-metadata',...(kind==='association'&&semantic?{basis:{rule:semantic.rule,entity:semantic.entity,...(semantic.scope?{scope:semantic.scope}:{})}}:{})});
   };
   for(const [id,memory] of records){
-    for(const target of list(memory.relatedMemoryIds))add(id,target,'association');
+    for(const target of list(memory.relatedMemoryIds)){
+      const other=records.get(target),audited=list(memory.semanticAssociations).some(e=>e?.memoryId===target)||list(other?.semanticAssociations).some(e=>e?.memoryId===id)||list(memory.modelAssociations).some(e=>e?.memoryId===target)||list(other?.modelAssociations).some(e=>e?.memoryId===id);
+      const version=memory.correctsMemoryId===target||other?.correctsMemoryId===id||memory.supersededBy===target||other?.supersededBy===id;
+      const submission=memory.submissionId&&memory.submissionId===other?.submissionId&&list(memory.coSubmittedMemoryIds).includes(target)&&list(other?.coSubmittedMemoryIds).includes(id);
+      add(id,target,!audited&&version?'history':!audited&&submission?'co-submitted':'association');
+    }
+    if(string(memory.correctsMemoryId))add(id,memory.correctsMemoryId,'history');
     for(const target of list(memory.coSubmittedMemoryIds))add(id,target,'co-submitted');
     if(string(memory.parentMemoryId))add(id,memory.parentMemoryId,'part-of');
     for(const target of list(memory.componentMemoryIds))add(id,target,'part-of');
@@ -45,8 +53,10 @@ export function graphData(state={}) {
     for(const target of list(memory.supersededByIds))add(id,target,'history');
   }
   const areas=[...categories.values()].sort((a,b)=>compare(a.label,b.label)||compare(a.id,b.id));
+  for(const area of areas){const ts=area.topicIds.map(id=>topics.get(id));area.displayLabel=ts.length>1&&/^(definition|definitions)$/iu.test(area.label)?`Definitions · ${ts.length} topics`:contextualLabel(area.label,ts.length===1?ts[0].label:null)||area.label;for(const topic of ts){const first=nodes.find(n=>n.topicId===topic.id);topic.displayLabel=contextualLabel(topic.label,first&&memoryLabel(first).title)||topic.label;}}
+  const titles=new Map();for(const node of nodes){const label=memoryLabel(node).title;titles.set(label,(titles.get(label)||0)+1);}for(const node of nodes)if(titles.get(memoryLabel(node).title)>1)node.labelContext=memoryContext(node.raw);
   const topicNodes=[...topics.values()].sort((a,b)=>compare(a.id,b.id));
-  for(const area of areas)for(const topicId of area.topicIds)edges.push({from:area.id,to:topicId,kind:'hierarchy'});
+  for(const area of areas)for(const topicId of area.topicIds)edges.push({from:area.id,to:topicId,kind:'hierarchy',persisted:false,sourceMemoryIds:topics.get(topicId).memoryIds,origin:'area-membership'});
   // Keep unreadable records inspectable in the graph, but exclude them from
   // acquired-knowledge counts alongside historical and superseded records.
   const current=nodes.filter(node=>!node.historical&&string(node.raw.content)),totals=new Map();
@@ -69,27 +79,26 @@ export function layoutGraph(graph) {
   const membersByTopic=new Map(),topicsByArea=new Map();
   for(const node of graph.memories){if(!membersByTopic.has(node.topicId))membersByTopic.set(node.topicId,[]);membersByTopic.get(node.topicId).push(node);}
   for(const node of graph.nodes)if(node.kind==='topic'){if(!topicsByArea.has(node.areaId))topicsByArea.set(node.areaId,[]);topicsByArea.get(node.areaId).push(node);}
+  // Compact, deterministic cluster packing. Layout never adds relationships.
   const clusters=areas.map(area=>{
     const topics=(topicsByArea.get(area.id)||[]).slice().sort((a,b)=>compare(a.id,b.id));
-    const maxLeaf=Math.max(28,...topics.map(topic=>24*Math.sqrt((membersByTopic.get(topic.id)||[]).length)));
-    const orbit=topics.length===1?100:Math.max(maxLeaf+65,(maxLeaf*2+45)/(2*Math.sin(Math.PI/topics.length)));
-    return {area,topics,maxLeaf,orbit,radius:orbit+maxLeaf+65};
+    const count=Math.max(1,...topics.map(t=>(membersByTopic.get(t.id)||[]).length));
+    const columns=Math.min(4,Math.max(1,Math.ceil(Math.sqrt(count))));
+    const width=Math.max(190,columns*150),height=70+topics.reduce((sum,t)=>sum+65+Math.ceil((membersByTopic.get(t.id)||[]).length/columns)*68,0);
+    return {area,topics,columns,width,height};
   });
-  const columns=Math.max(1,Math.ceil(Math.sqrt(clusters.length))),widths=Array(columns).fill(0),heights=[];
-  clusters.forEach((cluster,i)=>{widths[i%columns]=Math.max(widths[i%columns],cluster.radius*2+90);const row=Math.floor(i/columns);heights[row]=Math.max(heights[row]||0,cluster.radius*2+90);});
-  for(let index=0;index<clusters.length;index++){
-    const {area,topics,orbit,radius}=clusters[index],col=index%columns,row=Math.floor(index/columns);
-    const cx=widths.slice(0,col).reduce((a,b)=>a+b,0)+widths[col]/2,cy=heights.slice(0,row).reduce((a,b)=>a+b,0)+heights[row]/2;
-    result.set(area.id,{...area,x:cx,y:cy,r:18,clusterRadius:radius});
-    topics.forEach((topic,j)=>{
-      const angle=-Math.PI/2+j*Math.PI*2/topics.length+index*.73;
-      const x=cx+Math.cos(angle)*orbit,y=cy+Math.sin(angle)*orbit;
-      result.set(topic.id,{...topic,x,y,r:8});
-      const members=(membersByTopic.get(topic.id)||[]).slice().sort((a,b)=>compare(a.id,b.id));
-      members.forEach((node,k)=>{const theta=k*2.399963229728653+angle,dist=35+22*Math.sqrt(k);result.set(node.id,{...node,x:x+Math.cos(theta)*dist,y:y+Math.sin(theta)*dist,r:node.historical?4:5.5});});
+  const columns=Math.max(1,Math.ceil(Math.sqrt(clusters.length*1.6))),widths=Array(columns).fill(0),heights=[];
+  clusters.forEach((c,i)=>{widths[i%columns]=Math.max(widths[i%columns],c.width+50);const row=Math.floor(i/columns);heights[row]=Math.max(heights[row]||0,c.height+35);});
+  clusters.forEach(({area,topics,columns:leafColumns,width},i)=>{
+    const col=i%columns,row=Math.floor(i/columns),left=widths.slice(0,col).reduce((a,b)=>a+b,0)+25,top=heights.slice(0,row).reduce((a,b)=>a+b,0)+22,cx=left+width/2;
+    result.set(area.id,{...area,x:cx,y:top,r:11,clusterRadius:Math.min(width/2,130)});let y=top+62;
+    topics.forEach(topic=>{
+      result.set(topic.id,{...topic,x:cx,y,r:8});const members=(membersByTopic.get(topic.id)||[]).slice().sort((a,b)=>compare(a.id,b.id));y+=60;
+      members.forEach((node,k)=>result.set(node.id,{...node,x:left+width/2+(k%leafColumns-(Math.min(members.length,leafColumns)-1)/2)*150,y:y+Math.floor(k/leafColumns)*68,r:node.historical?5.5:7}));
+      y+=Math.ceil(members.length/leafColumns)*68+5;
     });
-  }
-  return {nodes:[...result.values()],edges:graph.edges.filter(edge=>byId.has(edge.from)&&byId.has(edge.to)),width:Math.max(300,widths.reduce((a,b)=>a+b,0)),height:Math.max(260,heights.reduce((a,b)=>a+b,0))};
+  });
+  return {nodes:[...result.values()],edges:graph.edges.filter(edge=>byId.has(edge.from)&&byId.has(edge.to)),width:Math.max(200,widths.reduce((a,b)=>a+b,0)),height:Math.max(180,heights.reduce((a,b)=>a+b,0))};
 }
 
 // Observe only fields the visualization consumes. Life/Energy ticks must not
@@ -97,5 +106,5 @@ export function layoutGraph(graph) {
 export function memorySignature(state={}) {
   const scalar=value=>['string','boolean'].includes(typeof value)||(typeof value==='number'&&Number.isFinite(value))?value:null;
   const ids=value=>list(value).filter(id=>typeof id==='string').slice().sort(compare);
-  return JSON.stringify([list(state?.categories).map(c=>[scalar(c?.id),scalar(c?.name)]),list(state?.memories).map(m=>m&&typeof m==='object'?[...[m.id,m.content,m.complete,m.contentIntegrity?.version,m.contentIntegrity?.status,m.contentIntegrity?.length,m.categoryId,m.category,m.areaSuggestion,m.topic,m.concept,m.strength,m.activations,m.supersededBy,m.parentMemoryId,m.source,m.kind,m.verification,m.intelligence?.kind,m.intelligence?.certainty,m.intelligence?.current,m.intelligence?.verification,m.analysis?.verification,m.native?.verification,m.analysis?.name,m.createdAt,m.updatedAt].map(scalar),ids(m.relatedMemoryIds),ids(m.coSubmittedMemoryIds),ids(m.componentMemoryIds),ids(m.supersededByIds),ids(m.neuronIds),ids(m.synapseIds),list(m.valueHistory).map(v=>scalar(v?.content)),list(m.contradictions).map(v=>scalar(v?.claim)),list(m.parts||m.atomicParts).map(p=>typeof p==='string'?p:scalar(p?.content||p?.text))]:null)]);
+  return JSON.stringify([list(state?.categories).map(c=>[scalar(c?.id),scalar(c?.name)]),list(state?.memories).map(m=>m&&typeof m==='object'?[...[m.id,m.correctsMemoryId,m.submissionId,m.content,m.complete,m.contentIntegrity?.version,m.contentIntegrity?.status,m.contentIntegrity?.length,m.categoryId,m.category,m.areaSuggestion,m.topic,m.concept,m.strength,m.activations,m.supersededBy,m.parentMemoryId,m.source,m.kind,m.verification,m.intelligence?.kind,m.intelligence?.certainty,m.intelligence?.current,m.intelligence?.verification,m.analysis?.verification,m.native?.verification,m.analysis?.name,m.createdAt,m.updatedAt].map(scalar),ids(m.relatedMemoryIds),list(m.semanticAssociations).map(e=>[scalar(e?.memoryId),scalar(e?.rule),scalar(e?.entity),scalar(e?.scope)]),list(m.modelAssociations).map(e=>scalar(e?.memoryId)),ids(m.coSubmittedMemoryIds),ids(m.componentMemoryIds),ids(m.supersededByIds),ids(m.neuronIds),ids(m.synapseIds),list(m.valueHistory).map(v=>scalar(v?.content)),list(m.contradictions).map(v=>scalar(v?.claim)),list(m.parts||m.atomicParts).map(p=>typeof p==='string'?p:scalar(p?.content||p?.text))]:null)]);
 }

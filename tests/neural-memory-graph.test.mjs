@@ -13,7 +13,7 @@ test('three embedded atomic statements are ONE canonical memory, not three fabri
 });
 test('stored atomic child records remain canonical and preserve their actual parent identity',()=>{
   const g=graphData({memories:[memory('parent',{componentMemoryIds:['name','preference'],supersededBy:'name',supersededByIds:['name','preference']}),memory('name',{parentMemoryId:'parent'}),memory('preference',{parentMemoryId:'parent',intelligence:{current:true,kind:'preference'},valueHistory:[{content:'Old preference'}]})]});
-  assert.equal(g.stats.canonical,3);assert.equal(g.stats.current,2);assert.equal(g.stats.associations,2);assert.equal(g.edges.filter(e=>e.kind==='part-of').length,2);assert.equal(g.memories.find(m=>m.recordId==='parent').historical,true);assert.equal(g.memories.find(m=>m.recordId==='preference').raw.valueHistory[0].content,'Old preference');
+  assert.equal(g.stats.canonical,3);assert.equal(g.stats.current,2);assert.equal(g.stats.associations,0);assert.equal(g.edges.filter(e=>e.kind==='part-of').length,2);assert.equal(g.memories.find(m=>m.recordId==='parent').historical,true);assert.equal(g.memories.find(m=>m.recordId==='preference').raw.valueHistory[0].content,'Old preference');
 });
 test('category IDs, existing labels and topics determine hierarchy without text reclassification',()=>{
   const g=graphData({categories:[{id:'x',name:'Stored category'}],memories:[memory('a',{categoryId:'x',category:'Old label'}),memory('b',{category:'Languages',topic:'Vocabulary'}),memory('c',{category:'Science',topic:'Cells'})]});
@@ -25,7 +25,7 @@ test('only real references create associations; self, dangling and duplicate ref
 });
 test('descriptive links and explicit history/parts/provenance remain distinct, with unique-pair counts',()=>{
   const g=graphData({memories:[memory('a',{relatedMemoryIds:['b'],coSubmittedMemoryIds:['b'],componentMemoryIds:['b'],supersededBy:'b'}),memory('b')]});
-  assert.equal(g.stats.associations,1);assert.deepEqual(new Set(g.edges.filter(e=>e.kind!=='hierarchy').map(e=>e.kind)),new Set(['association','co-submitted','part-of','history']));
+  assert.equal(g.stats.associations,0);assert.deepEqual(new Set(g.edges.filter(e=>e.kind!=='hierarchy').map(e=>e.kind)),new Set(['co-submitted','part-of','history']));
 });
 test('filter/search never fabricates new relationships and includes the matching hierarchy',()=>{
   const g=graphData({memories:[memory('a',{content:'A language memory',category:'Language',topic:'Vocabulary',relatedMemoryIds:['b']}),memory('b',{content:'An unrelated subject',category:'Science'})]});

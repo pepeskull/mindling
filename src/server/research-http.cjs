@@ -29,6 +29,7 @@ async function requestJSON(url,options,trace,limit=65536){
 function snapshot(trace,code,detail){
   const result={correlationId:trace.correlationId,operation:trace.operation,phase:trace.phase,endpoint:trace.endpoint,upstreamStatus:trace.upstreamStatus,errorCategory:code,detail:detail||'UNCLASSIFIED',durationMs:Date.now()-trace.startedAt,searchRequested:trace.searchRequested,searchDispatched:trace.searchDispatched,searchCompleted:trace.searchCompleted,completed:trace.completed,failed:trace.failed,outcomeUnknown:trace.outcomeUnknown,sourceCount:trace.sourceCount,fallbackReason:'none',modelConfirmed:!!trace.modelConfirmed};
   if(trace.upstreamRequestId)result.upstreamRequestId=trace.upstreamRequestId;
+  if(trace.observedToolEvents!==undefined)result.observedToolEvents=trace.observedToolEvents;
   if(trace.validation)result.validation=trace.validation;
   if(trace.limitationFailure)result.limitationFailure=trace.limitationFailure;
   return result;

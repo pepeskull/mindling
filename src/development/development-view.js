@@ -16,7 +16,7 @@ export class DevelopmentView {
           <div class="development-panel-heading"><div><p class="development-eyebrow">01 / NEURAL EVOLUTION</p><h3 id="evolution-title" data-development-name>Your Mindling</h3></div><span class="development-presence" data-development-presence>Living architecture</span></div>
           <p class="development-stage" data-development-stage></p>
           <div class="development-scene" tabindex="0" role="img" aria-label="Interactive Mindling neural development"><div class="development-network-empty" hidden><p>A network waiting to grow.</p><span>No saved neurons are available yet.</span></div></div>
-          <div class="graph-view-tools development-zoom-tools glass-line" aria-label="Brain zoom controls"><button type="button" data-brain-action="out" aria-label="Zoom out">−</button><span data-brain-zoom>100%</span><button type="button" data-brain-action="in" aria-label="Zoom in">+</button><button type="button" data-brain-action="fit">Fit brain</button><button type="button" data-brain-action="reset">Reset view</button><button type="button" data-brain-action="focus" disabled>Focus selected</button></div>
+          <div class="graph-view-tools development-zoom-tools glass-line" aria-label="Brain zoom controls"><button type="button" data-brain-action="out" aria-label="Zoom out">−</button><span data-brain-zoom>100%</span><button type="button" data-brain-action="in" aria-label="Zoom in">+</button><button type="button" data-brain-action="fit">Fit brain</button><button type="button" data-brain-action="reset">Reset view</button></div>
           <div class="development-progression"><dl class="development-metrics" data-development-metrics></dl><div class="development-xp" data-development-xp></div></div>
         </section>
         <section class="development-pathways development-panel" aria-labelledby="pathways-title">
@@ -28,7 +28,7 @@ export class DevelopmentView {
         </section>
       </div>`;
     this.pathways = new AdaptivePathwaysView(root.querySelector('[data-adaptive-pathways]'));
-    this.scene = new NeuralDevelopmentScene(root.querySelector('.development-scene'),zoom=>{root.querySelector('[data-brain-zoom]').textContent=`${Number((zoom*100).toFixed(1))}%`;},selection=>{root.querySelector('[data-brain-action="focus"]').disabled=selection?.type!=='neuron';});
+    this.scene = new NeuralDevelopmentScene(root.querySelector('.development-scene'),zoom=>{root.querySelector('[data-brain-zoom]').textContent=`${Number((zoom*100).toFixed(1))}%`;});
     root.addEventListener('click',event=>{const action=event.target.closest('[data-brain-action]')?.dataset.brainAction;if(action)this.scene.control(action);},{signal:this.abort.signal});
   }
   update(state = {}, life = null) {

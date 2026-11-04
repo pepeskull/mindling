@@ -9,13 +9,13 @@ export { growCanonical as formationAssociations } from '../../brain/canonical-gr
 export function serviceMetadata(decision,activity,at) {
   return {name:'mindling-learning-service',confidence:decision.confidence,verification:'unverified-player-claim',activity,learnedAt:at};
 }
-export function recordMemory(mind,{id,text,decision,event,at,associations}) {
+export function recordMemory(mind,{id,text,decision,event,at,associations,connect=true}) {
   if(id.length>100||mind.memories.some(memory=>memory.id===id))throw Error('Memory identifier conflict. No Energy or XP changed.');
   const memory={id,content:text,contentIntegrity:capturedContent(text),concept:decision.concept,normalized:normalize(text),normalizedConcept:normalize(decision.concept),createdAt:at,strength:.3,activations:1,
     neuronIds:[...associations.neuronIds],synapseIds:[...associations.synapseIds],relatedMemoryIds:[],source:'SERVICE',areaSuggestion:decision.category,
     analysis:serviceMetadata(decision,event.activity,at),submissionId:event.id,
     intelligence:{kind:decision.kind,certainty:decision.certainty,current:decision.kind!=='historical',verification:'unverified-player-claim',operation:decision.operation,relationship:decision.relationship}};
-  assignCategory(mind,memory,decision);mind.memories.push(memory);connectSemanticMemory(mind,memory.id);recordPathwayLearning(mind,memory,{eventId:event.id,activity:event.activity,at});return memory;
+  assignCategory(mind,memory,decision);mind.memories.push(memory);if(connect)connectSemanticMemory(mind,memory.id);recordPathwayLearning(mind,memory,{eventId:event.id,activity:event.activity,at});return memory;
 }
 export function decomposeLegacy(mind,parent,at) {
   if(parent.componentMemoryIds)return parent.componentMemoryIds.map(id=>mind.memories.find(memory=>memory.id===id));
