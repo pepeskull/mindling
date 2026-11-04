@@ -104,5 +104,6 @@ export function semanticDiagnostics(value){
   if(!Array.isArray(mind?.memories))return {hydration:hydrationStatus,counts:{INVALID_STORE:1}};
   const copy={memories:mind.memories.length>CONNECTION_LIMITS.records?mind.memories:structuredClone(mind.memories)};
   const index=indexFor(copy,[],counts);for(const id of index.descriptors.keys())connect(index,id,counts);
-  return {hydration:hydrationStatus,counts,note:'Missing justified edges may indicate changed data, limits, or reconciliation not yet committed; they alone do not prove a storage failure.'};
+  const records=mind.memories.slice(0,CONNECTION_LIMITS.records).map((memory,index)=>{const reasons={};const d=describe(memory,reasons);return {index,eligible:eligible(memory),propositions:d?.facts.length||0,reasons,persistedLinks:(memory.relatedMemoryIds||[]).length,reciprocalLinks:(memory.relatedMemoryIds||[]).filter(id=>mind.memories.some(other=>other.id===id&&other.relatedMemoryIds?.includes(memory.id))).length};});
+  return {hydration:hydrationStatus,counts,records,note:'Missing justified edges may indicate changed data, limits, or reconciliation not yet committed; they alone do not prove a storage failure.'};
 }
