@@ -50,7 +50,10 @@ with sync_playwright() as p:
             assert sum(e['xp'] for e in saved['mind']['history'])==xp
             assert page.evaluate('''async(s)=>{const {BrainEngine}=await import('/src/brain/brain-engine.js');const b=new BrainEngine({emit(){}});return b.hydrate(s.mind).lifetimeXP;}''',saved)==xp
             page.locator('[data-view="development"]').click()
-            assert str(xp) in page.locator('#development-view').inner_text()
+            assert page.locator('[data-development-xp] p').inner_text().startswith(f'{xp} / ')
+            assert page.locator('[data-development-xp] progress').get_attribute('value')==str(xp)
+            assert page.locator('[data-development-metrics] > div').filter(has=page.locator('dt',has_text='Lifetime XP')).locator('dd').inner_text()==str(xp)
+            assert f'{saved["mind"]["history"][-1]["xp"]} XP recorded' in page.locator('[data-development-events]').inner_text()
             page.locator('[data-view="dashboard"]').click()
         original=saved['mind']['memories'][0]['content']
         assert original==TEACH.split('. Remember')[0]+'.'
