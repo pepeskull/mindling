@@ -56,7 +56,7 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
       if(app.disposed||signal.aborted)throw Error('Talk was cancelled. No Energy was spent.');
       if(state.mind?.id!==identity)throw Error('Mindling identity changed. No Energy was spent.');
       assertTrainingContext(context,state.mind);
-      return talk(state,talkText,{id});
+      return talk(state,talkText,{id,rewardEligible:reasoning.insufficientInformation===false});
     },journal?{journal:{id,type:'TALK'}}:{});
     let reply={answer:reasoning.answer,memoryIds:reasoning.memoryIds,uncertainty:reasoning.uncertainty,insufficientInformation:reasoning.insufficientInformation,energySpent:1};
     if(interpretation.intent==='QUESTION'&&!signal.aborted&&knowledgeGap(interpretation,context,reasoning,Date.now(),app.state.mind).needsResearch){

@@ -24,25 +24,36 @@ async function search({request,queries,remainingCalls,plan},apiKey,model,signal,
     for(const source of call.action?.sources||[])try{if(source.type==='url')urls.add(contract.publicSourceURL(source.url));}catch{/* Unsafe citation is never retained. */}
     if(['open_page','find_in_page'].includes(call.action?.type))try{urls.add(contract.publicSourceURL(call.action.url));}catch{}
   }
-  const sources=[],observedAt=Date.now(),diagnostics={toolSourceURLs:urls.size,citationsSeen:0,retainedPassages:0,dropped:{}};
+  const sources=[],observedAt=Date.now(),diagnostics={toolSourceURLs:urls.size,completedMessages:0,reportParts:0,citationsSeen:0,retainedPassages:0,dropped:{}};
+  trace.extraction=diagnostics;
   const drop=(code,count=1)=>{diagnostics.dropped[code]=(diagnostics.dropped[code]||0)+count;};
   for(const item of payload.output){
     if(item.type!=='message'||item.status!=='completed')continue;
+    diagnostics.completedMessages++;
     for(const part of item.content||[]){
-      if(part.type!=='output_text'||typeof part.text!=='string'||part.text.length>14000||part.text.includes(apiKey))continue;
+      if(part.type!=='output_text')continue;
+      if(typeof part.text!=='string'||!part.text.trim()||part.text.length>14000||part.text.includes(apiKey)){drop('INVALID_REPORT');continue;}
+      diagnostics.reportParts++;
       diagnostics.citationsSeen+=(part.annotations||[]).filter(a=>a.type==='url_citation').length;
       const annotations=(part.annotations||[]).filter(a=>a.type==='url_citation'&&Number.isSafeInteger(a.start_index)&&Number.isSafeInteger(a.end_index)&&a.start_index>=0&&a.end_index>a.start_index&&a.end_index<=part.text.length);
       const invalid=(part.annotations||[]).filter(a=>a.type==='url_citation').length-annotations.length;if(invalid)drop('INVALID_CITATION_RANGE',invalid);
+      // Duplicate annotation ranges can cite several sources. Remove their marker
+      // once, not once per source (which used to delete adjacent report text).
+      const spans=[...new Map(annotations.map(a=>[`${a.start_index}:${a.end_index}`,a])).values()].sort((a,b)=>a.start_index-b.start_index);
+      if(spans.some((span,i)=>i&&span.start_index<spans[i-1].end_index)){drop('OVERLAPPING_CITATIONS');continue;}
+      const separators=[...part.text.matchAll(/\r?\n[ \t]*\r?\n/gu)];
       for(const annotation of annotations){
+        if(typeof annotation.url!=='string'||!annotation.url.trim()){drop('MISSING_URL');continue;}
         let url;try{url=contract.publicSourceURL(annotation.url);}catch{drop('UNSAFE_URL');continue;}
         if(!urls.has(url)){drop('NOT_IN_TOOL_SOURCES');continue;}
         // Display-title layout may vary; this never changes a cited passage/hash.
-        const title=typeof annotation.title==='string'?annotation.title.replace(/[ \t\r\n]+/g,' ').trim():'';
-        if(!title||title.length>240||/[\p{Cc}\p{Cf}]/u.test(title)){drop('INVALID_TITLE');continue;}
-        const start=part.text.lastIndexOf('\n\n',annotation.start_index),from=start<0?0:start+2,finish=part.text.indexOf('\n\n',annotation.end_index),to=finish<0?part.text.length:finish;
+        let title=typeof annotation.title==='string'?annotation.title.replace(/[ \t\r\n]+/g,' ').trim():'';
+        if(!title){title=new URL(url).hostname;drop('TITLE_FALLBACK');}
+        if(title.length>240||/[\p{Cc}\p{Cf}]/u.test(title)){drop('INVALID_TITLE');continue;}
+        const before=separators.filter(m=>m.index+m[0].length<=annotation.start_index).at(-1),after=separators.find(m=>m.index>=annotation.end_index),from=before?before.index+before[0].length:0,to=after?after.index:part.text.length;
         // Quotes below are from the tool-cited MODEL REPORT, never claimed as raw page quotes.
         let text=part.text.slice(from,to);
-        for(const span of annotations.filter(a=>a.start_index>=from&&a.end_index<=to).sort((a,b)=>b.start_index-a.start_index))text=text.slice(0,span.start_index-from)+text.slice(span.end_index-from);
+        for(const span of spans.filter(a=>a.start_index>=from&&a.end_index<=to).sort((a,b)=>b.start_index-a.start_index))text=text.slice(0,span.start_index-from)+text.slice(span.end_index-from);
         text=text.trim().replace(/[ \t\r\n]+/g,' ');
         if(text.length<40||text.length>2400||/[\p{Cc}\p{Cf}]/u.test(text.replace(/[\r\n\t]/g,''))){drop('UNUSABLE_PASSAGE');continue;}
         let source=sources.find(source=>source.url===url);
@@ -58,6 +69,9 @@ async function search({request,queries,remainingCalls,plan},apiKey,model,signal,
       }
     }
   }
+  if(!diagnostics.reportParts)drop('NO_COMPLETED_REPORT');
+  else if(!diagnostics.citationsSeen)drop('NO_CITATIONS');
+  if(!sources.length)drop('NO_USABLE_EVIDENCE');
   trace.sourceCount=sources.length;
   return {provider:PROVIDER,responseId:payload.id,sources,requests:calls.length,bytes,diagnostics,failures:[],evaluation:{claims:[],limitations:[],nextQuestion:null}};
 }

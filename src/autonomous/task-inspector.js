@@ -24,7 +24,10 @@ export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},me
   host.append(el('p',legacy&&active?'Historical task. Its former research workflow is unavailable. Saved sources and knowledge remain intact.':task.message));
   if(task.limitations?.length){host.append(el('h4','Evidence limitations'));for(const limitation of task.limitations)host.append(el('p',limitation,'memory-content-status'));}
   const diagnostics=task.evidenceDiagnostics;
-  if(diagnostics){host.append(el('p',`Proposed claims: ${diagnostics.candidates} · Passed evidence checks: ${diagnostics.accepted}`,'memory-content-status'));const extraction=diagnostics.extraction;if(extraction)host.append(el('p',`Tool source URLs: ${extraction.toolSourceURLs} · URL citations: ${extraction.citationsSeen} · Retained cited passages: ${extraction.retainedPassages}`,'memory-content-status'));if(extraction?.dropped)for(const [reason,count]of Object.entries(extraction.dropped))host.append(el('p',`${count} citation(s) not retained: ${reason.replaceAll('_',' ').toLowerCase()}.`,'memory-content-status'));}
+  if(diagnostics)host.append(el('p',`Proposed claims: ${diagnostics.candidates} · Passed evidence checks: ${diagnostics.accepted}`,'memory-content-status'));
+  const extraction=task.serviceDiagnostic?.extraction||diagnostics?.extraction;
+  if(extraction)host.append(el('p',`Tool source URLs: ${extraction.toolSourceURLs} · URL citations: ${extraction.citationsSeen} · Retained cited passages: ${extraction.retainedPassages}`,'memory-content-status'));
+  if(extraction?.dropped)for(const [reason,count]of Object.entries(extraction.dropped))host.append(el('p',`Extraction observation: ${reason.replaceAll('_',' ').toLowerCase()} · ${count}.`,'memory-content-status'));
   for(const rejection of [...(diagnostics?.rejections||[]),...(task.memoryRejections||[])])host.append(el('p',rejectionExplanation(rejection.code),'memory-content-status'));
   const failure=matchingEvaluationFailure(task);
   if(task.lastFailureCode||failure)host.append(el('p',`Service diagnostic: ${failure?.errorCategory||task.lastFailureCode}${failure?.phase||task.lastFailurePhase?' · '+(failure?.phase||task.lastFailurePhase):''}${failure?' · '+failure.detail:''}`,'memory-content-status'));
