@@ -30,7 +30,8 @@ export function matchingEvaluationFailure(task){
   return diagnostic.phase==='SOURCE_EVALUATION'&&diagnostic.errorCategory&&receipt?.correlationId===diagnostic.correlationId&&receipt.operation===diagnostic.operation?diagnostic:null;
 }
 export function researchFailureMessage(diagnostic,hasCheckpoint=false){
-  if(['TOOL_BUDGET_EXCEEDED','TOOL_ACCOUNTING_AMBIGUOUS','TOOL_EVENT_CONFLICT','TOOL_ACCOUNTING_LIMIT'].includes(diagnostic?.detail))return diagnostic.outcomeUnknown?'Research paused — The service returned ambiguous tool-call accounting. Potentially spent budget remains reserved; no repeat search is allowed.':'Research paused — The service returned more distinct tool calls than authorized. No knowledge was accepted and the search will not be repeated.';
+  if(diagnostic?.detail==='TOOL_BUDGET_EXCEEDED')return 'Research paused — The service returned more distinct tool calls than authorized. Potentially spent budget remains reserved; no repeat search is allowed.';
+  if(['TOOL_ACCOUNTING_AMBIGUOUS','TOOL_EVENT_CONFLICT','TOOL_ACCOUNTING_LIMIT'].includes(diagnostic?.detail))return diagnostic.outcomeUnknown?'Research paused — The service returned ambiguous tool-call accounting. Potentially spent budget remains reserved; no repeat search is allowed.':'Research paused — The service returned more distinct tool calls than authorized. No knowledge was accepted and the search will not be repeated.';
   if(diagnostic?.detail==='LIMITATION_INVALID')return `Research paused — An evidence limitation could not be represented safely. ${hasCheckpoint?'Retrieved sources are saved for a bounded evaluation-only retry.':'No research knowledge was saved.'}`;
   return SERVICE_MESSAGES[diagnostic?.errorCategory]||'Research paused. The task details preserve the service failure.';
 }
