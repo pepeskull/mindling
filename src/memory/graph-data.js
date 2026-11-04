@@ -79,26 +79,27 @@ export function layoutGraph(graph) {
   const membersByTopic=new Map(),topicsByArea=new Map();
   for(const node of graph.memories){if(!membersByTopic.has(node.topicId))membersByTopic.set(node.topicId,[]);membersByTopic.get(node.topicId).push(node);}
   for(const node of graph.nodes)if(node.kind==='topic'){if(!topicsByArea.has(node.areaId))topicsByArea.set(node.areaId,[]);topicsByArea.get(node.areaId).push(node);}
-  // Compact, deterministic cluster packing. Layout never adds relationships.
   const clusters=areas.map(area=>{
     const topics=(topicsByArea.get(area.id)||[]).slice().sort((a,b)=>compare(a.id,b.id));
-    const count=Math.max(1,...topics.map(t=>(membersByTopic.get(t.id)||[]).length));
-    const columns=Math.min(4,Math.max(1,Math.ceil(Math.sqrt(count))));
-    const width=Math.max(190,columns*150),height=70+topics.reduce((sum,t)=>sum+65+Math.ceil((membersByTopic.get(t.id)||[]).length/columns)*68,0);
-    return {area,topics,columns,width,height};
+    const maxLeaf=Math.max(28,...topics.map(topic=>24*Math.sqrt((membersByTopic.get(topic.id)||[]).length)));
+    const orbit=topics.length===1?100:Math.max(maxLeaf+65,(maxLeaf*2+45)/(2*Math.sin(Math.PI/topics.length)));
+    return {area,topics,maxLeaf,orbit,radius:orbit+maxLeaf+65};
   });
-  const columns=Math.max(1,Math.ceil(Math.sqrt(clusters.length*1.6))),widths=Array(columns).fill(0),heights=[];
-  clusters.forEach((c,i)=>{widths[i%columns]=Math.max(widths[i%columns],c.width+50);const row=Math.floor(i/columns);heights[row]=Math.max(heights[row]||0,c.height+35);});
-  clusters.forEach(({area,topics,columns:leafColumns,width},i)=>{
-    const col=i%columns,row=Math.floor(i/columns),left=widths.slice(0,col).reduce((a,b)=>a+b,0)+25,top=heights.slice(0,row).reduce((a,b)=>a+b,0)+22,cx=left+width/2;
-    result.set(area.id,{...area,x:cx,y:top,r:11,clusterRadius:Math.min(width/2,130)});let y=top+62;
-    topics.forEach(topic=>{
-      result.set(topic.id,{...topic,x:cx,y,r:8});const members=(membersByTopic.get(topic.id)||[]).slice().sort((a,b)=>compare(a.id,b.id));y+=60;
-      members.forEach((node,k)=>result.set(node.id,{...node,x:left+width/2+(k%leafColumns-(Math.min(members.length,leafColumns)-1)/2)*150,y:y+Math.floor(k/leafColumns)*68,r:node.historical?5.5:7}));
-      y+=Math.ceil(members.length/leafColumns)*68+5;
+  const columns=Math.max(1,Math.ceil(Math.sqrt(clusters.length))),widths=Array(columns).fill(0),heights=[];
+  clusters.forEach((cluster,i)=>{widths[i%columns]=Math.max(widths[i%columns],cluster.radius*2+90);const row=Math.floor(i/columns);heights[row]=Math.max(heights[row]||0,cluster.radius*2+90);});
+  for(let index=0;index<clusters.length;index++){
+    const {area,topics,orbit,radius}=clusters[index],col=index%columns,row=Math.floor(index/columns);
+    const cx=widths.slice(0,col).reduce((a,b)=>a+b,0)+widths[col]/2,cy=heights.slice(0,row).reduce((a,b)=>a+b,0)+heights[row]/2;
+    result.set(area.id,{...area,x:cx,y:cy,r:18,clusterRadius:radius});
+    topics.forEach((topic,j)=>{
+      const angle=-Math.PI/2+j*Math.PI*2/topics.length+index*.73;
+      const x=cx+Math.cos(angle)*orbit,y=cy+Math.sin(angle)*orbit;
+      result.set(topic.id,{...topic,x,y,r:8});
+      const members=(membersByTopic.get(topic.id)||[]).slice().sort((a,b)=>compare(a.id,b.id));
+      members.forEach((node,k)=>{const theta=k*2.399963229728653+angle,dist=35+22*Math.sqrt(k);result.set(node.id,{...node,x:x+Math.cos(theta)*dist,y:y+Math.sin(theta)*dist,r:node.historical?4:5.5});});
     });
-  });
-  return {nodes:[...result.values()],edges:graph.edges.filter(edge=>byId.has(edge.from)&&byId.has(edge.to)),width:Math.max(200,widths.reduce((a,b)=>a+b,0)),height:Math.max(180,heights.reduce((a,b)=>a+b,0))};
+  }
+  return {nodes:[...result.values()],edges:graph.edges.filter(edge=>byId.has(edge.from)&&byId.has(edge.to)),width:Math.max(300,widths.reduce((a,b)=>a+b,0)),height:Math.max(260,heights.reduce((a,b)=>a+b,0))};
 }
 
 // Observe only fields the visualization consumes. Life/Energy ticks must not
