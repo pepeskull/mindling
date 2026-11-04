@@ -20,7 +20,7 @@ function predicate(value){
 // Local proposition structure, not a general language model or truth classifier.
 // Pronoun resolution is confined to one explicit preceding definition in this
 // canonical record; ambiguous or uncertain prose is never completed by guessing.
-export function claimStructure(memory){
+function basicStructure(memory){
   const view=semanticText(memory),content=view.text,facts=[],operations=[],diagnostics={},contexts=new Set(),strongContexts=new Set();let defined=null,subjectLabel=null;
   if(view.reason)diagnostics[view.reason]=1;
   // Uncertainty, fictional framing and quoted discourse can scope the entire record.
@@ -74,4 +74,41 @@ export function claimStructure(memory){
     }
   }
   return {facts,operations,diagnostics,contexts,strongContexts,subjectLabel};
+}
+
+// Supplement the narrow parser with explicit qualified constructions. These
+// propositions are inspectable but never fed to unconditional association rules.
+export function claimStructure(memory){
+  const result=basicStructure(memory),view=semanticText(memory);
+  if(view.reason||/\b(?:fictional|imaginary|if|unless)\b/iu.test(view.text))return result;
+  const add=(subject,predicate,object,qualifiers)=>{
+    subject=nounPhrase(subject);object=nounPhrase(object);
+    if(!subject||!object||['it','this','they','those'].includes(subject))return;
+    const fact={subject,predicate,object,qualifiers};
+    if(!result.facts.some(f=>JSON.stringify(f)===JSON.stringify(fact)))result.facts.push(fact);
+  };
+  let text=view.text;
+  const contrast=text.match(/^(.+?) and (.+?) are related but not the same:\s*/iu);
+  if(contrast){
+    add(contrast[1],'distinct-from',contrast[2],{polarity:'negative-equivalence'});
+    text=text.slice(contrast[0].length);
+    // Only this explicit distinction heading is isolated; arbitrary negation is
+    // not erased. The independent definitions keep their relative qualifications.
+    for(const part of text.split(/[;.!?]\s*/u).slice(0,8)){
+      const definition=part.match(/^(?:a |the )?(.+?) is (.+?)(?: that (.+)| for (.+))?$/iu);
+      if(definition)add(definition[1],'defines',definition[2],{context:definition[3]||definition[4]||'explicit distinction'});
+    }
+  }
+  for(const sentence of sentences(text).slice(0,8)){
+    const typical=sentence.match(/^In a typical ([^,]+), (?:the )?(.+?) authorizes (?:a |the )?(.+?) with (.+?) and broadcasts it to (.+?)\.$/iu);
+    if(typical){
+      add(typical[2],'authorizes',typical[3],{frequency:'typical',context:typical[1],instrument:typical[4]});
+      // It refers to the sole direct object of the same coordinated clause.
+      add(typical[2],'broadcasts',typical[3],{frequency:'typical',context:typical[1],destination:typical[5]});
+    }
+    const passive=sentence.split('—then ').at(-1).match(/^(?:the )?(.+?) (can|may) be (included|stored|grouped) (?:in|into) (?:a |the )?([^.!?]+)\.$/iu);
+    if(passive)add(passive[1],passive[3],passive[4],{modality:passive[2],context:'conditional inclusion; preceding qualifications retained in source'});
+  }
+  if(result.facts.some(f=>f.qualifiers))result.diagnostics.QUALIFIED_PROPOSITIONS=result.facts.filter(f=>f.qualifiers).length;
+  return result;
 }

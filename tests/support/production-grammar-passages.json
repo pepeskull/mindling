@@ -1,0 +1,5 @@
+[
+  "A **blockchain** is a shared database maintained by computers on a network. Transactions or other data are grouped into **blocks**; each validated block is cryptographically linked to the previous one, forming a chain. Network participants check proposed entries against the network’s rules and use a consensus process to agree on which blocks to add.",
+  "In a typical cryptocurrency transaction, the sender authorizes a transfer with a cryptographic signature and broadcasts it to the network. Nodes check that it follows the rules—for example, that the sender is authorized and isn’t spending the same funds twice—then the transaction can be included in a block. The network’s consensus method differs across blockchains.",
+  "**Cryptocurrency and blockchain are related but not the same:** a cryptocurrency is a digital asset that a particular network may record and transfer; the blockchain is the underlying ledger and rules for that network. Blockchains can also record or manage data and assets other than cryptocurrencies."
+]

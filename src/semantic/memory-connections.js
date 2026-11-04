@@ -15,8 +15,8 @@ function describe(memory,diagnostics=null){
   if(!eligible(memory)){if(diagnostics)diagnostics.ELIGIBILITY_EXCLUDED=(diagnostics.ELIGIBILITY_EXCLUDED||0)+1;return null;}
   // Classification labels select presentation groups, not proposition eligibility.
   // A broad or independently assigned topic must not erase explicit claim structure.
-  const parsed=claimStructure(memory),facts=parsed.facts;
-  if(diagnostics){for(const [key,count]of Object.entries(parsed.diagnostics))diagnostics[key]=(diagnostics[key]||0)+count;if(!facts.length)diagnostics.NO_PROPOSITIONS=(diagnostics.NO_PROPOSITIONS||0)+1;}
+  const parsed=claimStructure(memory),facts=parsed.facts.filter(f=>!f.qualifiers);
+  if(diagnostics){for(const [key,count]of Object.entries(parsed.diagnostics))diagnostics[key]=(diagnostics[key]||0)+count;if(!parsed.facts.length)diagnostics.NO_PROPOSITIONS=(diagnostics.NO_PROPOSITIONS||0)+1;else if(!facts.length)diagnostics.QUALIFIED_ONLY=(diagnostics.QUALIFIED_ONLY||0)+1;}
   return facts.length?{memory,facts,operations:parsed.operations,contexts:parsed.contexts,strongContexts:parsed.strongContexts}:null;
 }
 // Structural, claim-grounded rules. Neither common words nor matching metadata
@@ -104,6 +104,6 @@ export function semanticDiagnostics(value){
   if(!Array.isArray(mind?.memories))return {hydration:hydrationStatus,counts:{INVALID_STORE:1}};
   const copy={memories:mind.memories.length>CONNECTION_LIMITS.records?mind.memories:structuredClone(mind.memories)};
   const index=indexFor(copy,[],counts);for(const id of index.descriptors.keys())connect(index,id,counts);
-  const records=mind.memories.slice(0,CONNECTION_LIMITS.records).map((memory,index)=>{const reasons={};const d=describe(memory,reasons);return {index,eligible:eligible(memory),propositions:d?.facts.length||0,reasons,persistedLinks:(memory.relatedMemoryIds||[]).length,reciprocalLinks:(memory.relatedMemoryIds||[]).filter(id=>mind.memories.some(other=>other.id===id&&other.relatedMemoryIds?.includes(memory.id))).length};});
+  const records=mind.memories.slice(0,CONNECTION_LIMITS.records).map((memory,index)=>{const reasons={};const d=describe(memory,reasons);return {index,eligible:eligible(memory),propositions:eligible(memory)?claimStructure(memory).facts.length:0,associationPropositions:d?.facts.length||0,reasons,persistedLinks:(memory.relatedMemoryIds||[]).length,reciprocalLinks:(memory.relatedMemoryIds||[]).filter(id=>mind.memories.some(other=>other.id===id&&other.relatedMemoryIds?.includes(memory.id))).length};});
   return {hydration:hydrationStatus,counts,records,note:'Missing justified edges may indicate changed data, limits, or reconciliation not yet committed; they alone do not prove a storage failure.'};
 }
