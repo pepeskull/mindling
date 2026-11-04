@@ -40,6 +40,7 @@ function accountTools(payload,ceiling,trace){
     }
     calls.push(call);
   }
+  trace.toolAccounting={distinctIds:seen.size,anonymous:calls.filter(c=>!c.id).length,conflicts:conflicts.size,incomplete:calls.filter(c=>!['completed','failed'].includes(c.status)).length,responseCompleted:payload?.status==='completed'};
   const bounded=calls.length<=64;
   const confirmed=calls.filter(c=>!conflicts.has(c.id));
   trace.completed=bounded?confirmed.filter(c=>c.status==='completed').length:0;
