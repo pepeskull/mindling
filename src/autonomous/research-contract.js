@@ -75,7 +75,7 @@ function claimRejection(claim,sources){
   if(!text(claim.quote,700)||claim.quote.length<40)return 'QUOTE_FORMAT_INVALID';
   if(!citedPassages(source).some(passage=>passage.includes(claim.quote)))return 'QUOTE_NOT_IN_CITED_PASSAGE';
   // A substring must not cut a word or discard the end of its sentence.
-  if(!citedPassages(source).some(passage=>{const at=passage.indexOf(claim.quote);if(at<0)return false;const end=at+claim.quote.length;return (at===0||!/[\p{L}\p{N}]/u.test(passage[at-1]))&&(end===passage.length||/[.!?][\"’”']?$/u.test(claim.quote)&&/\s/u.test(passage[end]));}))return 'QUOTE_BOUNDARY_INVALID';
+  if(!citedPassages(source).some(passage=>{const at=passage.indexOf(claim.quote);if(at<0)return false;const end=at+claim.quote.length;return (at===0||!/[\p{L}\p{N}]/u.test(passage[at-1]))&&(end===passage.length||/[.!?]["’”']?$/u.test(claim.quote)&&/\s/u.test(passage[end]));}))return 'QUOTE_BOUNDARY_INVALID';
   if(!text(claim.category,80))return 'CATEGORY_INVALID';
   if(!text(claim.topic,100))return 'TOPIC_INVALID';
   if(!text(claim.reason,240))return 'REASON_INVALID';
