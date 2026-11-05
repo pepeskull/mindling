@@ -37,7 +37,7 @@ async function handler(req, res) {
   const trace={correlationId:body.id,operation:body.mode,phase:'SERVICE',endpoint:null,upstreamStatus:null,startedAt:Date.now(),searchRequested:body.mode==='research-acquire',searchDispatched:false,searchCompleted:false,completed:0,failed:0,outcomeUnknown:false,sourceCount:0};
   const isResearch=body.mode?.startsWith('research'),report=(code,detail)=>{const diagnostic=http.snapshot(trace,code,detail);if(isResearch)console.warn(JSON.stringify({event:'mindling.research',...diagnostic}));return diagnostic;};
   const apiKey = process.env.SERVICE_API, model = process.env.SERVICE_MODEL?.trim();
-  if (!apiKey || !model || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(model)){trace.phase='MODEL';return res.status(503).json({service:SERVICE,error:{code:'MODEL_UNAVAILABLE',diagnostic:report('MODEL_UNAVAILABLE','CONFIGURATION_MISSING')}});}
+  if (!apiKey || !model || !/^[A-Za-z0-9][A-Za-z0-9._:/-]{0,199}$/.test(model)){trace.phase='MODEL';if(body.mode==='semantic')return res.status(503).json({service:SERVICE,id:body.id,inferenceDispatched:false,error:{code:'MODEL_UNAVAILABLE'}});return res.status(503).json({service:SERVICE,error:{code:'MODEL_UNAVAILABLE',diagnostic:report('MODEL_UNAVAILABLE','CONFIGURATION_MISSING')}});}
   const requestKey = `${ip}:${body.mode||'evaluation'}:${body.id}`;
   if (active.has(requestKey)) return error(res, 409, 'EVALUATION_IN_PROGRESS');
   if (active.size >= 64) return error(res, 429, 'RATE_LIMITED');
@@ -138,7 +138,7 @@ async function handler(req, res) {
     return res.status(200).json(result);
   } catch (failure) {
     const code=timedOut?'UPSTREAM_TIMEOUT':failure.code|| (failure.name==='AbortError'?'REQUEST_INTERRUPTED':trace.phase==='RESPONSE_SERIALIZATION'?'RESPONSE_SERIALIZATION_ERROR':'RESPONSE_PARSE_ERROR');
-    if(body.mode==='semantic'){const semanticCode=failure.code==='INVALID_SCHEMA'||code==='RESPONSE_PARSE_ERROR'?'INVALID_SCHEMA':code==='MODEL_UNAVAILABLE'?'MODEL_UNAVAILABLE':code==='REQUEST_INTERRUPTED'||code==='UPSTREAM_TIMEOUT'?'REQUEST_INTERRUPTED':'API_FAILURE';return error(res,semanticCode==='MODEL_UNAVAILABLE'?503:502,semanticCode);}
+    if(body.mode==='semantic'){const semanticCode=failure.code==='INVALID_SCHEMA'||code==='RESPONSE_PARSE_ERROR'?'INVALID_SCHEMA':code==='MODEL_UNAVAILABLE'?'MODEL_UNAVAILABLE':code==='REQUEST_INTERRUPTED'||code==='UPSTREAM_TIMEOUT'?'REQUEST_INTERRUPTED':'API_FAILURE';return res.status(semanticCode==='MODEL_UNAVAILABLE'?503:502).json({service:SERVICE,id:body.id,...(semanticCode==='MODEL_UNAVAILABLE'&&trace.phase==='MODEL'?{inferenceDispatched:false}:{}),error:{code:semanticCode}});}
     const allowed=await import('../autonomous/service-diagnostics.js');
     const safeCode=Object.hasOwn(allowed.SERVICE_MESSAGES,code)?code:'RESPONSE_PARSE_ERROR';
     if(failure.limitationFailure)trace.limitationFailure=failure.limitationFailure;
