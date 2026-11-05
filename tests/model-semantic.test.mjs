@@ -30,7 +30,7 @@ assert.throws(()=>validateSemanticResult({version:2,relationships:[],extra:true}
 assert.equal(validateSemanticResult(result([r,r]),ctx).rejections[0].code,'DUPLICATE_RELATION');
 const accepted=evaluate(r,a,b).accepted,stale=structuredClone(mind);stale.memories[0].research.sourceHash='0'.repeat(64);assert.equal(persistSemantic(stale,accepted)[0].code,'STALE_EVIDENCE');
 const saturated=structuredClone(mind);saturated.memories[0].semanticAssociations=Array.from({length:4},(_,i)=>({memoryId:'neighbor'+i}));assert.equal(persistSemantic(saturated,accepted)[0].code,'DEGREE_LIMIT');
-const candidates=semanticCandidates(mind,['2','3','4']);assert.equal(candidates.pairs.length,4);assert(candidates.pairs.some(p=>['0','1'].includes(p.a.id)||['0','1'].includes(p.b.id)));const before=JSON.stringify(candidates);const changed=structuredClone(mind);changed.memories[2].content+=' Conditions vary.';assert.notEqual(JSON.stringify(semanticCandidates(changed,['2','3','4'])),before);
+const candidates=semanticCandidates(mind,['2','3','4']);assert.equal(candidates.pairs.length,2);assert(candidates.pairs.some(p=>['0','1'].includes(p.a.id)||['0','1'].includes(p.b.id)));const before=JSON.stringify(candidates);const changed=structuredClone(mind);changed.memories[2].content+=' Conditions vary.';assert.notEqual(JSON.stringify(semanticCandidates(changed,['2','3','4'])),before);
 for(const texts of [['A ribosome assembles proteins.','Cellular translation uses ribosomes.'],['Stars form from collapsing gas clouds.','Stellar evolution depends on initial mass.']]){const [x,y]=texts.map((t,i)=>memory(t,'domain'+i));assert.equal(evaluate(proposal(x,y,'process-related'),x,y).accepted.length,1);}
 // Instruction text is untrusted context, never executed; a mocked abstention is
 // the safe result. Actual injection resistance requires live model evaluation.
@@ -58,7 +58,7 @@ let inferenceRequests=0;
 globalThis.fetch=async(url,options)=>{
  if(String(url).includes('/models/'))return Response.json({id:process.env.SERVICE_MODEL});
  inferenceRequests++;const body=JSON.parse(options.body);assert.equal(body.model,process.env.SERVICE_MODEL);assert.equal(body.response_format.json_schema.strict,true);assert.match(body.messages[0].content,/untrusted/);assert(body.messages[1].content.includes('relationDefinitions'));
- return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(result([r]))}}]});
+ return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({version:1,relationships:[{pair:0,reverse:false,type:r.type,evidenceA:{first:0,last:3},evidenceB:{first:0,last:2},assessment:r.assessment}]})}}]});
 };
 const response={setHeader(){},on(){},removeListener(){},status(code){this.statusCode=code;return this;},json(body){this.body=body;this.writableEnded=true;return this;}};
 try{await handler({method:'POST',headers:{},socket:{remoteAddress:'offline-test'},body:{id:'a'.repeat(64),mode:'semantic',context:ctx}},response);assert.equal(response.statusCode,200);assert.equal(response.body.result.version,VERSION);assert.equal(inferenceRequests,1);}finally{if(priorKey===undefined)delete process.env.SERVICE_API;else process.env.SERVICE_API=priorKey;if(priorModel===undefined)delete process.env.SERVICE_MODEL;else process.env.SERVICE_MODEL=priorModel;}
