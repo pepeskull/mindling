@@ -1,0 +1,61 @@
+{
+  "description": "Projection of the two exact neuron-anatomy records supplied by the user on 2026-11-05. Neural rendering/native debug fields are omitted; text, IDs, categories, source evidence and integrity fields below are copied from the export, not generated fixtures.",
+  "records": [
+    {
+      "id": "ee86822e-60ad-4271-92ee-d756b856cc49",
+      "content": "Neurons are specialized cells that transmit information through electrical and chemical signals. They receive input through dendrites, process signals in the cell body, and send output through an axon.",
+      "contentIntegrity": {"version": 1, "status": "captured", "length": 201},
+      "concept": "Neuron structure and signaling",
+      "createdAt": "2026-11-05T08:58:22.058Z",
+      "strength": 0.3,
+      "activations": 1,
+      "relatedMemoryIds": ["431497df-833e-4a38-b0f4-48ad0f61de45:1"],
+      "source": "SERVICE",
+      "areaSuggestion": "Neuroscience",
+      "analysis": {"name": "mindling-learning-service", "confidence": 0.9, "verification": "unverified-player-claim", "activity": "TEACH", "learnedAt": "2026-11-05T08:58:22.058Z"},
+      "submissionId": "ee86822e-60ad-4271-92ee-d756b856cc49",
+      "intelligence": {"kind": "claim", "certainty": "asserted", "current": true, "verification": "unverified-player-claim", "operation": "CREATE_NEW", "relationship": "NEW_MEMORY"},
+      "categoryId": "category-719d3f1f-8abb-4682-859f-f2232f6cf09c",
+      "category": "Neuroscience",
+      "topic": "Dendrites, cell body, and axon",
+      "coSubmittedMemoryIds": ["ee86822e-60ad-4271-92ee-d756b856cc49:1"]
+    },
+    {
+      "id": "1cf983714522fbda59ffdb2c5ec0bd5beb460362:4aca3c0d141f5eee08abd4c4e9946345fd98bdc3",
+      "content": "Source observation (2026-11-05T08:59:27.411Z) from https://www.ncbi.nlm.nih.gov/books/NBK441977/?report=printable&utm_source=openai: A typical neuron has **dendrites**, which receive input; a **cell body (soma)**, which contains the nucleus and integrates signals; and an **axon**, which carries signals toward its terminals.",
+      "contentIntegrity": {"version": 1, "status": "captured", "length": 325},
+      "concept": "typical neuron has dendrites",
+      "createdAt": "2026-11-05T08:59:22.962Z",
+      "strength": 0.3,
+      "activations": 1,
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Neuron anatomy",
+      "categoryId": "category-76d2323a-cc14-4ed4-bcee-35a2154596d5",
+      "category": "Neuron anatomy",
+      "topic": "Neuroscience",
+      "relationship": "related",
+      "submissionId": "autonomous:89109b8f-3b3b-412a-be53-2e4127453987",
+      "updatedAt": "2026-11-05T08:59:22.962Z",
+      "research": {
+        "taskId": "1cf983714522fbda59ffdb2c5ec0bd5beb460362165dba042e7132a902600988",
+        "sourceURL": "https://www.ncbi.nlm.nih.gov/books/NBK441977/?report=printable&utm_source=openai",
+        "sourceHash": "df835c7dfefe8d2125c784b9f0460217b0e32ae92b30fb3be6a8e0f1746cb6e0",
+        "quoteHash": "4aca3c0d141f5eee08abd4c4e9946345fd98bdc3e16344e3cc9b747aef2d8ae6",
+        "observedAt": 1793869167411,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "A typical neuron has **dendrites**, which receive input; a **cell body (soma)**, which contains the nucleus and integrates signals; and an **axon**, which carries signals toward its terminals.",
+        "title": "Neuroanatomy, Neurons - StatPearls - NCBI Bookshelf",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_01e21d1bb690d081016aec4561a9f087d180679dcb3fbac265",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      }
+    }
+  ]
+}

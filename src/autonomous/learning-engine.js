@@ -1,3 +1,4 @@
+import {researchLearningContext} from '../learning/research-learning-context.js';
 import {semanticQueue} from '../semantic/scheduling.js';
 import { VERSION as SEMANTIC_VERSION } from '../semantic/model-contract.js';
 import { runSemantic } from '../semantic/model-worker.js';
@@ -267,7 +268,8 @@ export class AutonomousLearningEngine {
     }else{
       const checkpoint=task.pendingSourceEvidence,remainingCalls=2-(task.sourceRequests||0);
       if(!checkpoint&&remainingCalls<1)throw Error('BUDGET_EXHAUSTED');
-      const context=checkpoint?{checkpoint}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan};
+      const learning=researchLearningContext(task.sourcePlan.request.topic,this.app.state.mind,task.plan);
+      const context=checkpoint?{checkpoint,learning}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan,learning};
       const id=await digest(JSON.stringify([task.id,run,checkpoint?'source-evaluation':'web-search',context]));
       current=await this.patch(task.id,run,item=>{
         const calls=checkpoint?1:2;if((item.modelCalls||0)+calls>LIMITS.inferenceCalls||(item.evaluationCalls||0)>=2)throw Error('BUDGET_EXHAUSTED');
