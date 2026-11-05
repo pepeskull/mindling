@@ -1,3 +1,4 @@
+import { runSemantic } from '../semantic/model-worker.js';
 import { activityReward } from '../economy/xp.js';
 import { researchRelation, claimEvidence, addSupportingEvidence, retainConflict, replacementAllowed } from './memory-evolution.js';
 import { validateResearchClaim } from './tasks.js';
@@ -57,7 +58,7 @@ export class AutonomousLearningEngine {
   }
   recover(){
     if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||!this.preferences?.enabled)return;
-    for(const task of tasksFor(this.app.state.mind)){const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;
+    for(const task of tasksFor(this.app.state.mind)){if(task.status==='COMPLETED'&&!task.semanticAnalysis&&(task.modelCalls||0)<LIMITS.inferenceCalls)void runSemantic(this,task);const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;
       const known=interrupted&&matchingEvaluationFailure(task);
       if(task.engineVersion===4&&!terminal(task)&&known){
         this.patch(task.id,task.run,item=>{item.status='BLOCKED';item.code=item.lastFailureCode=known.errorCategory;item.lastFailurePhase=known.phase;item.message=researchFailureMessage(known,!!item.pendingSourceEvidence);item.retryAt??=Date.now()+AUTONOMY.retryDelay;}).catch(()=>{});continue;
@@ -348,7 +349,7 @@ export class AutonomousLearningEngine {
       if(knowledge.length){current.completedWork=[...new Set([...current.completedWork,'knowledge','answer'])];current.status='COMPLETED';current.code='SOURCE_BACKED';current.message=`Research completed: ${formed} new source-attributed ${formed===1?'memory':'memories'} retained. This is bounded evidence, not complete topic coverage or independent verification.`;}else{current.status='BLOCKED';current.code='NO_EVIDENCE';current.message=`Research paused — Insufficient evidence. ${rejectionExplanation(memoryRejections[0]?.code)} Existing knowledge was preserved.`;}
       if(!validTask(current,task.mindlingId))throw Error('Research completion was invalid.');return next;
     },{preserveGameplay:true,researchGrant:grant,...(activity==='TALK'||task.autonomous?{}:{journal:{id:`research:${task.id}:${run}`,type:activity}})});
-    const completed=tasksFor(this.app.state.mind).find(item=>item.id===task.id);this.notify(completed);if(completed.knowledgeIds.length){const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity:'TEACH'});}return completed;
+    const completed=tasksFor(this.app.state.mind).find(item=>item.id===task.id);this.notify(completed);void runSemantic(this,completed);if(completed.knowledgeIds.length){const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity:'TEACH'});}return completed;
   }
   reply(task){
     const sv=/[åäö]|\b(?:vilket|sverige|lär)\b/iu.test(task.objective),completed=task.status==='COMPLETED';
