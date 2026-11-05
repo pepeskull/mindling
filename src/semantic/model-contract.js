@@ -4,6 +4,7 @@ import {sourceStatus} from '../memory/content-integrity.js';
 import {sentences} from '../learning/text.js';
 import {CONNECTION_LIMITS} from './memory-connections.js';
 export const VERSION=2;
+export const SEMANTIC_BATCH_PAIRS=2;
 export const RELATIONS=Object.freeze({
  'application-of':{direction:'a-to-b',meaning:'A describes a use of the concept or technology described by B.'},
  'part-of':{direction:'a-to-b',meaning:'A describes an explicit component of the system described by B.'},
@@ -77,7 +78,8 @@ export function validateSemanticResult(value,context){
 // Receipts identify the exact evidence version, never inferred semantic truth.
 // Bounded by four pairs per attempt and the existing four attempts per task.
 export const semanticPairReceipt=pair=>JSON.stringify([VERSION,...[pair.a,pair.b].sort((a,b)=>a.id<b.id?-1:1).map(m=>[m.id,m.sourceHash,m.quoteHash,m.sourceURL,m.observedAt,...(m.provenance?[m.provenance,m.text]:[])])]);
-export function semanticCandidateReport(mind,ids){
+export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS}={}){
+ if(!Number.isSafeInteger(limit)||limit<1||limit>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
  const list=mind.memories||[],counts=new Map();for(const m of list)counts.set(m?.id,(counts.get(m?.id)||0)+1);
  const selected=new Set(ids.map(id=>currentMemoryVersion(list,id)?.id||id)),completed=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.pairs||[])));
  const unresolved=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>['DISPATCHED','OUTCOME_UNKNOWN'].includes(a.state)).flatMap(a=>a.pairs||[])));
@@ -87,15 +89,21 @@ export function semanticCandidateReport(mind,ids){
   const [a,b]=[eligible[i],eligible[j]].sort((a,b)=>a.id<b.id?-1:1),pair={a:snapshots.get(a.id),b:snapshots.get(b.id)};
   let reason=!selected.has(a.id)&&!selected.has(b.id)?'OUTSIDE_TASK':a.relatedMemoryIds?.includes(b.id)||b.relatedMemoryIds?.includes(a.id)?'EXISTING_LINK':
    [a,b].some(m=>new Set((m.semanticAssociations||[]).map(e=>e.memoryId)).size>=CONNECTION_LIMITS.links)?'DEGREE_LIMIT':completed.has(semanticPairReceipt(pair))?'ALREADY_ANALYZED':unresolved.has(semanticPairReceipt(pair))?'OUTCOME_UNRESOLVED':null;
-  if(!reason){pairs.push(pair);reason=pairs.length<=CONNECTION_LIMITS.links?'SELECTED':'BATCH_LIMIT';}
+  if(!reason){pairs.push(pair);reason=pairs.length<=limit?'SELECTED':'BATCH_LIMIT';}
   decisions.push({ids:[a.id,b.id],reason});
  }
+ // Give new-to-existing comparisons precedence over within-task pairs. This
+ // is delivery priority only, never evidence that a relation exists. Retain the
+ // previous order for legacy four-pair reservations confirmed not dispatched.
+ if(limit<=SEMANTIC_BATCH_PAIRS)pairs.sort((p,q)=>Number(selected.has(p.a.id)===selected.has(p.b.id))-Number(selected.has(q.a.id)===selected.has(q.b.id)));
+ const chosen=new Set(pairs.slice(0,limit).map(p=>pairKey(p.a.id,p.b.id)));
+ for(const decision of decisions)if(['SELECTED','BATCH_LIMIT'].includes(decision.reason))decision.reason=chosen.has(pairKey(...decision.ids))?'SELECTED':'BATCH_LIMIT';
  const current=list.filter(m=>m&&counts.get(m.id)===1&&!m.supersededBy&&m.intelligence?.current!==false&&(m.intelligence?.kind||m.kind)!=='historical');
  return {totalStoredRecordPairs:list.length*(list.length-1)/2,totalPossiblePairs:current.length*(current.length-1)/2,eligibleMemories:eligible.length,recordLimitExcluded:ordered.length-eligible.length,
   excludedMemories:list.filter(m=>counts.get(m?.id)!==1||!eligibleSemanticMemory(m)).map(m=>({id:m?.id,reason:counts.get(m?.id)!==1?'DUPLICATE_ID':semanticEligibilityIssue(m)})),
-  generated:pairs.length,decisions,context:{version:VERSION,pairs:pairs.slice(0,CONNECTION_LIMITS.links)}};
+  generated:pairs.length,decisions,context:{version:VERSION,pairs:pairs.slice(0,limit)}};
 }
-export function semanticCandidates(mind,ids){return semanticCandidateReport(mind,ids).context;}
+export function semanticCandidates(mind,ids,options){return semanticCandidateReport(mind,ids,options).context;}
 export function persistSemantic(mind,accepted){
  const outcomes=[];for(const r of accepted){
  const a=mind.memories.find(m=>m.id===r.memoryA),b=mind.memories.find(m=>m.id===r.memoryB);

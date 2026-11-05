@@ -7,7 +7,7 @@ import {semanticDiagnostic} from '../src/semantic/diagnostics.js';
 import {runSemantic} from '../src/semantic/model-worker.js';
 globalThis.crypto??=webcrypto;
 const records=JSON.parse(readFileSync(new URL('./support/semantic-audit-three-export.json',import.meta.url))).memories;
-const context=semanticCandidates({memories:records},records.map(m=>m.id));assert.equal(context.pairs.length,3);
+const context=semanticCandidates({memories:records},records.map(m=>m.id));assert.equal(context.pairs.length,2);
 const {handler}=createRequire(import.meta.url)('../src/server/mindling-reasoning.cjs');
 const previous={key:process.env.SERVICE_API,model:process.env.SERVICE_MODEL,fetch:globalThis.fetch,warn:console.warn};process.env.SERVICE_API='offline-private-key';process.env.SERVICE_MODEL='offline-model';
 try{
@@ -21,7 +21,7 @@ try{
   globalThis.fetch=async url=>Response.json(String(url).includes('/models/')?{id:process.env.SERVICE_MODEL}:payload);
   const res={setHeader(){},on(){},removeListener(){},status(s){this.statusCode=s;return this;},json(b){this.body=b;this.writableEnded=true;return this;}};
   await handler({method:'POST',headers:{},socket:{remoteAddress:'semantic-diagnostics-'+i},body:{id:'a'.repeat(64),mode:'semantic',context}},res);
-  assert.equal(res.statusCode,502);assert.equal(res.body.error.code,'INVALID_SCHEMA');assert.equal(res.body.error.diagnostic.detail,detail);assert.equal(res.body.error.diagnostic.phase,'SEMANTIC');assert.equal(res.body.error.diagnostic.upstreamStatus,200);
+  assert.equal(res.statusCode,502);assert.equal(res.body.error.code,detail==='COMPLETION_INCOMPLETE'?'INCOMPLETE_GENERATION':'INVALID_SCHEMA');assert.equal(res.body.error.diagnostic.detail,detail);assert.equal(res.body.error.diagnostic.phase,'SEMANTIC');assert.equal(res.body.error.diagnostic.upstreamStatus,200);
  }
  assert.equal(logs.length,3);assert(!JSON.stringify(logs).includes('private'));assert(!JSON.stringify(logs).includes(records[0].content));
  assert.deepEqual(semanticDiagnostic({phase:'secret',endpoint:'secret',upstreamStatus:'secret',detail:'secret',raw:'private'}),{phase:null,endpoint:null,upstreamStatus:null,detail:'RESULT_VALIDATION_FAILED'});
@@ -34,6 +34,6 @@ try{
  await runSemantic(engine,state.mind.learningTasks[0]);assert.equal(calls,1);assert.deepEqual(state.mind.memories,records);
  state={mind:{id:'diagnostic-fixture',memories:structuredClone(records),learningTasks:[{id:'task',status:'COMPLETED',knowledgeIds:records.map(m=>m.id),modelCalls:4}]}};
  globalThis.fetch=async(url,options)=>{const {id}=JSON.parse(options.body);return Response.json({service:'mindling-reasoning-service',id,result:{version:VERSION,relationships:[null]}});};
- await runSemantic(engine,state.mind.learningTasks[0]);assert.equal(state.mind.learningTasks[0].semanticAnalysis.status,'COMPLETED');assert.equal(state.mind.learningTasks[0].semanticAnalysis.rejections[0].code,'INVALID_SCHEMA');assert.equal(state.mind.learningTasks[0].semanticAttempts[0].result.pairs.length,3);assert.deepEqual(state.mind.memories,records);
- console.log('Latest three actual records: all three pairs reach model context. Mock incomplete completion, invalid JSON and invalid envelope have distinct safe server/client diagnostics; no repeat or memory mutation.');
+ await runSemantic(engine,state.mind.learningTasks[0]);assert.equal(state.mind.learningTasks[0].semanticAnalysis.status,'COMPLETED');assert.equal(state.mind.learningTasks[0].semanticAnalysis.rejections[0].code,'INVALID_SCHEMA');assert.equal(state.mind.learningTasks[0].semanticAttempts[0].result.pairs.length,2);assert.deepEqual(state.mind.memories,records);
+ console.log('Latest three actual records: two of three pairs reach each bounded model context. Mock incomplete completion, invalid JSON and invalid envelope have distinct safe server/client diagnostics; no repeat or memory mutation.');
 }finally{globalThis.fetch=previous.fetch;console.warn=previous.warn;if(previous.key===undefined)delete process.env.SERVICE_API;else process.env.SERVICE_API=previous.key;if(previous.model===undefined)delete process.env.SERVICE_MODEL;else process.env.SERVICE_MODEL=previous.model;}

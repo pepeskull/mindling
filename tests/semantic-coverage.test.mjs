@@ -23,7 +23,7 @@ try{
  for(const preview of [false,true]){
   let state={mind:{id:preview?'preview':'normal',xp:25,energy:10,memories:structuredClone(records),learningTasks:[{id:'task',status:'COMPLETED',topic:'fixture',knowledgeIds:records.map(m=>m.id),modelCalls:4}]}};
   const seen=new Set();let calls=0;
-  globalThis.fetch=async(url,options)=>{calls++;const {id,context}=JSON.parse(options.body);assert(context.pairs.length<=4);for(const pair of context.pairs){const key=semanticPairReceipt(pair);assert(!seen.has(key),'no repeated pair after abstention');seen.add(key);assert.equal(hash(pair.a.text),pair.a.quoteHash);}return Response.json({service:'mindling-reasoning-service',id,result:model(context)});};
+  globalThis.fetch=async(url,options)=>{calls++;const {id,context}=JSON.parse(options.body);assert(context.pairs.length<=2);for(const pair of context.pairs){const key=semanticPairReceipt(pair);assert(!seen.has(key),'no repeated pair after abstention');seen.add(key);assert.equal(hash(pair.a.text),pair.a.quoteHash);}return Response.json({service:'mindling-reasoning-service',id,result:model(context)});};
   const engine={session:'offline',app:{get state(){return state;}},abort:new AbortController(),loadPermissions:async()=>({enabled:true,revision:1,semanticCallsPerDay:3}),grant:()=>({}),assertLive(id){assert.equal(id,state.mind.id);},async patch(id,run,fn){const next=structuredClone(state);fn(next.mind.learningTasks[0],next);state=next;}};
   for(let i=0;i<4;i++){
    await runSemantic(engine,state.mind.learningTasks[0]);assert.equal(calls,i+1);
@@ -31,11 +31,12 @@ try{
    if(i<3)assert.equal(state.mind.learningTasks[0].semanticDeferral,'TASK_WINDOW_LIMIT');
    state=JSON.parse(JSON.stringify(state));day+=86400000;
   }
-  assert.equal(seen.size,15);assert.equal(state.mind.learningTasks[0].modelCalls,4);assert.equal(state.mind.learningTasks[0].semanticAttempts.length,4);
+  assert.equal(seen.size,8);assert.equal(state.mind.learningTasks[0].modelCalls,4);assert.equal(state.mind.learningTasks[0].semanticAttempts.length,4);
+  await runSemantic(engine,state.mind.learningTasks[0]);assert.equal(calls,4);assert.equal(state.mind.learningTasks[0].semanticDeferral,'TASK_ANALYSIS_LIMIT');
   assert.equal(state.mind.xp,25);assert.equal(state.mind.energy,10);
   assert.deepEqual(state.mind.memories.map(m=>({content:m.content,research:m.research})),records.map(m=>({content:m.content,research:m.research})));
   assert.deepEqual(state.mind.memories.map(m=>m.relatedMemoryIds),direct.memories.map(m=>m.relatedMemoryIds));
-  const coverage=semanticCoverage(state.mind);assert.equal(coverage.submittedPairsRecorded,15);assert.equal(coverage.persistedSemanticPairs,1);assert.equal(coverage.remainingCandidates,0);assert.deepEqual(coverage.persistedMissingFromProjection,[]);
+  const coverage=semanticCoverage(state.mind);assert.equal(coverage.submittedPairsRecorded,8);assert.equal(coverage.persistedSemanticPairs,1);assert.equal(coverage.remainingCandidates,7);assert.deepEqual(coverage.persistedMissingFromProjection,[]);
   // Evidence-version changes invalidate only relevant receipts. Limits remain.
   const changed=structuredClone(state.mind);changed.memories[5].content+=' Meltwater moves sediment.';changed.memories[5].research.quoteHash=hash(changed.memories[5].content);
   assert(semanticCandidateReport(changed,records.map(m=>m.id)).generated>0);
@@ -49,13 +50,13 @@ try{
 // NOT the current six-memory export. Compare discovery only, not model quality.
 const corpus=JSON.parse(readFileSync(new URL('./support/semantic-production-five.json',import.meta.url))),mind={memories:corpus.passages.map(memory),learningTasks:[{semanticAttempts:[]}]};
 const before=oldCandidates(mind);assert.equal(before.length,4);
-const seen=new Set();for(let i=0;i<3;i++){const context=semanticCandidates(mind,mind.memories.map(m=>m.id));for(const p of context.pairs)seen.add(semanticPairReceipt(p));mind.learningTasks[0].semanticAttempts.push({state:'COMPLETED',pairs:context.pairs.map(semanticPairReceipt)});}
+const seen=new Set();for(let i=0;i<5;i++){const context=semanticCandidates(mind,mind.memories.map(m=>m.id));for(const p of context.pairs)seen.add(semanticPairReceipt(p));mind.learningTasks[0].semanticAttempts.push({state:'COMPLETED',pairs:context.pairs.map(semanticPairReceipt)});}
 assert.equal(seen.size,10);assert.equal(semanticCandidates(mind,mind.memories.map(m=>m.id)).pairs.length,0);
 // Exact evidence checks still reject forged quotations; projection reports
 // corrupted missing reciprocal indexes rather than creating artificial edges.
 const context={version:VERSION,pairs:[all[0]]},bad=model(context);bad.relationships[0].evidenceA.quote='fabricated';assert.equal(validateSemanticResult(bad,context).rejections[0].code,'EVIDENCE_NOT_FOUND');
 const broken=structuredClone(direct);broken.memories.forEach(m=>{m.relatedMemoryIds=[];});assert.equal(semanticCoverage(broken).persistedMissingFromProjection.length,1);
-console.log('Synthetic six: baseline 0/15 reachable; new 15/15 over four daily windows, one mocked relation persisted/projected. Older five passages: baseline 4/10 frozen after abstention; new 10/10 over three batches. No live model evaluation.');
+console.log('Synthetic six: baseline 0/15 reachable; 8/15 analyzed within the unchanged four-attempt lifetime ceiling, one mocked relation persisted/projected. Older five passages: baseline 4/10 frozen after abstention; new 10/10 over five selection-only batches (not additional authorized calls). No live model evaluation.');
 // Authorized complete export supplied for this audit: 12 records, of which
 // four are historical corrections and two are newer Gaming memories.
 const exported=JSON.parse(readFileSync(new URL('./support/semantic-audit-export.json',import.meta.url))).memories;
@@ -67,8 +68,8 @@ const selected=six.map(m=>m.id),allCurrent=semanticCandidateReport(productionMin
 // Original task IDs follow explicit reciprocal correction chains; no history
 // evidence is copied to corrected text. Both tasks jointly reach all six.
 const originIds=[0,1,2].map(i=>exported[i].id);
-assert(semanticCandidateReport(productionMind,originIds).decisions.some(d=>d.ids.includes(exported[10].id)&&d.reason==='SELECTED'));
-const pairs=[];for(let i=0;i<4;i++){
+assert(semanticCandidateReport(productionMind,originIds).decisions.some(d=>d.ids.includes(exported[10].id)&&['SELECTED','BATCH_LIMIT'].includes(d.reason)));
+const pairs=[];for(let i=0;i<8;i++){
  const ctx=semanticCandidates(productionMind,selected);pairs.push(...ctx.pairs);
  productionMind.learningTasks.push({semanticAttempts:[{state:'COMPLETED',pairs:ctx.pairs.map(semanticPairReceipt)}]});
 }
@@ -101,7 +102,7 @@ console.log('Actual six blockchain records: baseline 2/6 visible and 1/15 possib
  globalThis.fetch=async(url,options)=>{calls++;const {id,context}=JSON.parse(options.body);for(const p of context.pairs)submitted.add(semanticPairReceipt(p));const ids=[instance.id,general.id];const found=context.pairs.some(p=>ids.includes(p.a.id)&&ids.includes(p.b.id));return Response.json({service:'mindling-reasoning-service',id,result:found?proposed:{version:VERSION,relationships:[]}});};
  const engine={session:'actual-records-offline',app:{get state(){return state;}},abort:new AbortController(),loadPermissions:async()=>({enabled:true,revision:1,semanticCallsPerDay:3}),grant:()=>({}),assertLive(id){assert.equal(id,state.mind.id);},async patch(id,run,fn){const next=structuredClone(state);fn(next.mind.learningTasks.find(t=>t.id===id),next);state=next;}};
  try{for(let d=0;d<4;d++){for(const id of ['first','second'])await runSemantic(engine,state.mind.learningTasks.find(t=>t.id===id));state=JSON.parse(JSON.stringify(state));day+=86400000;}
-  assert.equal(submitted.size,15);assert.equal(calls,4);assert.equal(semanticCoverage(state.mind).persistedSemanticPairs,2);assert.equal(semanticCoverage(state.mind).persistedMissingFromProjection.length,0);assert(state.mind.learningTasks.every(t=>t.modelCalls===4));
+  assert.equal(submitted.size,15);assert.equal(calls,8);assert.equal(semanticCoverage(state.mind).persistedSemanticPairs,2);assert.equal(semanticCoverage(state.mind).persistedMissingFromProjection.length,0);assert(state.mind.learningTasks.every(t=>t.modelCalls===4));
  }finally{Date.now=oldNow;globalThis.fetch=oldFetch;}
- console.log('Actual worker: all 15 current blockchain pairs delivered across original task/correction IDs in four mocked calls; one new reciprocal link plus original historical link, no missing graph edges.');
+ console.log('Actual worker: all 15 current blockchain pairs delivered across original task/correction IDs in eight mocked calls within two existing task ceilings; one new reciprocal link plus original historical link, no missing graph edges.');
 }
