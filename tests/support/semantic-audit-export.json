@@ -1,0 +1,999 @@
+{
+  "memories": [
+    {
+      "id": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:bd15e763c302bdf1c6057e04b462514767c81b5f",
+      "content": "Source observation (2026-11-05T08:11:25.041Z) from https://ethereum.org/developers/docs/intro-to-ethereum?utm_source=openai: Users submit digitally signed transactions; nodes check that they follow the network’s rules, and accepted transactions are grouped into blocks. Each block refers cryptographically to the one before it, linking the history together. **Consensus** is the process the network uses to agree on which valid block comes next and what the ledger’s current state is.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 484
+      },
+      "concept": "users submit digitally signed",
+      "normalized": "users submit digitally signed transactions; nodes check that they follow the network’s rules, and accepted transactions are grouped into blocks. each block refers cryptographically to the one before it, linking the history together. **consensus** is the process the network uses to agree on which valid block comes next and what the ledger’s current state is",
+      "createdAt": "2026-11-05T08:11:21.818Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "upper"
+      ],
+      "synapseIds": [
+        "origin-upper"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Blockchain fundamentals",
+      "categoryId": "category-f56aa8e9-e051-46a7-9d9e-da65fc36db99",
+      "category": "Blockchain fundamentals",
+      "topic": "Transactions, blocks, and consensus",
+      "relationship": "new",
+      "normalizedConcept": "users submit digitally signed",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "TEACH",
+          "learnedAt": "2026-11-05T08:11:21.818Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "Users submit digitally signed transactions; nodes check that they follow the network’s rules, and accepted transactions are grouped into blocks.",
+          "Each block refers cryptographically to the one before it, linking the history together.",
+          "**Consensus** is the process the network uses to agree on which valid block comes next and what the ledger’s current state is."
+        ],
+        "keywords": [
+          "users",
+          "submit",
+          "digitally",
+          "signed",
+          "transactions",
+          "nodes",
+          "check",
+          "they",
+          "follow",
+          "network’s",
+          "rules",
+          "accepted"
+        ],
+        "observedConnections": [],
+        "topicFamiliarity": 0
+      },
+      "submissionId": "28f8541a-9762-48fa-b5fc-7f50ca9ab2db",
+      "updatedAt": "2026-11-05T08:11:21.818Z",
+      "research": {
+        "taskId": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263dbbac559f34e6c41df1b1698",
+        "sourceURL": "https://ethereum.org/developers/docs/intro-to-ethereum?utm_source=openai",
+        "sourceHash": "64086c379b11d23351bacda93e0d822cd0086a43237b4ea2fc4c972bf35873ca",
+        "quoteHash": "bd15e763c302bdf1c6057e04b462514767c81b5f1718955dbaee5581fe86abed",
+        "observedAt": 1793866285041,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "Users submit digitally signed transactions; nodes check that they follow the network’s rules, and accepted transactions are grouped into blocks. Each block refers cryptographically to the one before it, linking the history together. **Consensus** is the process the network uses to agree on which valid block comes next and what the ledger’s current state is.",
+        "title": "Technical intro to Ethereum | ethereum.org",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_06613005890232b7016aec3a1d625887d18404fdb05aeafbc7",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      },
+      "supersededBy": "7cc5f3e2-ce30-40c0-8423-10df0faa18d3",
+      "supersededAt": "2026-11-05T08:25:21.822Z",
+      "intelligence": {
+        "current": false
+      }
+    },
+    {
+      "id": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:263075685bac1eeba78992760a215181c8948e6a",
+      "content": "Source observation (2026-11-05T08:11:25.041Z) from https://bitcoin.org/bitcoin.pdf?utm_source=openai: **Bitcoin** uses proof of work: miners compete to produce a valid block, and nodes accept valid blocks as part of the chain with the most accumulated work. Adding more blocks makes earlier transactions harder to rewrite, but confirmation is probabilistic rather than instant.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 377
+      },
+      "concept": "bitcoin uses proof work",
+      "normalized": "**bitcoin** uses proof of work: miners compete to produce a valid block, and nodes accept valid blocks as part of the chain with the most accumulated work. adding more blocks makes earlier transactions harder to rewrite, but confirmation is probabilistic rather than instant",
+      "createdAt": "2026-11-05T08:11:21.818Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "right"
+      ],
+      "synapseIds": [
+        "origin-right"
+      ],
+      "relatedMemoryIds": [
+        "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:7ac46d472bc703282be8f17b218b03c357f65142"
+      ],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Consensus methods",
+      "categoryId": "category-bc3b6f88-27a3-4a0c-9ac6-2daad370f1e4",
+      "category": "Consensus methods",
+      "topic": "Bitcoin proof of work",
+      "relationship": "new",
+      "normalizedConcept": "bitcoin uses proof work",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "TEACH",
+          "learnedAt": "2026-11-05T08:11:21.818Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "**Bitcoin** uses proof of work: miners compete to produce a valid block, and nodes accept valid blocks as part of the chain with the most accumulated work.",
+          "Adding more blocks makes earlier transactions harder to rewrite, but confirmation is probabilistic rather than instant."
+        ],
+        "keywords": [
+          "bitcoin",
+          "uses",
+          "proof",
+          "work",
+          "miners",
+          "compete",
+          "produce",
+          "valid",
+          "block",
+          "nodes",
+          "accept",
+          "blocks"
+        ],
+        "observedConnections": [
+          {
+            "terms": [
+              "uses",
+              "valid"
+            ]
+          },
+          {
+            "terms": [
+              "block",
+              "uses"
+            ]
+          },
+          {
+            "terms": [
+              "block",
+              "valid"
+            ]
+          }
+        ],
+        "topicFamiliarity": 5
+      },
+      "submissionId": "28f8541a-9762-48fa-b5fc-7f50ca9ab2db",
+      "updatedAt": "2026-11-05T08:11:21.818Z",
+      "research": {
+        "taskId": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263dbbac559f34e6c41df1b1698",
+        "sourceURL": "https://bitcoin.org/bitcoin.pdf?utm_source=openai",
+        "sourceHash": "75d3afa723700b91a4d35e1f0bfab49499cb529e548d590a90c44a0f2f43b55f",
+        "quoteHash": "263075685bac1eeba78992760a215181c8948e6a0ac39689cea65aa256230701",
+        "observedAt": 1793866285041,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "**Bitcoin** uses proof of work: miners compete to produce a valid block, and nodes accept valid blocks as part of the chain with the most accumulated work. Adding more blocks makes earlier transactions harder to rewrite, but confirmation is probabilistic rather than instant.",
+        "title": "Bitcoin: A Peer-to-Peer Electronic Cash System",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_06613005890232b7016aec3a1d625887d18404fdb05aeafbc7",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      },
+      "semanticAssociations": [
+        {
+          "version": 1,
+          "memoryId": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:7ac46d472bc703282be8f17b218b03c357f65142",
+          "rule": "model-assessed-relation",
+          "entity": "contrasts-with",
+          "analysisVersion": 2,
+          "type": "contrasts-with",
+          "direction": "symmetric",
+          "from": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:263075685bac1eeba78992760a215181c8948e6a",
+          "to": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:7ac46d472bc703282be8f17b218b03c357f65142",
+          "trust": "model-assessed-not-independently-verified",
+          "evidenceCoordinateSpace": "provenance-stripped-canonical-passage",
+          "evidenceA": {
+            "start": 0,
+            "end": 155,
+            "quote": "**Bitcoin** uses proof of work: miners compete to produce a valid block, and nodes accept valid blocks as part of the chain with the most accumulated work."
+          },
+          "evidenceB": {
+            "start": 0,
+            "end": 140,
+            "quote": "**Ethereum** uses proof of stake: validators who stake ETH propose and check blocks, and the network uses their votes to agree on the chain."
+          },
+          "sourceHashA": "75d3afa723700b91a4d35e1f0bfab49499cb529e548d590a90c44a0f2f43b55f",
+          "sourceHashB": "57ad8d92b82294dbfe209a1b76aead29e6892fb70b00f4866025bd959667ebc9"
+        }
+      ],
+      "supersededBy": "42eb05cf-f5f8-4ee2-99dc-059a8b95e402",
+      "supersededAt": "2026-11-05T08:25:21.822Z",
+      "intelligence": {
+        "current": false
+      }
+    },
+    {
+      "id": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:7ac46d472bc703282be8f17b218b03c357f65142",
+      "content": "Source observation (2026-11-05T08:11:25.041Z) from https://ethereum.org/developers/docs/consensus-mechanisms/pos/?utm_source=openai: **Ethereum** uses proof of stake: validators who stake ETH propose and check blocks, and the network uses their votes to agree on the chain. Ethereum transactions can transfer ETH or trigger smart-contract code, so its ledger records more than payments.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 386
+      },
+      "concept": "ethereum uses proof stake",
+      "normalized": "**ethereum** uses proof of stake: validators who stake eth propose and check blocks, and the network uses their votes to agree on the chain. ethereum transactions can transfer eth or trigger smart-contract code, so its ledger records more than payments",
+      "createdAt": "2026-11-05T08:11:21.818Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "lower"
+      ],
+      "synapseIds": [
+        "origin-lower"
+      ],
+      "relatedMemoryIds": [
+        "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:263075685bac1eeba78992760a215181c8948e6a"
+      ],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Consensus methods",
+      "categoryId": "category-bc3b6f88-27a3-4a0c-9ac6-2daad370f1e4",
+      "category": "Consensus methods",
+      "topic": "Ethereum proof of stake",
+      "relationship": "new",
+      "normalizedConcept": "ethereum uses proof stake",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "TEACH",
+          "learnedAt": "2026-11-05T08:11:21.818Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "**Ethereum** uses proof of stake: validators who stake ETH propose and check blocks, and the network uses their votes to agree on the chain.",
+          "Ethereum transactions can transfer ETH or trigger smart-contract code, so its ledger records more than payments."
+        ],
+        "keywords": [
+          "ethereum",
+          "uses",
+          "proof",
+          "stake",
+          "validators",
+          "who",
+          "eth",
+          "propose",
+          "check",
+          "blocks",
+          "network",
+          "their"
+        ],
+        "observedConnections": [
+          {
+            "terms": [
+              "proof",
+              "uses"
+            ]
+          },
+          {
+            "terms": [
+              "network",
+              "uses"
+            ]
+          }
+        ],
+        "topicFamiliarity": 8
+      },
+      "submissionId": "28f8541a-9762-48fa-b5fc-7f50ca9ab2db",
+      "updatedAt": "2026-11-05T08:11:21.818Z",
+      "research": {
+        "taskId": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263dbbac559f34e6c41df1b1698",
+        "sourceURL": "https://ethereum.org/developers/docs/consensus-mechanisms/pos/?utm_source=openai",
+        "sourceHash": "57ad8d92b82294dbfe209a1b76aead29e6892fb70b00f4866025bd959667ebc9",
+        "quoteHash": "7ac46d472bc703282be8f17b218b03c357f6514232016b207fb64f903fe52de1",
+        "observedAt": 1793866285041,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "**Ethereum** uses proof of stake: validators who stake ETH propose and check blocks, and the network uses their votes to agree on the chain. Ethereum transactions can transfer ETH or trigger smart-contract code, so its ledger records more than payments.",
+        "title": "Proof-of-stake (PoS) | ethereum.org",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_06613005890232b7016aec3a1d625887d18404fdb05aeafbc7",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      },
+      "semanticAssociations": [
+        {
+          "version": 1,
+          "memoryId": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:263075685bac1eeba78992760a215181c8948e6a",
+          "rule": "model-assessed-relation",
+          "entity": "contrasts-with",
+          "analysisVersion": 2,
+          "type": "contrasts-with",
+          "direction": "symmetric",
+          "from": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:263075685bac1eeba78992760a215181c8948e6a",
+          "to": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:7ac46d472bc703282be8f17b218b03c357f65142",
+          "trust": "model-assessed-not-independently-verified",
+          "evidenceCoordinateSpace": "provenance-stripped-canonical-passage",
+          "evidenceA": {
+            "start": 0,
+            "end": 155,
+            "quote": "**Bitcoin** uses proof of work: miners compete to produce a valid block, and nodes accept valid blocks as part of the chain with the most accumulated work."
+          },
+          "evidenceB": {
+            "start": 0,
+            "end": 140,
+            "quote": "**Ethereum** uses proof of stake: validators who stake ETH propose and check blocks, and the network uses their votes to agree on the chain."
+          },
+          "sourceHashA": "75d3afa723700b91a4d35e1f0bfab49499cb529e548d590a90c44a0f2f43b55f",
+          "sourceHashB": "57ad8d92b82294dbfe209a1b76aead29e6892fb70b00f4866025bd959667ebc9"
+        }
+      ]
+    },
+    {
+      "id": "526e5dc887f944c2ef9fd1a7a3551ef0d568b150:31f18dccf124b3e55e70529698a751eba552cd38",
+      "content": "Source observation (2026-11-05T08:13:48.996Z) from https://ethereum.org/developers/docs/consensus-mechanisms: They differ in what participants put at risk: PoW miners spend computing power and electricity competing to solve a puzzle; PoS validators lock up cryptocurrency and are selected by the protocol to propose or confirm blocks. Other participants can check the proposed blocks.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 384
+      },
+      "concept": "they differ what participants",
+      "normalized": "they differ in what participants put at risk: pow miners spend computing power and electricity competing to solve a puzzle; pos validators lock up cryptocurrency and are selected by the protocol to propose or confirm blocks. other participants can check the proposed blocks",
+      "createdAt": "2026-11-05T08:13:21.821Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "left"
+      ],
+      "synapseIds": [
+        "origin-left"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Participant selection",
+      "categoryId": "category-cd16876f-a684-4635-8fee-233d505de8ba",
+      "category": "Participant selection",
+      "topic": "How PoW and PoS propose blocks",
+      "relationship": "new",
+      "normalizedConcept": "they differ what participants",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "TEACH",
+          "learnedAt": "2026-11-05T08:13:21.821Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "They differ in what participants put at risk: PoW miners spend computing power and electricity competing to solve a puzzle; PoS validators lock up cryptocurrency and are selected by the protocol to propose or confirm blocks.",
+          "Other participants can check the proposed blocks."
+        ],
+        "keywords": [
+          "they",
+          "differ",
+          "what",
+          "participants",
+          "put",
+          "risk",
+          "pow",
+          "miners",
+          "spend",
+          "computing",
+          "power",
+          "electricity"
+        ],
+        "observedConnections": [],
+        "topicFamiliarity": 3
+      },
+      "submissionId": "autonomous:e7a893b3-dae4-45ec-88fc-e2a33c9a956f",
+      "updatedAt": "2026-11-05T08:13:21.821Z",
+      "research": {
+        "taskId": "526e5dc887f944c2ef9fd1a7a3551ef0d568b150beab11a25ceac12234f45e93",
+        "sourceURL": "https://ethereum.org/developers/docs/consensus-mechanisms",
+        "sourceHash": "7a820d7ebf09b747d22646484e6a6a5361a8afaefc759e5168f68e9964814da5",
+        "quoteHash": "31f18dccf124b3e55e70529698a751eba552cd388f5c4873c5c1eb28ba6d70cd",
+        "observedAt": 1793866428996,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "They differ in what participants put at risk: PoW miners spend computing power and electricity competing to solve a puzzle; PoS validators lock up cryptocurrency and are selected by the protocol to propose or confirm blocks. Other participants can check the proposed blocks.",
+        "title": "Consensus mechanisms | ethereum.org",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_00d5e8da728abf18016aec3aa7bb5887d1ad84135de0c5ace1",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      }
+    },
+    {
+      "id": "526e5dc887f944c2ef9fd1a7a3551ef0d568b150:aef7d85436bc01ecfb35c228bdde4ad53815bad5",
+      "content": "Source observation (2026-11-05T08:13:48.996Z) from https://ethereum.org/developers/docs/consensus-mechanisms: PoW’s security depends on an attacker having to command enough computing power to outwork the honest network, so mining can consume substantial energy. PoS uses much less energy, but its security depends on the value at stake: protocols can penalize validators who break the rules. In either design, participants can earn rewards for helping secure the network.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 471
+      },
+      "concept": "pow’s security depends attacker",
+      "normalized": "pow’s security depends on an attacker having to command enough computing power to outwork the honest network, so mining can consume substantial energy. pos uses much less energy, but its security depends on the value at stake: protocols can penalize validators who break the rules. in either design, participants can earn rewards for helping secure the network",
+      "createdAt": "2026-11-05T08:13:21.821Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "upper"
+      ],
+      "synapseIds": [
+        "origin-upper"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Resources and security",
+      "categoryId": "category-e76174d8-fc15-4037-bc08-050749a8341e",
+      "category": "Resources and security",
+      "topic": "Energy, security assumptions, and rewards",
+      "relationship": "new",
+      "normalizedConcept": "pow’s security depends attacker",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "TEACH",
+          "learnedAt": "2026-11-05T08:13:21.821Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "PoW’s security depends on an attacker having to command enough computing power to outwork the honest network, so mining can consume substantial energy.",
+          "PoS uses much less energy, but its security depends on the value at stake: protocols can penalize validators who break the rules.",
+          "In either design, participants can earn rewards for helping secure the network."
+        ],
+        "keywords": [
+          "pow’s",
+          "security",
+          "depends",
+          "attacker",
+          "having",
+          "command",
+          "enough",
+          "computing",
+          "power",
+          "outwork",
+          "honest",
+          "network"
+        ],
+        "observedConnections": [],
+        "topicFamiliarity": 4
+      },
+      "submissionId": "autonomous:e7a893b3-dae4-45ec-88fc-e2a33c9a956f",
+      "updatedAt": "2026-11-05T08:13:21.821Z",
+      "research": {
+        "taskId": "526e5dc887f944c2ef9fd1a7a3551ef0d568b150beab11a25ceac12234f45e93",
+        "sourceURL": "https://ethereum.org/developers/docs/consensus-mechanisms",
+        "sourceHash": "7a820d7ebf09b747d22646484e6a6a5361a8afaefc759e5168f68e9964814da5",
+        "quoteHash": "aef7d85436bc01ecfb35c228bdde4ad53815bad5e3b3368fee408b712edac890",
+        "observedAt": 1793866428996,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "PoW’s security depends on an attacker having to command enough computing power to outwork the honest network, so mining can consume substantial energy. PoS uses much less energy, but its security depends on the value at stake: protocols can penalize validators who break the rules. In either design, participants can earn rewards for helping secure the network.",
+        "title": "Consensus mechanisms | ethereum.org",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_00d5e8da728abf18016aec3aa7bb5887d1ad84135de0c5ace1",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      },
+      "supersededBy": "a3b5fd8d-9a40-41ad-bfd9-468d93c163eb",
+      "supersededAt": "2026-11-05T08:24:21.825Z",
+      "intelligence": {
+        "current": false
+      }
+    },
+    {
+      "id": "526e5dc887f944c2ef9fd1a7a3551ef0d568b150:d0c4d6be9f11609ee77f202f8923538ae1f693c6",
+      "content": "Source observation (2026-11-05T08:13:48.996Z) from https://ethereum.org/developers/docs/consensus-mechanisms: Neither label alone tells you exactly how secure or decentralized a blockchain is—the details depend on the specific protocol and how its resources or stake are distributed.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 283
+      },
+      "concept": "neither label alone tells",
+      "normalized": "neither label alone tells you exactly how secure or decentralized a blockchain is—the details depend on the specific protocol and how its resources or stake are distributed",
+      "createdAt": "2026-11-05T08:13:21.821Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "right"
+      ],
+      "synapseIds": [
+        "origin-right"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Protocol-specific qualifications",
+      "categoryId": "category-e2235ebb-98ce-4cd6-807f-60c157f94186",
+      "category": "Protocol-specific qualifications",
+      "topic": "Security and decentralization depend on implementation",
+      "relationship": "new",
+      "normalizedConcept": "neither label alone tells",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "TEACH",
+          "learnedAt": "2026-11-05T08:13:21.821Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "Neither label alone tells you exactly how secure or decentralized a blockchain is—the details depend on the specific protocol and how its resources or stake are distributed."
+        ],
+        "keywords": [
+          "neither",
+          "label",
+          "alone",
+          "tells",
+          "you",
+          "exactly",
+          "how",
+          "secure",
+          "decentralized",
+          "blockchain",
+          "details",
+          "depend"
+        ],
+        "observedConnections": [],
+        "topicFamiliarity": 1
+      },
+      "submissionId": "autonomous:e7a893b3-dae4-45ec-88fc-e2a33c9a956f",
+      "updatedAt": "2026-11-05T08:13:21.821Z",
+      "research": {
+        "taskId": "526e5dc887f944c2ef9fd1a7a3551ef0d568b150beab11a25ceac12234f45e93",
+        "sourceURL": "https://ethereum.org/developers/docs/consensus-mechanisms",
+        "sourceHash": "7a820d7ebf09b747d22646484e6a6a5361a8afaefc759e5168f68e9964814da5",
+        "quoteHash": "d0c4d6be9f11609ee77f202f8923538ae1f693c6acaef5858bb693c2295e87c0",
+        "observedAt": 1793866428996,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "Neither label alone tells you exactly how secure or decentralized a blockchain is—the details depend on the specific protocol and how its resources or stake are distributed.",
+        "title": "Consensus mechanisms | ethereum.org",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_00d5e8da728abf18016aec3aa7bb5887d1ad84135de0c5ace1",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      },
+      "supersededBy": "6e6f6368-b639-4f47-8489-51318c0688bf",
+      "supersededAt": "2026-11-05T08:24:21.825Z",
+      "intelligence": {
+        "current": false
+      }
+    },
+    {
+      "id": "a3b5fd8d-9a40-41ad-bfd9-468d93c163eb",
+      "content": "PoW’s security depends on an attacker having to command enough computing power to outwork the honest network, so mining can consume substantial energy. PoS uses much less energy, but its security depends on the value at stake: protocols can penalize validators who break the rules. In either design, participants can earn rewards for helping secure the network",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 360
+      },
+      "concept": "Proof-of-work and proof-of-stake security, energy, and rewards",
+      "normalized": "pow’s security depends on an attacker having to command enough computing power to outwork the honest network, so mining can consume substantial energy. pos uses much less energy, but its security depends on the value at stake: protocols can penalize validators who break the rules. in either design, participants can earn rewards for helping secure the network",
+      "normalizedConcept": "proof-of-work and proof-of-stake security, energy, and rewards",
+      "createdAt": "2026-11-05T08:24:21.825Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "upper"
+      ],
+      "synapseIds": [
+        "origin-upper"
+      ],
+      "relatedMemoryIds": [
+        "526e5dc887f944c2ef9fd1a7a3551ef0d568b150:aef7d85436bc01ecfb35c228bdde4ad53815bad5"
+      ],
+      "source": "SERVICE",
+      "areaSuggestion": "Resources and security",
+      "analysis": {
+        "name": "mindling-learning-service",
+        "confidence": 0.88,
+        "verification": "unverified-player-claim",
+        "activity": "TEACH",
+        "learnedAt": "2026-11-05T08:24:21.825Z"
+      },
+      "submissionId": "a3b5fd8d-9a40-41ad-bfd9-468d93c163eb",
+      "intelligence": {
+        "kind": "claim",
+        "certainty": "asserted",
+        "current": true,
+        "verification": "unverified-player-claim",
+        "operation": "CREATE_NEW",
+        "relationship": "NEW_MEMORY"
+      },
+      "categoryId": "category-e76174d8-fc15-4037-bc08-050749a8341e",
+      "category": "Resources and security",
+      "topic": "Energy, security assumptions, and rewards",
+      "correctsMemoryId": "526e5dc887f944c2ef9fd1a7a3551ef0d568b150:aef7d85436bc01ecfb35c228bdde4ad53815bad5",
+      "provenance": {
+        "source": "player",
+        "method": "explicit-memory-correction"
+      }
+    },
+    {
+      "id": "6e6f6368-b639-4f47-8489-51318c0688bf",
+      "content": "Neither label alone tells you exactly how secure or decentralized a blockchain is—the details depend on the specific protocol and how its resources or stake are distributed",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 172
+      },
+      "concept": "Protocol-specific security and decentralization",
+      "normalized": "neither label alone tells you exactly how secure or decentralized a blockchain is—the details depend on the specific protocol and how its resources or stake are distributed",
+      "normalizedConcept": "protocol-specific security and decentralization",
+      "createdAt": "2026-11-05T08:24:21.825Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "right"
+      ],
+      "synapseIds": [
+        "origin-right"
+      ],
+      "relatedMemoryIds": [
+        "526e5dc887f944c2ef9fd1a7a3551ef0d568b150:d0c4d6be9f11609ee77f202f8923538ae1f693c6"
+      ],
+      "source": "SERVICE",
+      "areaSuggestion": "Protocol-specific qualifications",
+      "analysis": {
+        "name": "mindling-learning-service",
+        "confidence": 0.85,
+        "verification": "unverified-player-claim",
+        "activity": "TEACH",
+        "learnedAt": "2026-11-05T08:24:21.825Z"
+      },
+      "submissionId": "6e6f6368-b639-4f47-8489-51318c0688bf",
+      "intelligence": {
+        "kind": "claim",
+        "certainty": "asserted",
+        "current": true,
+        "verification": "unverified-player-claim",
+        "operation": "CREATE_NEW",
+        "relationship": "NEW_MEMORY"
+      },
+      "categoryId": "category-e2235ebb-98ce-4cd6-807f-60c157f94186",
+      "category": "Protocol-specific qualifications",
+      "topic": "Security and decentralization depend on implementation",
+      "correctsMemoryId": "526e5dc887f944c2ef9fd1a7a3551ef0d568b150:d0c4d6be9f11609ee77f202f8923538ae1f693c6",
+      "provenance": {
+        "source": "player",
+        "method": "explicit-memory-correction"
+      }
+    },
+    {
+      "id": "2b93db76bd2941b3b493368f6aa0b7f4c2967365:4d8482586068557e462c72d1bb00508bb8a926c2",
+      "content": "Source observation (2026-11-05T08:25:07.389Z) from https://quantumgames.aalto.fi/game-mechanics/: Video games combine rules and systems that define what is possible, goals that give play direction, and mechanics—the actions and interactions available to players. Feedback, such as changes in the game world or signals of success and failure, helps players understand the consequences of their actions.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 401
+      },
+      "concept": "video games combine rules",
+      "normalized": "video games combine rules and systems that define what is possible, goals that give play direction, and mechanics—the actions and interactions available to players. feedback, such as changes in the game world or signals of success and failure, helps players understand the consequences of their actions",
+      "createdAt": "2026-11-05T08:24:21.825Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "upper"
+      ],
+      "synapseIds": [
+        "origin-upper"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Game components",
+      "categoryId": "category-8788504a-3606-40cd-ae9f-abdc7aa5e50e",
+      "category": "Game components",
+      "topic": "Rules, goals, mechanics, and feedback",
+      "relationship": "new",
+      "normalizedConcept": "video games combine rules",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "TEACH",
+          "learnedAt": "2026-11-05T08:24:21.825Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "Video games combine rules and systems that define what is possible, goals that give play direction, and mechanics—the actions and interactions available to players.",
+          "Feedback, such as changes in the game world or signals of success and failure, helps players understand the consequences of their actions."
+        ],
+        "keywords": [
+          "video",
+          "games",
+          "combine",
+          "rules",
+          "systems",
+          "define",
+          "what",
+          "possible",
+          "goals",
+          "give",
+          "play",
+          "direction"
+        ],
+        "observedConnections": [],
+        "topicFamiliarity": 4
+      },
+      "submissionId": "autonomous:f76dd4a8-8976-4a0f-844e-81e33565325e",
+      "updatedAt": "2026-11-05T08:24:21.825Z",
+      "research": {
+        "taskId": "2b93db76bd2941b3b493368f6aa0b7f4c2967365803874d0f3db36f50ebcfa01",
+        "sourceURL": "https://quantumgames.aalto.fi/game-mechanics/",
+        "sourceHash": "ed9abb56d951f0d43bb753d3963b33a20a834bb681af0f8598f4356a5d5178de",
+        "quoteHash": "4d8482586068557e462c72d1bb00508bb8a926c29151d76f8c6bc716b5fd96b1",
+        "observedAt": 1793867107389,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "Video games combine rules and systems that define what is possible, goals that give play direction, and mechanics—the actions and interactions available to players. Feedback, such as changes in the game world or signals of success and failure, helps players understand the consequences of their actions.",
+        "title": "Game Mechanics – Quantum Games Course",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_0e940b1492d48d53016aec3d51885487d1aa2cd279c23d59d9",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      }
+    },
+    {
+      "id": "2b93db76bd2941b3b493368f6aa0b7f4c2967365:1e1763c2da4a618cb98a015cd32225307b41b79d",
+      "content": "Source observation (2026-11-05T08:25:07.389Z) from https://quantumgames.aalto.fi/game-mechanics/: Rules set the boundaries; mechanics let players act within them; goals give those actions a purpose; and feedback shows what happened. Together they form a gameplay loop: players act, the game responds, and players adjust their next choices.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 339
+      },
+      "concept": "rules set boundaries mechanics",
+      "normalized": "rules set the boundaries; mechanics let players act within them; goals give those actions a purpose; and feedback shows what happened. together they form a gameplay loop: players act, the game responds, and players adjust their next choices",
+      "createdAt": "2026-11-05T08:24:21.825Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "right"
+      ],
+      "synapseIds": [
+        "origin-right"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Gameplay interaction",
+      "categoryId": "category-e00effda-f01a-47d4-bff8-030087f4fd84",
+      "category": "Gameplay interaction",
+      "topic": "How game components work together",
+      "relationship": "related",
+      "normalizedConcept": "rules set boundaries mechanics",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "TEACH",
+          "learnedAt": "2026-11-05T08:24:21.825Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "Rules set the boundaries; mechanics let players act within them; goals give those actions a purpose; and feedback shows what happened.",
+          "Together they form a gameplay loop: players act, the game responds, and players adjust their next choices."
+        ],
+        "keywords": [
+          "rules",
+          "set",
+          "boundaries",
+          "mechanics",
+          "let",
+          "players",
+          "act",
+          "within",
+          "them",
+          "goals",
+          "give",
+          "actions"
+        ],
+        "observedConnections": [],
+        "topicFamiliarity": 8
+      },
+      "submissionId": "autonomous:f76dd4a8-8976-4a0f-844e-81e33565325e",
+      "updatedAt": "2026-11-05T08:24:21.825Z",
+      "research": {
+        "taskId": "2b93db76bd2941b3b493368f6aa0b7f4c2967365803874d0f3db36f50ebcfa01",
+        "sourceURL": "https://quantumgames.aalto.fi/game-mechanics/",
+        "sourceHash": "ed9abb56d951f0d43bb753d3963b33a20a834bb681af0f8598f4356a5d5178de",
+        "quoteHash": "1e1763c2da4a618cb98a015cd32225307b41b79da153baccfc0f99c784801d9e",
+        "observedAt": 1793867107389,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "Rules set the boundaries; mechanics let players act within them; goals give those actions a purpose; and feedback shows what happened. Together they form a gameplay loop: players act, the game responds, and players adjust their next choices.",
+        "title": "Game Mechanics – Quantum Games Course",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_0e940b1492d48d53016aec3d51885487d1aa2cd279c23d59d9",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      }
+    },
+    {
+      "id": "7cc5f3e2-ce30-40c0-8423-10df0faa18d3",
+      "content": "Users submit digitally signed transactions; nodes check that they follow the network’s rules, and accepted transactions are grouped into blocks. Each block refers cryptographically to the one before it, linking the history together. **Consensus** is the process the network uses to agree on which valid block comes next and what the ledger’s current state is",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 358
+      },
+      "concept": "Transactions, blocks, and consensus",
+      "normalized": "users submit digitally signed transactions; nodes check that they follow the network’s rules, and accepted transactions are grouped into blocks. each block refers cryptographically to the one before it, linking the history together. **consensus** is the process the network uses to agree on which valid block comes next and what the ledger’s current state is",
+      "normalizedConcept": "transactions, blocks, and consensus",
+      "createdAt": "2026-11-05T08:25:21.822Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "upper"
+      ],
+      "synapseIds": [
+        "origin-upper"
+      ],
+      "relatedMemoryIds": [
+        "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:bd15e763c302bdf1c6057e04b462514767c81b5f"
+      ],
+      "source": "SERVICE",
+      "areaSuggestion": "Blockchain fundamentals",
+      "analysis": {
+        "name": "mindling-learning-service",
+        "confidence": 0.75,
+        "verification": "unverified-player-claim",
+        "activity": "TEACH",
+        "learnedAt": "2026-11-05T08:25:21.822Z"
+      },
+      "submissionId": "7cc5f3e2-ce30-40c0-8423-10df0faa18d3",
+      "intelligence": {
+        "kind": "claim",
+        "certainty": "asserted",
+        "current": true,
+        "verification": "unverified-player-claim",
+        "operation": "CREATE_NEW",
+        "relationship": "NEW_MEMORY"
+      },
+      "categoryId": "category-f56aa8e9-e051-46a7-9d9e-da65fc36db99",
+      "category": "Blockchain fundamentals",
+      "topic": "Transactions, blocks, and consensus",
+      "correctsMemoryId": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:bd15e763c302bdf1c6057e04b462514767c81b5f",
+      "provenance": {
+        "source": "player",
+        "method": "explicit-memory-correction"
+      }
+    },
+    {
+      "id": "42eb05cf-f5f8-4ee2-99dc-059a8b95e402",
+      "content": "**Bitcoin** uses proof of work: miners compete to produce a valid block, and nodes accept valid blocks as part of the chain with the most accumulated work. Adding more blocks makes earlier transactions harder to rewrite, but confirmation is probabilistic rather than instant",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 274
+      },
+      "concept": "Bitcoin proof of work and probabilistic confirmation",
+      "normalized": "**bitcoin** uses proof of work: miners compete to produce a valid block, and nodes accept valid blocks as part of the chain with the most accumulated work. adding more blocks makes earlier transactions harder to rewrite, but confirmation is probabilistic rather than instant",
+      "normalizedConcept": "bitcoin proof of work and probabilistic confirmation",
+      "createdAt": "2026-11-05T08:25:21.822Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "right"
+      ],
+      "synapseIds": [
+        "origin-right"
+      ],
+      "relatedMemoryIds": [
+        "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:263075685bac1eeba78992760a215181c8948e6a"
+      ],
+      "source": "SERVICE",
+      "areaSuggestion": "Consensus methods",
+      "analysis": {
+        "name": "mindling-learning-service",
+        "confidence": 0.85,
+        "verification": "unverified-player-claim",
+        "activity": "TEACH",
+        "learnedAt": "2026-11-05T08:25:21.822Z"
+      },
+      "submissionId": "42eb05cf-f5f8-4ee2-99dc-059a8b95e402",
+      "intelligence": {
+        "kind": "claim",
+        "certainty": "asserted",
+        "current": true,
+        "verification": "unverified-player-claim",
+        "operation": "CREATE_NEW",
+        "relationship": "NEW_MEMORY"
+      },
+      "categoryId": "category-bc3b6f88-27a3-4a0c-9ac6-2daad370f1e4",
+      "category": "Consensus methods",
+      "topic": "Bitcoin proof of work",
+      "correctsMemoryId": "da6eedc6c0c0a1efe97def846b8fdc6e4ebe1263:263075685bac1eeba78992760a215181c8948e6a",
+      "provenance": {
+        "source": "player",
+        "method": "explicit-memory-correction"
+      }
+    }
+  ]
+}

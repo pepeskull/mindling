@@ -1,6 +1,7 @@
+import {semanticDiagnostic} from './diagnostics.js';
 import {reserveSemantic,deferredSemantic} from './scheduling.js';
 import {LIMITS,digest,tasksFor} from '../autonomous/tasks.js';
-import {VERSION,semanticCandidates,validateSemanticResult,persistSemantic} from './model-contract.js';
+import {VERSION,semanticCandidates,semanticPairReceipt,validateSemanticResult,persistSemantic} from './model-contract.js';
 const active=new WeakSet(),queued=new WeakMap();
 const error=code=>Object.assign(Error(code),{code});
 // Bounded lifecycle queue, never polling. Acquisition retains priority and its
@@ -16,8 +17,8 @@ export async function runSemantic(engine,task){
   if(globalThis.navigator?.onLine===false){await defer('WAITING_CONNECTIVITY');return;}
   if(engine.disposed||engine.app.disposed||globalThis.document?.hidden)return;
   engine.assertLive(identity);
-  const context=semanticCandidates(engine.app.state.mind,task.knowledgeIds);if(!context.pairs.length){await defer('NO_CANDIDATES');return;}
-  for(const pair of context.pairs)for(const memory of [pair.a,pair.b])if(await digest(memory.text)!==memory.quoteHash)throw error('STALE_EVIDENCE');
+  const currentMind=engine.app.state.mind;const context=semanticCandidates({...currentMind,learningTasks:currentMind.learningTasks||[task]},task.knowledgeIds);if(!context.pairs.length){await defer('NO_CANDIDATES');return;}
+  for(const pair of context.pairs)for(const memory of [pair.a,pair.b])if(!memory.provenance&&await digest(memory.text)!==memory.quoteHash)throw error('STALE_EVIDENCE');
   fingerprint=await digest(JSON.stringify(context));
   const topicFingerprint=await digest(String(task.topic||task.objective||task.id).normalize('NFC').toLowerCase());
   const grant=engine.grant(prefs);let reserved=false;
@@ -37,11 +38,11 @@ export async function runSemantic(engine,task){
   engine.abort.signal.addEventListener('abort',abort,{once:true});globalThis.document?.addEventListener('visibilitychange',hidden);const timer=setTimeout(abort,45000);
   let result;try{
    if(engine.abort.signal.aborted)throw error('REQUEST_INTERRUPTED');
-   await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(JSON.stringify(semanticCandidates(next.mind,current.knowledgeIds))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt)attempt.state='DISPATCHED';},{researchGrant:grant});
+   await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(JSON.stringify(semanticCandidates({...next.mind,learningTasks:next.mind.learningTasks||[current]},current.knowledgeIds))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='DISPATCHED';attempt.pairs=context.pairs.map(semanticPairReceipt);}},{researchGrant:grant});
    dispatched=true;
    const response=await fetch('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:fingerprint,mode:'semantic',context})});
    const text=await response.text();if(text.length>100000)throw error('INVALID_SCHEMA');
-   if(!response.ok){let code;try{const failure=JSON.parse(text);code=failure.error?.code;knownNotDispatched=code==='MODEL_UNAVAILABLE'&&failure.id===fingerprint&&failure.inferenceDispatched===false;}catch{}throw error(['INVALID_SCHEMA','MODEL_UNAVAILABLE','REQUEST_INTERRUPTED'].includes(code)?code:response.status===503?'MODEL_UNAVAILABLE':'API_FAILURE');}
+   if(!response.ok){let code,diagnostic;try{const failure=JSON.parse(text);code=failure.error?.code;diagnostic=semanticDiagnostic(failure.error?.diagnostic);knownNotDispatched=code==='MODEL_UNAVAILABLE'&&failure.id===fingerprint&&failure.inferenceDispatched===false;}catch{}throw Object.assign(error(['INVALID_SCHEMA','MODEL_UNAVAILABLE','REQUEST_INTERRUPTED'].includes(code)?code:response.status===503?'MODEL_UNAVAILABLE':'API_FAILURE'),{diagnostic});}
    try{result=JSON.parse(text);}catch{throw error('INVALID_SCHEMA');}
   }catch(failure){if(failure.name==='AbortError')throw error('REQUEST_INTERRUPTED');throw failure;}finally{clearTimeout(timer);engine.abort.signal.removeEventListener('abort',abort);globalThis.document?.removeEventListener('visibilitychange',hidden);}
   if(!result||typeof result!=='object')throw error('INVALID_SCHEMA');
@@ -52,7 +53,11 @@ export async function runSemantic(engine,task){
    const outcomes=persistSemantic(next.mind,verdict.accepted),persisted=outcomes.filter(o=>o.code==='RELATIONSHIP_PERSISTED').length;
    if(current.semanticWork?.fingerprint!==fingerprint||current.semanticWork.state!=='DISPATCHED')throw error('STALE_EVIDENCE');
    current.semanticWork.state='COMPLETED';current.semanticWork.updatedAt=now();
-   const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt)attempt.state='COMPLETED';
+   const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='COMPLETED';attempt.result={proposed:result.result.relationships.length,accepted:verdict.accepted.length,persisted,rejections:[...verdict.rejections,...outcomes.filter(o=>o.code!=='RELATIONSHIP_PERSISTED')],pairs:context.pairs.map((pair,index)=>{
+    const matches=r=>JSON.stringify([r?.memoryA,r?.memoryB].sort())===JSON.stringify([pair.a.id,pair.b.id].sort());
+    const proposed=result.result.relationships.flatMap((r,i)=>matches(r)?[i]:[]),accepted=verdict.accepted.findIndex(matches);
+    return {index,outcome:accepted>=0?outcomes[accepted].code:proposed.length?'REJECTED':'MODEL_ABSTAINED',rejections:verdict.rejections.filter(r=>proposed.includes(r.index)).map(r=>r.code)};
+   })};}
    if(next.mind.semanticLedger?.day===attempt?.day)next.mind.semanticLedger.completed++;
    Object.assign(current.semanticAnalysis,{status:'COMPLETED',proposed:result.result.relationships.length,accepted:verdict.accepted.length,persisted,rejected:verdict.rejected+outcomes.length-persisted,abstained:verdict.abstained,rejections:[...verdict.rejections,...outcomes.filter(o=>o.code!=='RELATIONSHIP_PERSISTED')].slice(0,context.pairs.length)});
   },{researchGrant:grant});
@@ -60,7 +65,7 @@ export async function runSemantic(engine,task){
   const codes=['INVALID_SCHEMA','STALE_EVIDENCE','MODEL_UNAVAILABLE','REQUEST_INTERRUPTED','AUTHORIZATION_CHANGED'];const code=codes.includes(failure.code)?failure.code:'API_FAILURE';
   if(fingerprint&&engine.app.state.mind?.id===identity)await engine.patch(task.id,null,current=>{
    if(current.semanticWork?.fingerprint!==fingerprint||current.semanticWork.owner!==owner)return;
-   if(dispatched&&!knownNotDispatched){current.semanticWork.state='OUTCOME_UNKNOWN';current.semanticWork.reason=code;const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt)attempt.state='OUTCOME_UNKNOWN';Object.assign(current.semanticAnalysis,{status:'FAILED_OR_INTERRUPTED',failure:code});}
+   if(dispatched&&!knownNotDispatched){current.semanticWork.state='OUTCOME_UNKNOWN';current.semanticWork.reason=code;const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt)attempt.state='OUTCOME_UNKNOWN';Object.assign(current.semanticAnalysis,{status:'FAILED_OR_INTERRUPTED',failure:code,...(failure.diagnostic?{diagnostic:semanticDiagnostic(failure.diagnostic)}:{})});}
    else if(reservedAttempt){current.semanticWork.reason=knownNotDispatched?'WAITING_MODEL':code;current.semanticWork.state='RESERVED';const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(knownNotDispatched&&attempt)attempt.state='RESERVED';}
   }).catch(()=>{});
  }finally{

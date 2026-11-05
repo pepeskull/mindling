@@ -1,0 +1,288 @@
+{
+  "memories": [
+    {
+      "id": "ac030c4b385bece3e7473623a41e3d21f23a3bdf:9b1693c16428c7d660f02591884d37ab3aaa1c4d",
+      "content": "Source observation (2026-11-05T08:35:14.089Z) from https://www.nccoe.nist.gov/sites/default/files/2026-04/Read-Ahead_NIST%20Workshop%20on%20Blockchain%20and%20DLT_16%20Apr%202026.pdf?utm_source=openai: A **blockchain is a kind of shared ledger**: a record of transactions maintained by multiple network computers, or nodes. Transactions are checked and grouped into blocks, which are linked using cryptography. This makes past entries difficult to alter, though “immutable” is shorthand—not a guarantee that records can never be changed under any circumstances.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 561
+      },
+      "concept": "blockchain kind shared ledger",
+      "normalized": "a **blockchain is a kind of shared ledger**: a record of transactions maintained by multiple network computers, or nodes. transactions are checked and grouped into blocks, which are linked using cryptography. this makes past entries difficult to alter, though “immutable” is shorthand—not a guarantee that records can never be changed under any circumstances",
+      "createdAt": "2026-11-05T08:35:02.739Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "upper"
+      ],
+      "synapseIds": [
+        "origin-upper"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Core concept",
+      "categoryId": "category-ec918323-244c-4bc7-9b2c-0fe52bfcaa97",
+      "category": "Core concept",
+      "topic": "Blockchain ledgers",
+      "relationship": "new",
+      "normalizedConcept": "blockchain kind shared ledger",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "DEEP_TRAINING",
+          "learnedAt": "2026-11-05T08:35:02.739Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "A **blockchain is a kind of shared ledger**: a record of transactions maintained by multiple network computers, or nodes.",
+          "Transactions are checked and grouped into blocks, which are linked using cryptography.",
+          "This makes past entries difficult to alter, though “immutable” is shorthand—not a guarantee that records can never be changed under any circumstances."
+        ],
+        "keywords": [
+          "blockchain",
+          "kind",
+          "shared",
+          "ledger",
+          "record",
+          "transactions",
+          "maintained",
+          "multiple",
+          "network",
+          "computers",
+          "nodes",
+          "checked"
+        ],
+        "observedConnections": [],
+        "topicFamiliarity": 0
+      },
+      "submissionId": "c583109b-39d9-41d4-b490-17fd2db51087",
+      "updatedAt": "2026-11-05T08:35:02.739Z",
+      "research": {
+        "taskId": "ac030c4b385bece3e7473623a41e3d21f23a3bdf2294f4109321515125d25efc",
+        "sourceURL": "https://www.nccoe.nist.gov/sites/default/files/2026-04/Read-Ahead_NIST%20Workshop%20on%20Blockchain%20and%20DLT_16%20Apr%202026.pdf?utm_source=openai",
+        "sourceHash": "e2d2a6977c9af7dc1b13012894c064b7ce9017bf0a3b61d89309378a298abef6",
+        "quoteHash": "9b1693c16428c7d660f02591884d37ab3aaa1c4da2df65bc5e7090b214a53041",
+        "observedAt": 1793867714089,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "A **blockchain is a kind of shared ledger**: a record of transactions maintained by multiple network computers, or nodes. Transactions are checked and grouped into blocks, which are linked using cryptography. This makes past entries difficult to alter, though “immutable” is shorthand—not a guarantee that records can never be changed under any circumstances.",
+        "title": "Table 1. Blockchain Ecosystem Layers & Components",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_0f44a2719968ca89016aec3fb0ced887d1bc139c1440d22fea",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      }
+    },
+    {
+      "id": "ac030c4b385bece3e7473623a41e3d21f23a3bdf:a869ce2478baa3e598be628e096623dabb01acff",
+      "content": "Source observation (2026-11-05T08:35:14.089Z) from https://www.nccoe.nist.gov/sites/default/files/2026-04/Read-Ahead_NIST%20Workshop%20on%20Blockchain%20and%20DLT_16%20Apr%202026.pdf?utm_source=openai: **Smart contracts are programs stored and run on a blockchain.** A transaction can trigger a contract, which applies its coded rules and updates the ledger—for example, transferring a token when specified conditions are met. They automate actions, but they are software, not necessarily legal contracts, and their behavior depends on the code and the blockchain they run on.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 576
+      },
+      "concept": "smart contracts programs stored",
+      "normalized": "**smart contracts are programs stored and run on a blockchain.** a transaction can trigger a contract, which applies its coded rules and updates the ledger—for example, transferring a token when specified conditions are met. they automate actions, but they are software, not necessarily legal contracts, and their behavior depends on the code and the blockchain they run on",
+      "createdAt": "2026-11-05T08:35:02.739Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "right"
+      ],
+      "synapseIds": [
+        "origin-right"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Core concept",
+      "categoryId": "category-ec918323-244c-4bc7-9b2c-0fe52bfcaa97",
+      "category": "Core concept",
+      "topic": "Smart contracts",
+      "relationship": "new",
+      "normalizedConcept": "smart contracts programs stored",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "DEEP_TRAINING",
+          "learnedAt": "2026-11-05T08:35:02.739Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "**Smart contracts are programs stored and run on a blockchain.",
+          "** A transaction can trigger a contract, which applies its coded rules and updates the ledger—for example, transferring a token when specified conditions are met.",
+          "They automate actions, but they are software, not necessarily legal contracts, and their behavior depends on the code and the blockchain they run on."
+        ],
+        "keywords": [
+          "smart",
+          "contracts",
+          "programs",
+          "stored",
+          "run",
+          "blockchain",
+          "transaction",
+          "can",
+          "trigger",
+          "contract",
+          "which",
+          "applies"
+        ],
+        "observedConnections": [],
+        "topicFamiliarity": 3
+      },
+      "submissionId": "c583109b-39d9-41d4-b490-17fd2db51087",
+      "updatedAt": "2026-11-05T08:35:02.739Z",
+      "research": {
+        "taskId": "ac030c4b385bece3e7473623a41e3d21f23a3bdf2294f4109321515125d25efc",
+        "sourceURL": "https://www.nccoe.nist.gov/sites/default/files/2026-04/Read-Ahead_NIST%20Workshop%20on%20Blockchain%20and%20DLT_16%20Apr%202026.pdf?utm_source=openai",
+        "sourceHash": "e2d2a6977c9af7dc1b13012894c064b7ce9017bf0a3b61d89309378a298abef6",
+        "quoteHash": "a869ce2478baa3e598be628e096623dabb01acff565d452612427c4039935014",
+        "observedAt": 1793867714089,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "**Smart contracts are programs stored and run on a blockchain.** A transaction can trigger a contract, which applies its coded rules and updates the ledger—for example, transferring a token when specified conditions are met. They automate actions, but they are software, not necessarily legal contracts, and their behavior depends on the code and the blockchain they run on.",
+        "title": "Table 1. Blockchain Ecosystem Layers & Components",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_0f44a2719968ca89016aec3fb0ced887d1bc139c1440d22fea",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      }
+    },
+    {
+      "id": "ac030c4b385bece3e7473623a41e3d21f23a3bdf:3e57d0b894d35d642f05f866770d213b6e33de45",
+      "content": "Source observation (2026-11-05T08:35:14.089Z) from https://www.imf.org/-/media/files/publications/wp/2025/english/wpiea2025186-source-pdf.pdf?utm_source=openai: **Consensus is how the network agrees on ledger updates** without relying on one central record-keeper. Different blockchains use different approaches. In proof of work, participants expend computing power to propose blocks; in proof of stake, validators participate by committing cryptocurrency under the network’s rules. These are different ways to help the network choose and validate updates; neither is a universal method for every blockchain.",
+      "contentIntegrity": {
+        "version": 1,
+        "status": "captured",
+        "length": 609
+      },
+      "concept": "consensus how network agrees",
+      "normalized": "**consensus is how the network agrees on ledger updates** without relying on one central record-keeper. different blockchains use different approaches. in proof of work, participants expend computing power to propose blocks; in proof of stake, validators participate by committing cryptocurrency under the network’s rules. these are different ways to help the network choose and validate updates; neither is a universal method for every blockchain",
+      "createdAt": "2026-11-05T08:35:02.739Z",
+      "strength": 0.3,
+      "activations": 1,
+      "neuronIds": [
+        "origin",
+        "lower"
+      ],
+      "synapseIds": [
+        "origin-lower"
+      ],
+      "relatedMemoryIds": [],
+      "source": "AUTONOMOUS",
+      "areaSuggestion": "Core concept",
+      "categoryId": "category-ec918323-244c-4bc7-9b2c-0fe52bfcaa97",
+      "category": "Core concept",
+      "topic": "Consensus mechanisms",
+      "relationship": "new",
+      "normalizedConcept": "consensus how network agrees",
+      "native": {
+        "version": 1,
+        "verification": "tool-cited-unverified-synthesis",
+        "provenance": {
+          "source": "tool-cited-report",
+          "method": "source-supported-synthesis",
+          "activity": "DEEP_TRAINING",
+          "learnedAt": "2026-11-05T08:35:02.739Z"
+        },
+        "confidence": {
+          "classification": 0.35,
+          "factual": null
+        },
+        "uncertainty": "category-uncertain",
+        "sentences": [
+          "**Consensus is how the network agrees on ledger updates** without relying on one central record-keeper.",
+          "Different blockchains use different approaches.",
+          "In proof of work, participants expend computing power to propose blocks; in proof of stake, validators participate by committing cryptocurrency under the network’s rules.",
+          "These are different ways to help the network choose and validate updates; neither is a universal method for every blockchain."
+        ],
+        "keywords": [
+          "consensus",
+          "how",
+          "network",
+          "agrees",
+          "ledger",
+          "updates",
+          "without",
+          "relying",
+          "one",
+          "central",
+          "record",
+          "keeper"
+        ],
+        "observedConnections": [
+          {
+            "terms": [
+              "ledger",
+              "network"
+            ]
+          },
+          {
+            "terms": [
+              "network",
+              "record"
+            ]
+          },
+          {
+            "terms": [
+              "ledger",
+              "updates"
+            ]
+          },
+          {
+            "terms": [
+              "ledger",
+              "record"
+            ]
+          }
+        ],
+        "topicFamiliarity": 5
+      },
+      "submissionId": "c583109b-39d9-41d4-b490-17fd2db51087",
+      "updatedAt": "2026-11-05T08:35:02.739Z",
+      "research": {
+        "taskId": "ac030c4b385bece3e7473623a41e3d21f23a3bdf2294f4109321515125d25efc",
+        "sourceURL": "https://www.imf.org/-/media/files/publications/wp/2025/english/wpiea2025186-source-pdf.pdf?utm_source=openai",
+        "sourceHash": "3e57d0b894d35d642f05f866770d213b6e33de45454bbd29b7b359dfbb75381c",
+        "quoteHash": "3e57d0b894d35d642f05f866770d213b6e33de45454bbd29b7b359dfbb75381c",
+        "observedAt": 1793867714089,
+        "validAt": null,
+        "verification": "tool-cited-unverified-synthesis",
+        "evidenceRelation": "web-search-supported-synthesis",
+        "confidence": "uncertain",
+        "evidenceText": "**Consensus is how the network agrees on ledger updates** without relying on one central record-keeper. Different blockchains use different approaches. In proof of work, participants expend computing power to propose blocks; in proof of stake, validators participate by committing cryptocurrency under the network’s rules. These are different ways to help the network choose and validate updates; neither is a universal method for every blockchain.",
+        "title": "Blockchain Consensus Mechanisms: A Primer for Supervisors (2025 Update), WP/25/186, September 2025",
+        "provider": "openai-web-search",
+        "publisher": null,
+        "publishedAt": null,
+        "type": "web-search-synthesis",
+        "responseId": "resp_0f44a2719968ca89016aec3fb0ced887d1bc139c1440d22fea",
+        "classificationMethod": "source-evaluated-structured-metadata"
+      }
+    }
+  ]
+}
