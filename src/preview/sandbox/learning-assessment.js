@@ -10,12 +10,13 @@ const EVIDENCE = new Set(['none', 'lexical_overlap', 'semantic_match', 'exact_ma
 
 const clean = (value, maximum) => typeof value === 'string' && value === value.trim() && value.length <= maximum ? value : null;
 
-export function learningContext(text, mind, {correctionTargetId=null}={}) {
+export function learningContext(text, mind, {correctionTargetId=null,includeUnranked=false}={}) {
   validateText(text,{allowQuestion:true});
   const target=correctionTargetId?(mind.memories||[]).find(memory=>memory.id===correctionTargetId):null;
   if(correctionTargetId&&!target)throw Error('The correction target changed.');
   const active = (mind.memories || []).filter(memory => typeof memory.content === 'string'&&memory.id!==correctionTargetId);
   const ranked = retrievePreviewMemories(text, active, { limit: 8, mind }).map(item => item.memory);
+  if(includeUnranked)for(const memory of [...active].sort((a,b)=>String(a.id).localeCompare(String(b.id)))){if(ranked.length>=8)break;if(!ranked.some(m=>m.id===memory.id))ranked.push(memory);}
   if(ranked.some(m=>typeof m.id!=='string'||!m.id||m.id.length>100))throw Error('Saved memory identifiers are invalid. No Energy or XP changed.');
   const candidates = ranked.map(memory => ({
     id: memory.id,

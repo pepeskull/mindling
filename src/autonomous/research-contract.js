@@ -1,3 +1,4 @@
+import {validateResearchLearningContext} from '../learning/research-learning-context.js';
 import { passageIssue } from '../memory/passage-integrity.js';
 import { citedPassages, supportsClaimDate } from './evidence-dates.js';
 import { limitationSchema, limitationFailureFor } from './research-limitations.js';
@@ -35,10 +36,11 @@ export function publicResearchTopic(task,reviewed=null){
 }
 
 export const validQuery=value=>text(value,120)&&/^[\p{L}\p{N}][\p{L}\p{M}\p{N} '\-]*$/u.test(value)&&!/@|https?:|\b(?:password|secret|wallet|personnummer)\b/iu.test(value);
-// No arbitrary URLs, source tickets, private memories or identifiers cross this boundary.
+// Search receives only public fields. Optional learning context is for the
+// tool-free source evaluation, and must never be forwarded to hosted search.
 export function validateRetrievalContext(value){
-  if(!object(value)||!['queries,remainingCalls,request','plan,queries,remainingCalls,request'].includes(Object.keys(value).sort().join(',')))fail();
-  validatePlanningContext(value.request);
+  if(!object(value)||!['queries,remainingCalls,request','plan,queries,remainingCalls,request','learning,queries,remainingCalls,request','learning,plan,queries,remainingCalls,request'].includes(Object.keys(value).sort().join(',')))fail();
+  validatePlanningContext(value.request);if(value.learning!==undefined)validateResearchLearningContext(value.learning);
   if(value.plan!==undefined&&(!Array.isArray(value.plan)||value.plan.length>3||!value.plan.every(item=>text(item,160))))fail();
   if(!Array.isArray(value.queries)||!value.queries.length||value.queries.length>2||!value.queries.every(validQuery)||!Number.isSafeInteger(value.remainingCalls)||value.remainingCalls<1||value.remainingCalls>2)fail();return value;
 }
@@ -98,7 +100,7 @@ export function validateSourceEvaluation(value,sources){
 }
 // At the model boundary only, reject individual proposals independently. Return
 // fixed rule/index diagnostics; never disclose or rewrite the rejected content.
-export function selectSourceEvaluation(value,sources){
+export function selectSourceEvaluation(value,sources,{allowFollowup=true}={}){
   evaluationShape(value);
   // Limitations may qualify the whole assessment. Never silently erase them.
   validateLimitations(value.limitations);
@@ -106,7 +108,7 @@ export function selectSourceEvaluation(value,sources){
   const claims=value.claims.filter((claim,index)=>{
     const rule=claimRejection(claim,sources);if(rule)validation.rejections.push({index,rule});return !rule;
   });
-  const validFollowup=value.nextQuestion===null||validQuery(value.nextQuestion);
+  const validFollowup=value.nextQuestion===null||allowFollowup&&validQuery(value.nextQuestion);
   if(!validFollowup)validation.metadataRejections.push({field:'nextQuestion',rule:'FOLLOWUP_INVALID'});
   const evaluation={claims,limitations:value.limitations,nextQuestion:validFollowup?value.nextQuestion:null};
   validateSourceEvaluation(evaluation,sources);validation.accepted=claims.length;
@@ -149,5 +151,5 @@ export function validateResearchCheckpoint(value){
   if(JSON.stringify(value).length>24000)acquisitionFailure('CHECKPOINT_SIZE_LIMIT');return value;
 }
 export function validateResearchEvaluationContext(value){
-  if(!object(value)||Object.keys(value).join(',')!=='checkpoint')fail();validateResearchCheckpoint(value.checkpoint);return value;
+  if(!object(value)||!['checkpoint','checkpoint,learning'].includes(Object.keys(value).sort().join(',')))fail();validateResearchCheckpoint(value.checkpoint);if(value.learning!==undefined)validateResearchLearningContext(value.learning);return value;
 }
