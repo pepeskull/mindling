@@ -27,7 +27,7 @@ const engines=new WeakMap();
 export function learningEngine(app){let engine=engines.get(app);if(!engine){engine=new AutonomousLearningEngine(app);engines.set(app,engine);}return engine;}
 export function stopLearning(app){engines.get(app)?.destroy();}
 export function learningSession(app){return engines.get(app)?.session||null;}
-export function researchPermissions(app){return engines.get(app)?.preferences||defaultPermissions(app.state?.mind?.id||'');}
+export function researchPermissions(app){const engine=engines.get(app),id=app.state?.mind?.id||'';return {...(engine?.preferences||defaultPermissions(id)),loaded:Boolean(engine?.preferences&&engine.permissionIdentity===id&&!engine.permissionLoading)};}
 export function syncResearchPermissions(app){const engine=learningEngine(app),id=app.state?.mind?.id;if(id&&engine.permissionIdentity!==id)engine.loadPermissions().then(()=>{if(!app.disposed&&app.state.mind?.id===id){app.renderState();engine.recover();}}).catch(()=>{});}
 const activityFor=mode=>mode===LEARNING_MODES.DEEP?'DEEP_TRAINING':mode===LEARNING_MODES.TALK_RESEARCH?'TALK':'TEACH';
 
@@ -62,7 +62,7 @@ export class AutonomousLearningEngine {
     const prefs=await this.loadPermissions(true),id=this.app.state.mind?.id;this.assertLive(id);
     const next=await (this.app.db||this.app.store).saveResearchPermissions(id,{enabled:prefs.enabled,semanticCallsPerDay});
     if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');
-    this.preferences=validatePermissions(next,id);this.recover();return this.preferences;
+    this.preferences=validatePermissions(next,id);this.app.renderState();this.recover();return this.preferences;
   }
   recover(){
     if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||!this.preferences?.enabled)return;

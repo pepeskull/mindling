@@ -1,3 +1,4 @@
+import { bindSemanticAllowance } from './semantic-allowance-control.js';
 import { activityReward } from '../economy/xp.js';
 import { StageChip } from './stage-chip.js';
 import { stageMorphologyCounts } from '../renderer/stage-presentation.js';
@@ -35,16 +36,17 @@ export class Dashboard {
   #eventUnsubscribes = [];
   #onClarification;
   #onResearchAccess;
+  #onSemanticAllowance;
   #onCancelClarification;
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, onSemanticAllowance=null, readOnly = false } = {}) {
     for(const node of document.querySelectorAll('[data-activity-mode], [data-input-mode]')){
       const mode=node.dataset.activityMode||node.dataset.inputMode,policy=LIFE_RULES.activity[mode];if(!policy)continue;
       const reward=activityReward(mode),label=`${policy.label}: ${policy.energyCost} Energy · +${reward} XP`;
       node.title=label;node.setAttribute('aria-label',label);
       const small=node.querySelector('small');if(small)small.textContent=`${policy.energyCost} Energy · +${reward} XP`;
     }
-    this.#onResearchAccess=onResearchAccess;this.onLearningTask=onLearningTask;this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
+    this.#onSemanticAllowance=readOnly?null:onSemanticAllowance;this.#onResearchAccess=onResearchAccess;this.onLearningTask=onLearningTask;this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
     this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
     this.primaryView='dashboard';
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask});
@@ -118,6 +120,7 @@ export class Dashboard {
     if(this.#state?.mindlingId!==state.mindlingId){this.researchDialog?.close();this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
     if(this.researchSetting&&!this.researchDialog.open){this.researchSetting.checked=Boolean(state.researchPermissions?.enabled);}
+    this.semanticAllowance?.refresh(!this.researchDialog.open);
     const learningStatus=this.researchDialog?.querySelector('[data-autonomous-status]');if(learningStatus)learningStatus.textContent=`Autonomous learning: ${state.autonomousStatus||'PAUSED'}${state.autonomousTask?' · '+state.autonomousTask:''}${state.autonomousReason?' — '+state.autonomousReason:''}`;
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
@@ -310,11 +313,12 @@ export class Dashboard {
     if(!this.#onResearchAccess)return;
     const footer=document.querySelector('.footer-links'),open=document.createElement('button'),dialog=document.createElement('dialog');open.type='button';open.textContent='Settings';open.className='research-settings-link';
     dialog.className='research-settings glass-panel';dialog.setAttribute('aria-labelledby','research-settings-title');
-    dialog.innerHTML='<h2 id="research-settings-title">Mindling settings</h2><label><input type="checkbox" data-planning-access> Enable autonomous learning</label><p>Mindling researches public topics and follows useful knowledge gaps while the app is active. The existing AI connection and hosted web search may incur charges. Automatic tasks: at most 3 per UTC day, 10 minutes apart. Each task: at most 2 web tool calls, 4 inference requests and 3 accepted memories. No private memories, identity keys or wallet data are shared. External actions require separate authorization. Disabling stops active work and prevents new memory integration.</p><p data-autonomous-status role="status"></p><p data-settings-feedback role="status"></p><div class="clarification-choices"><button type="button" data-save-access>Save</button><button type="button" data-close-settings>Close</button></div>';
+    dialog.innerHTML='<h2 id="research-settings-title">Mindling settings</h2><label><input type="checkbox" data-planning-access> Enable autonomous learning</label><p>Mindling researches public topics and follows useful knowledge gaps while the app is active. The existing AI connection and hosted web search may incur charges. Automatic tasks: at most 3 per UTC day, 10 minutes apart. Each task: at most 2 web tool calls, 4 inference requests and 3 accepted memories. No private memories, identity keys or wallet data are shared. External actions require separate authorization. Disabling stops active work and prevents new memory integration.</p><label>Extra semantic analysis <select data-semantic-allowance aria-describedby="semantic-cost-note"><option value="0">0 calls/day</option><option value="1">1 call/day</option><option value="2">2 calls/day</option><option value="3">3 calls/day</option></select></label><p id="semantic-cost-note">Additional API costs may apply. Extra calls are shared across this Mindling’s deferred semantic tasks, within existing scheduling limits. Select 0 to disable extra calls.</p><p data-semantic-saved role="status"></p><div class="clarification-choices"><button type="button" data-save-semantic>Save extra semantic analysis</button></div><p data-semantic-feedback role="status"></p><p data-autonomous-status role="status"></p><p data-settings-feedback role="status"></p><div class="clarification-choices"><button type="button" data-save-access>Save</button><button type="button" data-close-settings>Close</button></div>';
 
     this.researchSetting=dialog.querySelector('[data-planning-access]');document.querySelector('#app').append(dialog);footer.append(open);this.researchDialog=dialog;this.researchSettingsButton=open;
-    this.#listen(open,'click',()=>{this.researchSetting.checked=Boolean(this.#state?.researchPermissions?.enabled);dialog.showModal();});this.#listen(dialog.querySelector('[data-close-settings]'),'click',()=>dialog.close());
-    this.#listen(dialog.querySelector('[data-save-access]'),'click',async event=>{const button=event.currentTarget,identity=this.#state?.mindlingId;button.disabled=true;try{await this.#onResearchAccess(this.researchSetting.checked);if(this.#state?.mindlingId===identity)dialog.querySelector('[data-settings-feedback]').textContent='Access preference saved.';}catch(error){dialog.querySelector('[data-settings-feedback]').textContent=error.message;}finally{button.disabled=false;}});
+    this.semanticAllowance=bindSemanticAllowance(dialog,{getState:()=>this.#state,onSave:this.#onSemanticAllowance,listen:(...args)=>this.#listen(...args),alive:()=>!this.#listeners.signal.aborted,onPending:pending=>{dialog.querySelector('[data-save-access]').disabled=pending;this.researchSetting.disabled=pending;}});
+    this.#listen(open,'click',()=>{this.semanticAllowance.refresh(true);this.researchSetting.checked=Boolean(this.#state?.researchPermissions?.enabled);dialog.showModal();});this.#listen(dialog.querySelector('[data-close-settings]'),'click',()=>dialog.close());
+    this.#listen(dialog.querySelector('[data-save-access]'),'click',async event=>{const button=event.currentTarget,identity=this.#state?.mindlingId;button.disabled=true;this.semanticAllowance.setBusy(true);try{await this.#onResearchAccess(this.researchSetting.checked);if(this.#state?.mindlingId===identity)dialog.querySelector('[data-settings-feedback]').textContent='Access preference saved.';}catch(error){dialog.querySelector('[data-settings-feedback]').textContent=error.message;}finally{button.disabled=false;this.semanticAllowance.setBusy(false);}});
   }
 
   async #resumeClarification(model,choice,detail=''){
