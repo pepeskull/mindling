@@ -1,3 +1,4 @@
+import { VERSION as SEMANTIC_VERSION } from '../semantic/model-contract.js';
 import { runSemantic } from '../semantic/model-worker.js';
 import { activityReward } from '../economy/xp.js';
 import { researchRelation, claimEvidence, addSupportingEvidence, retainConflict, replacementAllowed } from './memory-evolution.js';
@@ -58,7 +59,7 @@ export class AutonomousLearningEngine {
   }
   recover(){
     if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||!this.preferences?.enabled)return;
-    for(const task of tasksFor(this.app.state.mind)){if(task.status==='COMPLETED'&&!task.semanticAnalysis&&(task.modelCalls||0)<LIMITS.inferenceCalls)void runSemantic(this,task);const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;
+    for(const task of tasksFor(this.app.state.mind)){if(task.status==='COMPLETED'&&task.semanticAnalysis?.version!==SEMANTIC_VERSION)void runSemantic(this,task);const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;
       const known=interrupted&&matchingEvaluationFailure(task);
       if(task.engineVersion===4&&!terminal(task)&&known){
         this.patch(task.id,task.run,item=>{item.status='BLOCKED';item.code=item.lastFailureCode=known.errorCategory;item.lastFailurePhase=known.phase;item.message=researchFailureMessage(known,!!item.pendingSourceEvidence);item.retryAt??=Date.now()+AUTONOMY.retryDelay;}).catch(()=>{});continue;
