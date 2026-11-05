@@ -92,7 +92,7 @@ test('autonomous initiation and follow-ups use persisted daily budgets, cooldown
   assert.equal(nextOpportunity(mind,now),'Technology');
   mind.learningTasks=[{engineVersion:4,status:'COMPLETED',topic:'Technology',nextQuestion:'How do databases ensure atomicity',updatedAt:now}];
   assert.equal(nextOpportunity(mind,now),'How do databases ensure atomicity');
-  mind.autonomousLearning={day:new Date(now).toISOString().slice(0,10),started:AUTONOMY.dailyTasks,nextAt:0};assert.equal(nextOpportunity(mind,now),null);
+  mind.autonomousLearning={day:new Date(now).toISOString().slice(0,10),started:3,reservedRequests:12,nextAt:0};assert.equal(nextOpportunity(mind,now),null);
   mind.autonomousLearning={day:'2000-01-01',started:3,nextAt:now+1};assert.equal(nextOpportunity(mind,now),null);
   const privateCategory={...mind,autonomousLearning:undefined,pathways:[],learningTasks:[],memories:[{id:'private',content:'A private retained claim.',category:'Sensitive client dealings'}]};assert.equal(nextOpportunity(privateCategory,now),null);
   assert.equal(autonomousStatus({preferences:{enabled:false}}),'PAUSED');

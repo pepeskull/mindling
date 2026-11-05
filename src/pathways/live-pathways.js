@@ -10,7 +10,7 @@ export function pathwayTitle(label){const subject=readable(label).replace(/^note
 export function livePathways(graph={},state={}){
   const selected=knowledgeEvidence(state,graph).candidates.slice(0,3),families=new Set(selected.map(item=>item.id));
   for(const title of originPathways(state).choices){
-    if(selected.length>=3)break;const family=title==='Developer'?'technology':title==='Markets'?'economics':null;
+    if(selected.length>=3)break;const family=specializationFor(title)?.family||null;
     if(technical.test(title)||selected.some(item=>item.title===title)||family&&families.has(family))continue;
     selected.push({id:`origin:${title}`,title,area:'Origin interest',count:null,share:null,source:'origin'});if(family)families.add(family);
   }

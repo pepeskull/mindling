@@ -2,6 +2,7 @@
 // professional credentials. Extend this registry without touching either view.
 export const SPECIALIZATION_POLICY=Object.freeze({broadClaims:3,broadTopics:2,broadSubmissions:2,specificClaims:5,specificTopics:3,specificSubmissions:3,specificShare:.65,specificRelationships:2});
 const groups=[
+  ['distributed-systems','Distributed Systems Explorer','Distributed ledger technology|Blockchain|Blockchain technology|Distributed systems|Distributed ledgers',[]],
   ['science','Scientist','Science|Scientific knowledge|Vetenskap|Researcher|Research|Research methodology|Scientific method|Scientific research|Academic research|Evidence gathering|Experiments|Forskning',[]],
   ['geography','Geographer','Geography|Geografi',[
     ['Cartographer','Cartography|Kartografi'],['Geopolitical Analyst','Geopolitics|Geopolitik'],['Climatologist','Climatology|Klimatologi'],['Urban Geographer','Urban geography|Stadsgeografi']]],
@@ -16,10 +17,10 @@ const groups=[
   ['technology','Technologist','Technology|Teknik|Computer science|Developer',[
     ['Software Engineer','Software engineering|Software development|Programming|Programmering|Web development'],['AI Researcher','Artificial intelligence|AI research|AI|Artificiell intelligens'],['Machine Learning Engineer','Machine learning|Maskininlärning'],['Cybersecurity Specialist','Cybersecurity|Information security|Cybersäkerhet'],['Network Engineer','Network engineering|Computer networks|Nätverksteknik'],['Systems Architect','Systems architecture|System architecture|Systemarkitektur']]],
   ['sports','Sports Analyst','Sports|Sport|Idrott',[
-    ['Football Analyst','Football|Soccer|Fotboll'],['Sports Statistician','Sports statistics|Idrottsstatistik'],['Tactical Analyst','Sports tactics|Football tactics|Fotbollstaktik'],['Performance Analyst','Sports performance|Athletic performance|Idrottsprestation']]],
+    ['Football Analyst','Football|Association football|Soccer|Fotboll'],['Sports Statistician','Sports statistics|Idrottsstatistik'],['Tactical Analyst','Sports tactics|Football tactics|Fotbollstaktik'],['Performance Analyst','Sports performance|Athletic performance|Idrottsprestation']]],
   ['history','Historian','History|Historia',[
     ['Archaeologist','Archaeology|Arkeologi'],['Military Historian','Military history|Militärhistoria'],['Cultural Historian','Cultural history|Kulturhistoria']]],
-  ['medicine','Medical Researcher','Medicine|Medical science|Medicin|Life sciences',[
+  ['medicine','Medical Researcher','Medicine|Medical science|Healthcare|Health care|Medicin|Life sciences',[
     ['Neuroscientist','Neuroscience|Neurovetenskap'],['Epidemiologist','Epidemiology|Epidemiologi'],['Pharmacologist','Pharmacology|Farmakologi']]],
   ['economics','Economist','Economics|Ekonomi|Markets',[
     ['Financial Analyst','Finance|Financial markets|Markets|Investing|Trading|Finans'],['Market Researcher','Market research|Marknadsundersökning'],['Economic Historian','Economic history|Ekonomisk historia']]],

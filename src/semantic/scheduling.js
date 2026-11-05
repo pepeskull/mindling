@@ -1,6 +1,6 @@
 import {LIMITS} from '../autonomous/tasks.js';
-import {AUTONOMY,dayKey} from '../autonomous/autonomous-schedule.js';
-export const SEMANTIC_POLICY=Object.freeze({perTaskWindow:1,maxDaily:AUTONOMY.dailyTasks,defaultDaily:0});
+import {dayKey} from '../autonomous/autonomous-schedule.js';
+export const SEMANTIC_POLICY=Object.freeze({perTaskWindow:1,maxDaily:3,defaultDaily:0});
 export const semanticWindow=dayKey;
 export function pendingSemantic(task,version){
  if(task.status!=='COMPLETED'||!task.knowledgeIds?.length)return false;

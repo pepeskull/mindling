@@ -1,7 +1,10 @@
+import {editableMemoryText} from '../learning/correction-content.js';
+import {normalize} from '../learning/text.js';
+export const knowledgeClaimKey=memory=>normalize(editableMemoryText(memory));
 import { specializationFor, structuredTopicFacets } from './specialization-taxonomy.js';
 import { sourceStatus } from '../memory/content-integrity.js';
 const label=value=>typeof value==='string'?value.normalize('NFC').trim():'';
-export const TAXONOMY_VERSION=1;
+export const TAXONOMY_VERSION=2;
 export function classifyKnowledge(memory={}){
   const kind=memory.intelligence?.kind||memory.kind;
   const empty=reason=>({version:TAXONOMY_VERSION,pathwayId:null,pathwayIds:[],specializationIds:[],topicIds:[],method:'unassigned',reason});

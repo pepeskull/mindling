@@ -1,4 +1,4 @@
-import { classifyKnowledge, TAXONOMY_VERSION } from './knowledge-attribution.js';
+import { classifyKnowledge, TAXONOMY_VERSION, knowledgeClaimKey } from './knowledge-attribution.js';
 import { knowledgeEvidence } from './knowledge-evidence.js';
 import { SPECIALIZATIONS, specializationFor } from './specialization-taxonomy.js';
 import { normalize } from '../learning/text.js';
@@ -35,7 +35,8 @@ export function recordPathwayLearning(mind,memory,{eventId,activity,at,recordedA
   if(!mind?.id||typeof memory?.content!=='string'||!memory.id||!eventId||!list(mind.memories).some(item=>item.id===memory.id&&item.content===memory.content))return;
   const contentKey=normalize(memory.content);
   const evidence=list(mind.pathwayEvidence);
-  if(!contentKey||evidence.some(item=>item.contentKey===contentKey))return;
+  const claimKey=knowledgeClaimKey(memory),saved=new Map(list(mind.memories).map(item=>[item.id,item]));
+  if(!contentKey||evidence.some(item=>item.contentKey===contentKey||saved.has(item.memoryId)&&knowledgeClaimKey(saved.get(item.memoryId))===claimKey))return;
   const attribution=classifyPathway(memory);
   if(!Object.hasOwn(mind,'originPathways'))mind.originPathways=[...originPathways(mind).choices];
   const item={id:`knowledge:${eventId}:${memory.id}`,mindlingId:mind.id,eventId,memoryId:memory.id,contentKey,
