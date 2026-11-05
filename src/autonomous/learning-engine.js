@@ -1,3 +1,4 @@
+import {semanticQueue} from '../semantic/scheduling.js';
 import { VERSION as SEMANTIC_VERSION } from '../semantic/model-contract.js';
 import { runSemantic } from '../semantic/model-worker.js';
 import { activityReward } from '../economy/xp.js';
@@ -57,9 +58,17 @@ export class AutonomousLearningEngine {
     if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');this.preferences=validatePermissions(prefs,id);this.permissionIdentity=id;this.app.renderState();
     if(enabled)this.recover();return prefs;
   }
+  async setSemanticAllowance(semanticCallsPerDay){
+    const prefs=await this.loadPermissions(true),id=this.app.state.mind?.id;this.assertLive(id);
+    const next=await (this.app.db||this.app.store).saveResearchPermissions(id,{enabled:prefs.enabled,semanticCallsPerDay});
+    if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');
+    this.preferences=validatePermissions(next,id);this.recover();return this.preferences;
+  }
   recover(){
     if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||!this.preferences?.enabled)return;
-    for(const task of tasksFor(this.app.state.mind)){if(task.status==='COMPLETED'&&task.semanticAnalysis?.version!==SEMANTIC_VERSION)void runSemantic(this,task);const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;
+    const semanticTasks=semanticQueue(this.app.state.mind,SEMANTIC_VERSION);
+    for(const task of semanticTasks)void runSemantic(this,task);
+    for(const task of tasksFor(this.app.state.mind)){const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;
       const known=interrupted&&matchingEvaluationFailure(task);
       if(task.engineVersion===4&&!terminal(task)&&known){
         this.patch(task.id,task.run,item=>{item.status='BLOCKED';item.code=item.lastFailureCode=known.errorCategory;item.lastFailurePhase=known.phase;item.message=researchFailureMessage(known,!!item.pendingSourceEvidence);item.retryAt??=Date.now()+AUTONOMY.retryDelay;}).catch(()=>{});continue;
@@ -350,7 +359,7 @@ export class AutonomousLearningEngine {
       if(knowledge.length){current.completedWork=[...new Set([...current.completedWork,'knowledge','answer'])];current.status='COMPLETED';current.code='SOURCE_BACKED';current.message=`Research completed: ${formed} new source-attributed ${formed===1?'memory':'memories'} retained. This is bounded evidence, not complete topic coverage or independent verification.`;}else{current.status='BLOCKED';current.code='NO_EVIDENCE';current.message=`Research paused — Insufficient evidence. ${rejectionExplanation(memoryRejections[0]?.code)} Existing knowledge was preserved.`;}
       if(!validTask(current,task.mindlingId))throw Error('Research completion was invalid.');return next;
     },{preserveGameplay:true,researchGrant:grant,...(activity==='TALK'||task.autonomous?{}:{journal:{id:`research:${task.id}:${run}`,type:activity}})});
-    const completed=tasksFor(this.app.state.mind).find(item=>item.id===task.id);this.notify(completed);void runSemantic(this,completed);if(completed.knowledgeIds.length){const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity:'TEACH'});}return completed;
+    const completed=tasksFor(this.app.state.mind).find(item=>item.id===task.id);this.notify(completed);this.recover();if(completed.knowledgeIds.length){const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity:'TEACH'});}return completed;
   }
   reply(task){
     const sv=/[åäö]|\b(?:vilket|sverige|lär)\b/iu.test(task.objective),completed=task.status==='COMPLETED';
