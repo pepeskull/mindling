@@ -1,0 +1,17 @@
+{
+  "description": "Exact five evidenceText passages supplied by user on 2026-11-05. Minimal fixture metadata is reconstructed; this is not the full production export.",
+  "passages": [
+    "A **blockchain** is a shared digital ledger: records are grouped into blocks, and each block is cryptographically linked to the previous one. Copies of the ledger are held by network participants, or **nodes**. **Consensus rules** let those participants agree which new transactions to accept and add. This makes changes to old records detectable and generally difficult—not impossible—to carry out.",
+    "A **cryptocurrency** is a digital asset or unit that people can transfer within a system using cryptography. Many cryptocurrencies use blockchains to record transactions and ownership; Bitcoin is one example. The terms aren’t interchangeable: blockchain is the record-keeping technology, and it can be used for applications beyond cryptocurrency.",
+    "Miners gather transactions into candidate blocks and compete to solve a computational puzzle. The winning miner broadcasts its block; other nodes check that the proof and transactions follow the network’s rules. Rewards and fees incentivize mining. The security assumption is that an attacker cannot sustainably command enough computing power to outcompete honest miners; the mechanism uses substantial computation and energy.",
+    "Validators lock up cryptocurrency as stake. A protocol selects a proposer to create a block, while other validators check it and vote on whether it should be accepted. In Ethereum, validators earn rewards for participating and can lose stake for specified dishonest actions. PoS avoids PoW’s energy-intensive puzzle, but its security depends on the distribution of stake and the protocol’s incentives and penalties.",
+    "PoW makes block production costly through computing resources; PoS makes it accountable through capital at risk. Neither label alone guarantees security: the details of a particular blockchain’s rules and validator or miner distribution matter. These are general descriptions; the cited staking and penalty specifics are Ethereum’s implementation."
+  ],
+  "quoteHashes": [
+    "0960fdf7295215c871df9a01069f59fff7353cd107f9b001ece837c8a4eacc3f",
+    "d46b692c45f12e2695069249a812dcdef62885837c72bd82b25ef58cebfce2ca",
+    "018cbf30cd904fce38111f54aa3db84d48e9fcb0c26521016d6ba2b79775de76",
+    "2ba05e0a315dbd42f7fc9d4be4b0a0099cc2a3ac3c390c59e068d44ad37690f2",
+    "050d15f611bbb4db7be832f8edc892c4e196c573ae2cddd93ee88c107ef0ea50"
+  ]
+}
