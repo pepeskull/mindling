@@ -34,7 +34,7 @@ export class EvolutionPreview {
     this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged,
       onLearningTask:typeof this.change==='function'?async(action,id,payload)=>{const result=await learningEngine(this).act(action,id,payload);if(result?.needsClarification)this.dashboard.showClarification(result.talkResponse);return result;}:null,
       onSemanticAllowance:typeof this.change==='function'?n=>learningEngine(this).setSemanticAllowance(n):null,
-      onResearchAccess:typeof this.change==='function'?enabled=>learningEngine(this).setAccess(enabled):null,
+      onResearchAccess:typeof this.change==='function'?(enabled,limit)=>learningEngine(this).setAccess(enabled,limit):null,
       onClarification:typeof this.change==='function'?(token,choice,detail)=>resumeClarification(this,token,choice,detail):null,onCancelClarification:()=>cancelClarification(this) });
     const snapshot = this.snapshotProvider ? await this.snapshotProvider() : null;
     if (this.disposed) return;
@@ -61,7 +61,7 @@ export class EvolutionPreview {
     this.external=new ExternalView(this);
     this.inputFeedback=new NeuralInputFeedback(document.querySelector('#app'),document.querySelector('#interaction-form'),()=>this.seed.inputTarget(),()=>this.seed.receiveInput(),this.motion);
     this.unsubscribeInput=this.events.on(EVENTS.NEURAL_INPUT,event=>{
-      if(this.external?.locked||document.hidden||['development','memories','onboarding'].includes(this.primaryView))return;
+      if(this.external?.locked||document.hidden||['development','memories','network','onboarding'].includes(this.primaryView))return;
       this.inputFeedback.handle(event);this.schedule();
     });
     this.host.dataset.backend = this.view.three ? 'three' : 'canvas';
@@ -119,12 +119,12 @@ export class EvolutionPreview {
   primaryViewChanged = view => {
     this.primaryView = view;this.external?.refresh();
     if(view!=='dashboard'){this.inputFeedback?.clear();this.talkAbort.abort();this.talkAbort=new AbortController();}
-    if (view === 'development' || view === 'memories' || view === 'onboarding') { cancelAnimationFrame(this.frame); this.frame = null; }
+    if (view === 'development' || view === 'memories' || view === 'network' || view === 'onboarding') { cancelAnimationFrame(this.frame); this.frame = null; }
     else { this.lastTime = null; this.schedule(); }
   };
-  schedule() { if (!this.disposed && this.view && this.seed && !document.hidden && !['development','memories','onboarding'].includes(this.primaryView) && this.frame === null) this.frame = requestAnimationFrame(this.render); }
+  schedule() { if (!this.disposed && this.view && this.seed && !document.hidden && !['development','memories','network','onboarding'].includes(this.primaryView) && this.frame === null) this.frame = requestAnimationFrame(this.render); }
   render = now => {
-    this.frame = null; if (this.disposed || document.hidden || ['development','memories','onboarding'].includes(this.primaryView)) return;
+    this.frame = null; if (this.disposed || document.hidden || ['development','memories','network','onboarding'].includes(this.primaryView)) return;
     const delta = this.lastTime === null ? 0 : Math.max(0, (now - this.lastTime) / 1000); this.lastTime = now; this.elapsed += delta;
     this.external?.tick(delta);
     const ready = this.timeline.stage === 7 && this.transition === 1 && this.view.morph.progress === 1;

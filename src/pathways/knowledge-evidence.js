@@ -1,7 +1,7 @@
 import { graphData } from '../memory/graph-data.js';
 import { normalize } from '../learning/text.js';
 import { sourceStatus } from '../memory/content-integrity.js';
-import { classifyKnowledge } from './knowledge-attribution.js';
+import { classifyKnowledge, knowledgeClaimKey } from './knowledge-attribution.js';
 import { SPECIALIZATIONS, broadSpecialization, SPECIALIZATION_POLICY as POLICY } from './specialization-taxonomy.js';
 const list=value=>Array.isArray(value)?value:[];
 // One canonical selector for domain evidence, narrow evidence and current titles.
@@ -14,7 +14,8 @@ export function knowledgeEvidence(mind={},graph=graphData(mind)){
   const areaNames=new Map(graph.areas.map(area=>[area.id,area.label]));
   for(const node of graph.memories){
     const memory=node.raw,kind=memory.intelligence?.kind||memory.kind,content=typeof memory.content==='string'?normalize(memory.content):'';
-    if(node.historical||!content||seen.has(content)||['preference','goal','intention','historical'].includes(kind)||sourceStatus(memory)==='incomplete')continue;seen.add(content);
+    const claimKey=knowledgeClaimKey(memory);
+    if(node.historical||!content||seen.has(claimKey)||['preference','goal','intention','historical'].includes(kind)||sourceStatus(memory)==='incomplete')continue;seen.add(claimKey);
     const record=recorded.get(JSON.stringify([node.recordId,content])),attribution=classifyKnowledge({...memory,category:areaNames.get(node.areaId)||memory.category});
     const usable=!(memory.contradictions?.length),strong=Boolean(!attribution.weak&&(memory.source||memory.native?.provenance||memory.analysis||memory.research));
     const row={node,record,attribution,usable,strong,submission:memory.submissionId||memory.parentMemoryId||node.recordId,contentKey:content};records.push(row);
@@ -28,7 +29,7 @@ export function knowledgeEvidence(mind={},graph=graphData(mind)){
   const domains=[],specializations=[],candidates=[];
   for(const group of groups.values()){
     const d=diversity(group.rows),links=relationships(group.rows),broadReady=group.rows.length>=POLICY.broadClaims&&d.canonicalTopics>=POLICY.broadTopics&&d.submissions>=POLICY.broadSubmissions&&(d.strong>=2||group.rows.length>=4&&links>=1);
-    domains.push({id:group.id,title:group.definition.title,area:group.definition.aliases[0],count:group.rows.length,evidenceUnits:group.rows.filter(row=>row.record).length,ready:broadReady});
+    domains.push({id:group.id,title:group.definition.title,area:group.definition.aliases[0],count:group.rows.length,evidenceUnits:group.rows.filter(row=>row.record).length,ready:broadReady,reason:broadReady?'Evidence breadth supports this orientation':`${group.rows.length}/${POLICY.broadClaims} distinct claims; ${d.canonicalTopics}/${POLICY.broadTopics} topics; ${d.submissions}/${POLICY.broadSubmissions} submissions; ${d.strong} claims with structured provenance`});
     const narrow=[...group.specific.values()].map(item=>{const e=diversity(item.rows),related=relationships(item.rows);return {id:item.definition.id,family:group.id,title:item.definition.title,count:item.rows.length,topics:e.topics,relationships:related,evidenceUnits:item.rows.filter(row=>row.record).length,
       ready:item.rows.length>=POLICY.specificClaims&&item.rows.length/group.rows.length>=POLICY.specificShare&&e.topics>=POLICY.specificTopics&&e.submissions>=POLICY.specificSubmissions&&e.strong>=3&&related>=POLICY.specificRelationships};}).sort((a,b)=>b.count-a.count||a.id.localeCompare(b.id,'en'));
     specializations.push(...narrow);

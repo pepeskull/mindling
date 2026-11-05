@@ -1,9 +1,10 @@
+import { energyAt } from '../economy/energy.js';
 import { CLIENT_RESEARCH_CODES } from './client-diagnostics.js';
 import { retryableServiceFailure, canRetryResearch } from './service-diagnostics.js';
 import { specializationFor } from '../pathways/specialization-taxonomy.js';
 import { graphData } from '../memory/graph-data.js';
 import { publicResearchTopic, validQuery } from './research-contract.js';
-export const AUTONOMY=Object.freeze({dailyTasks:3,cooldown:10*60*1000,retryDelay:60000});
+export const AUTONOMY=Object.freeze({cooldown:10*60*1000,retryDelay:60000});
 export const dayKey=now=>new Date(now).toISOString().slice(0,10);
 export function blocksOpportunity(task){
   if(task.engineVersion!==4||['COMPLETED','CANCELLED','FAILED'].includes(task.status))return false;
@@ -11,9 +12,17 @@ export function blocksOpportunity(task){
   if(['INFORMATION_UNCONFIGURED','INFORMATION_UNSUPPORTED','INFORMATION_UNAUTHORIZED','MODEL_UNAVAILABLE','TOOL_UNSUPPORTED'].includes(task.code))return true;
   return retryableServiceFailure(task)&&canRetryResearch(task);
 }
-export function nextOpportunity(mind,now=Date.now()){
+export function automaticPause(mind,prefs={},now=Date.now()){
+  const ledger=mind.autonomousLearning||{};
+  const reserved=ledger.day===dayKey(now)?(ledger.reservedRequests??(ledger.started||0)*4):0;
+  if(reserved+4>(prefs.automaticRequestLimit??12))return 'Automatic research cost-safety reservation limit reached for this UTC day.';
+  if(ledger.nextAt>now)return 'Waiting for cooldown.';
+  if(mind.energy&&energyAt(mind.energy,now).remaining<2)return 'Insufficient energy for automatic research readiness.';
+  return null;
+}
+export function nextOpportunity(mind,now=Date.now(),prefs={}){
   const ledger=mind.autonomousLearning||{},tasks=mind.learningTasks||[];
-  if(ledger.nextAt>now||ledger.day===dayKey(now)&&ledger.started>=AUTONOMY.dailyTasks||tasks.some(blocksOpportunity))return null;
+  if(automaticPause(mind,prefs,now)||tasks.some(blocksOpportunity))return null;
   const used=new Set(tasks.filter(task=>task.engineVersion===4).map(task=>task.topic?.toLowerCase()));
   const followups=tasks.filter(task=>task.engineVersion===4&&task.status==='COMPLETED'&&task.nextQuestion).sort((a,b)=>b.updatedAt-a.updatedAt).map(task=>task.nextQuestion);
   // Existing canonical distribution chooses a knowledge orientation, never a fabricated skill.
@@ -39,11 +48,12 @@ export function autonomousDiagnostics(engine){
   // A manual research outcome does not diagnose the autonomous scheduler.
   const latest=tasks.filter(task=>task.engineVersion===4&&task.autonomous).sort((a,b)=>b.updatedAt-a.updatedAt)[0];
   if(latest?.status==='BLOCKED'||latest?.status==='FAILED'){
-    const paused=['INTEGRATION_PAUSED','TRANSPORT_INTERRUPTED','NO_EVIDENCE','SOURCE_UNSUPPORTED','INTERRUPTED','REQUEST_INTERRUPTED','ACCESS_DISABLED','BUDGET_EXHAUSTED','MODEL_CLARIFICATION','QUERY_REVIEW','PERMISSION_REQUIRED','QUEUED'];
+    const paused=['ENERGY_LOW','INTEGRATION_PAUSED','TRANSPORT_INTERRUPTED','NO_EVIDENCE','SOURCE_UNSUPPORTED','INTERRUPTED','REQUEST_INTERRUPTED','ACCESS_DISABLED','BUDGET_EXHAUSTED','MODEL_CLARIFICATION','QUERY_REVIEW','PERMISSION_REQUIRED','QUEUED'];
     const status=latest.code==='RATE_LIMITED'?'RATE_LIMITED':latest.code==='OFFLINE'?'OFFLINE':paused.includes(latest.code)?'PAUSED':'ERROR';
     return {status,reason:latest.message,taskId:latest.id,topic:latest.topic};
   }
   if(latest&&!['COMPLETED','CANCELLED','FAILED','BLOCKED'].includes(latest.status))return {status:'PAUSED',reason:'An earlier research operation was interrupted; its reserved budget is preserved.',taskId:latest.id,topic:latest.topic};
+  const waiting=automaticPause(engine.app.state.mind,engine.preferences);if(waiting)return {status:'PAUSED',reason:waiting};
   return {status:'IDLE',reason:'Waiting for the next eligible learning opportunity.'};
 }
 export const autonomousStatus=engine=>autonomousDiagnostics(engine).status;
