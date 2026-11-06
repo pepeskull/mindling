@@ -1,4 +1,5 @@
 import {ActivityModel,CHANNELS,COLORS} from './activity-model.js';
+import {BrainStateModel} from './brain-state-model.js';
 import {SpectrumRenderer} from './spectrum-renderer.js';
 // Meter and history presentation adapted from Realtime_PyAudio_FFT, MIT.
 export class NetworkView {
@@ -6,17 +7,22 @@ export class NetworkView {
   this.root=root;
   this.clock=clock;
   this.model=new ActivityModel();
+  this.brain=new BrainStateModel();
   this.visible=false;
   this.frame=null;
   this.history=10;
   this.mode='3d';
   this.abort=new AbortController();
   this.reduced=matchMedia('(prefers-reduced-motion: reduce)');
-  root.innerHTML=`<header class="network-heading"><div><span class="network-mark"><i></i><i></i><i></i></span><h2>MINDLING NETWORK</h2></div><span data-network-status>ACTIVITY · IDLE</span></header><div class="network-grid"><section class="network-panel network-bars"><div class="network-panel-heading"><h3>Bars + Peak Hold</h3><span>0–1</span></div><div class="network-plot"><canvas data-bars role="img" aria-label="Talk, Teach and Deep Training activity meters with peak hold"></canvas></div></section><section class="network-panel network-lines"><div class="network-panel-heading"><h3>Rolling Lines <span> / Activity history</span></h3><div class="network-legend"><span>Talk</span><span>Teach</span><span>Deep Training</span></div></div><div class="network-plot"><canvas data-lines role="img" aria-label="Recent event intensity, newest on the right"></canvas></div></section><section class="network-panel network-cloud"><div class="network-panel-heading"><h3>FFT 3D <span> / Neural activity spectrum</span></h3><div class="network-controls"><label>History <select data-history aria-label="Activity history duration"><option value="5">5 seconds</option><option value="10" selected>10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></select></label><div role="group" aria-label="Spectrum perspective"><button data-mode="2d" aria-pressed="false">2D</button><button data-mode="3d" aria-pressed="true">3D</button></div><button data-pause aria-pressed="false">Pause</button></div></div><div class="network-plot network-cloud-plot"><canvas data-cloud role="img" aria-label="Three-dimensional point-cloud history of real activity events"></canvas><canvas data-fallback role="img" aria-label="Activity history surface, Canvas fallback" hidden></canvas><span class="network-horizon" data-horizon>−10 seconds</span><span class="network-empty">No recent activity · Talk, Teach or Deep Training to begin</span><div class="network-cloud-axis"><span>Talk</span><span>Teach</span><span>Deep Training</span></div></div><p class="network-caption">Event-derived intensity · 0–1 <span data-renderer></span><span>Local session · not audio frequencies</span></p></section></div>`;
+  root.innerHTML=`<div class="network-grid">
+    <section class="network-panel network-bars" aria-label="Recent Talk, Teach and Deep Training events"><div class="network-plot"><canvas data-bars role="img" aria-label="Real interaction intensity with peak hold; decorative brain activity is excluded"></canvas></div></section>
+    <section class="network-panel network-lines" aria-label="Recent interaction history"><div class="network-legend"><span>Talk</span><span>Teach</span><span>Deep Training</span></div><div class="network-plot"><canvas data-lines role="img" aria-label="Real interaction events, newest on the right; no synthetic baseline"></canvas></div></section>
+    <section class="network-panel network-cloud" aria-label="Living neural structure"><div class="network-controls"><label>History <select data-history aria-label="Interaction history duration"><option value="5">5 seconds</option><option value="10" selected>10 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option></select></label><div role="group" aria-label="Neural surface perspective"><button data-mode="2d" aria-pressed="false">2D</button><button data-mode="3d" aria-pressed="true">3D</button></div><button data-pause aria-pressed="false">Pause</button><details class="network-about"><summary>About</summary><div><p>The cloud is a decorative projection of your stored brain structure and knowledge, not live model computation or new learning. Its breathing motion is visual only; receding rows are not historical brain snapshots.</p><p>Meters and lines show actual Talk, Teach and Deep Training events. Recent interactions temporarily influence the cloud.</p><p data-brain-summary></p></div></details></div><div class="network-plot network-cloud-plot"><canvas data-cloud role="img" aria-label="Animated decorative projection of stored neural structure and retained memories; not computation or learning"></canvas><canvas data-fallback role="img" aria-label="Decorative neural structure, Canvas fallback" hidden></canvas><span class="sr-only" data-brain-accessible></span></div></section>
+  </div>`;
   this.bars=root.querySelector('[data-bars]');
   this.lines=root.querySelector('[data-lines]');
   this.spectrum=new SpectrumRenderer(root.querySelector('[data-cloud]'),root.querySelector('[data-fallback]'),()=>this.sync());
-  root.addEventListener('click',event=>{const mode=event.target.closest('[data-mode]');if(mode){this.mode=mode.dataset.mode;root.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b===mode)));}if(event.target.closest('[data-pause]')){this.paused=!this.paused;this.pausedAt=this.clock();this.frozenModel=this.paused?new ActivityModel():null;if(this.frozenModel)this.frozenModel.events=this.model.events.map(event=>({...event}));const b=root.querySelector('[data-pause]');b.textContent=this.paused?'Resume':'Pause';b.setAttribute('aria-pressed',String(this.paused));}this.sync();},{signal:this.abort.signal});
+  root.addEventListener('click',event=>{const mode=event.target.closest('[data-mode]');if(mode){this.mode=mode.dataset.mode;root.querySelectorAll('[data-mode]').forEach(b=>b.setAttribute('aria-pressed',String(b===mode)));}if(event.target.closest('[data-pause]')){this.paused=!this.paused;this.pausedAt=this.clock();this.frozenModel=this.paused?new ActivityModel():null;if(this.frozenModel)this.frozenModel.events=this.model.events.map(event=>({...event}));this.frozenBrain=this.paused?this.brain.frozen():null;const b=root.querySelector('[data-pause]');b.textContent=this.paused?'Resume':'Pause';b.setAttribute('aria-pressed',String(this.paused));}this.sync();},{signal:this.abort.signal});
   root.querySelector('[data-history]').addEventListener('change',e=>{this.history=Number(e.target.value);this.sync();},{signal:this.abort.signal});
   window.addEventListener('resize',()=>{this.fit();this.sync();},{signal:this.abort.signal});
   document.addEventListener('visibilitychange',()=>this.sync(),{signal:this.abort.signal});
@@ -27,8 +33,13 @@ export class NetworkView {
  update(state={}){const identity=state.mindlingId||state.id;
   if(this.identity!==identity){this.model=new ActivityModel();
   this.frozenModel=this.paused?new ActivityModel():null;
+  this.brain=new BrainStateModel();this.frozenBrain=this.paused?this.brain.frozen():null;
   this.identity=identity;
   }this.state=state;
+  this.brain.update(state);
+  const counts=this.brain.summary,summary=`${counts.neurons} positioned neurons · ${counts.synapses} valid synapses · ${counts.memories} current readable memories · ${counts.associations} stored associations`;
+  this.root.querySelector('[data-brain-summary]').textContent=summary;
+  this.root.querySelector('[data-brain-accessible]').textContent=summary;
   this.sync();
   }
  ingest(event){if(this.state?.learningTasks?.some(t=>t.id===event?.id&&t.autonomous))return false;
@@ -36,7 +47,11 @@ export class NetworkView {
   if(accepted)this.sync();
   return accepted;
   }
- fit(){const dpr=Math.min(devicePixelRatio||1,1.5);
+ fit(){const style=getComputedStyle(this.root);
+  this.colors=['--life-rest','--accent','--life-nutrition'].map((name,i)=>style.getPropertyValue(name).trim()||COLORS[i]);
+  this.textColor=style.getPropertyValue('--text-secondary').trim();this.track=style.getPropertyValue('--surface-glass').trim();
+  this.spectrum.accent=style.getPropertyValue('--accent').trim()||'#b7d8d1';
+  const dpr=Math.min(devicePixelRatio||1,1.5);
   for(const canvas of[this.bars,this.lines]){const rect=canvas.parentElement.getBoundingClientRect();
   const w=Math.max(1,Math.round(rect.width*dpr)),h=Math.max(1,Math.round(rect.height*dpr));
   if(canvas.width!==w)canvas.width=w;
@@ -61,19 +76,14 @@ export class NetworkView {
   this.draw();
   }if(this.hasRecentActivity())this.frame=requestAnimationFrame(this.animate);
   };
- hasRecentActivity(){return this.model.events.some(e=>e.time>=this.clock()-(this.history+12)*1000);
+ hasRecentActivity(){return this.brain.alive||this.model.events.some(e=>e.time>=this.clock()-(this.history+12)*1000);
   }
  draw(){const model=this.paused?this.frozenModel:this.model,now=this.paused?this.pausedAt:this.clock(),values=model.sample(now),rows=model.history(now,this.history),peaks=model.peaks(now),flashes=model.flashes(now);
   this.currentValues=values;
   this.status=values.some(v=>v>.01)||flashes.some(v=>v>0)?'LIVE':'IDLE';
-  this.root.querySelector('[data-network-status]').textContent=`ACTIVITY · ${this.paused?'PAUSED':this.status}`;
-  this.root.querySelector('[data-network-status]').dataset.live=String(this.status==='LIVE');
-  this.root.querySelector('[data-horizon]').textContent=`−${this.history} seconds`;
-  this.root.querySelector('.network-empty').hidden=rows.some(row=>row.values.some(v=>v>.01));
-  this.root.querySelector('[data-renderer]').textContent=this.mode==='3d'&&this.spectrum.gl&&!this.spectrum.lost?'WebGL2 Cloud':'Canvas surface';
   this.drawBars(values,peaks,flashes);
   this.drawLines(rows,now);
-  this.spectrum.draw(model,now,this.history,this.mode);
+  this.spectrum.draw(model,now,this.history,this.mode,this.paused?this.frozenBrain:this.brain);
   }
  drawBars(values,peaks,flashes){const c=this.bars.getContext('2d'),d=this.dpr||1,w=this.bars.width/d,h=this.bars.height/d;
   c.setTransform(d,0,0,d,0,0);
@@ -82,19 +92,19 @@ export class NetworkView {
   c.font='9px system-ui';
   c.textAlign='center';
   for(let i=0;i<3;i++){const x=(i+.5)*w/3-bw/2;
-  c.fillStyle='#191e23';
+  c.fillStyle=this.track||'#08090a';
   c.fillRect(x,12,bw,32);
-  c.fillStyle=COLORS[i];
+  c.fillStyle=this.colors?.[i]||COLORS[i];
   c.globalAlpha=.18+.82*flashes[i];
   c.fillRect(x,12,bw,32);
   c.globalAlpha=1;
-  c.fillStyle='#191e23';
+  c.fillStyle=this.track||'#08090a';
   c.fillRect(x,top,bw,range);
-  c.fillStyle=COLORS[i];
+  c.fillStyle=this.colors?.[i]||COLORS[i];
   c.fillRect(x,bottom-values[i]*range,bw,values[i]*range);
   if(peaks[i]>.005){c.fillStyle='#e2e6e9';
   c.fillRect(x,bottom-peaks[i]*range,bw,1.5);
-  }c.fillStyle='#9b9fa7';
+  }c.fillStyle=this.textColor||'#92959b';
   if(i===2&&w<220){c.font='7px system-ui';
   c.fillText('DEEP',x+bw/2,h-17);
   c.fillText('TRAINING',x+bw/2,h-7);
@@ -119,8 +129,8 @@ export class NetworkView {
   let firstX=left,lastX=left;
   rows.forEach((row,j)=>{const x=left+(1-(now-row.time)/(this.history*1000))*(right-left),y=bottom-row.values[i]*(bottom-top);if(j===0){path.moveTo(x,y);firstX=x;}else path.lineTo(x,y);lastX=x;});
   const gradient=c.createLinearGradient(left,0,right,0);
-  gradient.addColorStop(0,COLORS[i]+'08');
-  gradient.addColorStop(1,COLORS[i]+'ed');
+  gradient.addColorStop(0,(this.colors?.[i]||COLORS[i])+'08');
+  gradient.addColorStop(1,(this.colors?.[i]||COLORS[i])+'ed');
   c.strokeStyle=gradient;
   c.lineWidth=1.35;
   c.stroke(path);
