@@ -153,3 +153,10 @@ export function validateResearchCheckpoint(value){
 export function validateResearchEvaluationContext(value){
   if(!object(value)||!['checkpoint','checkpoint,learning'].includes(Object.keys(value).sort().join(',')))fail();validateResearchCheckpoint(value.checkpoint);if(value.learning!==undefined)validateResearchLearningContext(value.learning);return value;
 }
+
+// Persist only a validated public topic, bound to this task's clarified scope.
+export function savedPublicTopic(task){
+ const value=task?.approvedPublicTopic;
+ if(!value||value.version!==1||value.queryKey!==(task.queryKey||task.id)||!Number.isSafeInteger(value.approvedAt)||value.approvedAt<0)return null;
+ try{return publicResearchTopic(task,value.topic);}catch{return null;}
+}
