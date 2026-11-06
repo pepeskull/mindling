@@ -15,14 +15,44 @@ export function validatePlanningContext(value){
   if(!object(scope)||Object.keys(scope).sort().join(',')!=='criterion,geography,geographyMode,period,quantity'||![null,'standings','form','history','performance','cost','reliability','features'].includes(scope.criterion)||![null,'week','month','year'].includes(scope.period)||![null,'intersection','comparison'].includes(scope.geographyMode)||!Array.isArray(scope.geography)||scope.geography.length>2||scope.geography.some(region=>!['Europe','Sweden'].includes(region))||!(scope.quantity===null||Number.isSafeInteger(scope.quantity)&&scope.quantity>=1&&scope.quantity<=999))fail();
   return value;
 }
-const option={type:'object',additionalProperties:false,required:['id','label','value'],properties:{id:{type:'string'},label:{type:'string'},value:{type:'string'}}};
-export const planningSchema={type:'object',additionalProperties:false,required:['plan','clarification','queries','sourceCategory'],properties:{queries:{type:'array',items:{type:'string'},minItems:0,maxItems:2},sourceCategory:{type:'string',enum:['web','unsupported']},plan:{type:'array',items:{type:'string'},minItems:1,maxItems:3},clarification:{anyOf:[{type:'null'},{type:'object',additionalProperties:false,required:['question','options'],properties:{question:{type:'string'},options:{type:'array',items:option,minItems:0,maxItems:4}}}]}}};
+// Schema and prompt describe the same bounded text contract used at acceptance.
+const cleanPattern = "^[^\\s\\p{Cc}\\p{Cf}](?:[^\\p{Cc}\\p{Cf}]*[^\\s\\p{Cc}\\p{Cf}])?$";
+export const QUERY_PATTERN = "^[\\p{L}\\p{N}](?:[\\p{L}\\p{M}\\p{N} '\\-]*[\\p{L}\\p{M}\\p{N}'\\-])?$";
+const boundedText = max => ({type:'string',minLength:1,maxLength:max,pattern:cleanPattern});
+const option={type:'object',additionalProperties:false,required:['id','label','value'],properties:{id:{type:'string',pattern:'^[a-z][a-z_-]{0,31}$',minLength:1,maxLength:32},label:boundedText(80),value:boundedText(160)}};
+export const planningSchema={type:'object',additionalProperties:false,required:['plan','clarification','queries','sourceCategory'],properties:{
+  queries:{type:'array',items:{type:'string',minLength:1,maxLength:120,pattern:QUERY_PATTERN},minItems:0,maxItems:2},
+  sourceCategory:{type:'string',enum:['web','unsupported']},
+  plan:{type:'array',items:boundedText(160),minItems:1,maxItems:3},
+  clarification:{anyOf:[{type:'null'},{type:'object',additionalProperties:false,required:['question','options'],properties:{question:boundedText(400),options:{type:'array',items:option,minItems:0,maxItems:4}}}]}
+}};
+export const PLANNING_OUTPUT_RULES = 'Exact output limits: plan has 1–3 trimmed single-line objectives, each 1–160 characters; queries has 0–2 trimmed strings, each 1–120 characters. Queries must start with a Unicode letter or digit and contain only letters, combining marks, digits, ordinary spaces, straight apostrophes and ASCII hyphens. No commas, colons, slashes, ampersands, question marks, URLs, field operators or private identifiers in queries. A web plan without clarification requires at least one query. Clarification question is 1–400 characters; options has 0–4 items with unique lowercase ASCII IDs matching [a-z][a-z_-]{0,31}, labels 1–80 characters and values 1–160 characters. All strings are trimmed, single-line and free of control/format characters. Do not return extra fields. These are output formatting requirements, not restrictions on which public subjects can be researched.';
+const planningFailure=rule=>{throw Object.assign(Error('Mindling could not validate the research plan. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail:rule});};
 export function validatePlanningResult(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='clarification,plan,queries,sourceCategory'||!Array.isArray(value.plan)||!value.plan.length||value.plan.length>3||!value.plan.every(item=>text(item,160)))fail();
-  if(!['web','unsupported'].includes(value.sourceCategory)||!Array.isArray(value.queries)||value.queries.length>2||value.queries.some(query=>!validQuery(query)))fail();
-  if(value.sourceCategory==='web'&&value.clarification===null&&!value.queries.length)fail();
+  if(!object(value)||Object.keys(value).sort().join(',')!=='clarification,plan,queries,sourceCategory')planningFailure('PLAN_FIELDS_INVALID');
+  if(!Array.isArray(value.plan)||!value.plan.length||value.plan.length>3)planningFailure('PLAN_ITEMS_INVALID');
+  if(!value.plan.every(item=>text(item,160)))planningFailure('PLAN_TEXT_INVALID');
+  if(!['web','unsupported'].includes(value.sourceCategory))planningFailure('PLAN_SOURCE_CATEGORY_INVALID');
+  if(!Array.isArray(value.queries)||value.queries.length>2)planningFailure('PLAN_QUERIES_INVALID');
+  for(const query of value.queries){
+    if(!text(query,120))planningFailure('PLAN_QUERY_TEXT_INVALID');
+    if(!new RegExp(QUERY_PATTERN,'u').test(query))planningFailure('PLAN_QUERY_CHARACTERS_INVALID');
+    if(!validQuery(query))planningFailure('PLAN_QUERY_PRIVACY_INVALID');
+  }
+  if(value.sourceCategory==='web'&&value.clarification===null&&!value.queries.length)planningFailure('PLAN_QUERY_REQUIRED');
   const question=value.clarification;
-  if(question!==null&&(!object(question)||Object.keys(question).sort().join(',')!=='options,question'||!text(question.question,400)||!Array.isArray(question.options)||question.options.length>4||new Set(question.options.map(item=>item?.id)).size!==question.options.length||question.options.some(item=>!object(item)||Object.keys(item).sort().join(',')!=='id,label,value'||!text(item.label,80)||!text(item.value,160)||!/^[a-z][a-z_-]{0,31}$/.test(item.id))))fail();
+  if(question!==null){
+    if(!object(question)||Object.keys(question).sort().join(',')!=='options,question')planningFailure('PLAN_CLARIFICATION_FIELDS_INVALID');
+    if(!text(question.question,400))planningFailure('PLAN_QUESTION_TEXT_INVALID');
+    if(!Array.isArray(question.options)||question.options.length>4)planningFailure('PLAN_OPTIONS_INVALID');
+    for(const item of question.options){
+      if(!object(item)||Object.keys(item).sort().join(',')!=='id,label,value')planningFailure('PLAN_OPTION_FIELDS_INVALID');
+      if(typeof item.id!=='string'||!/^[a-z][a-z_-]{0,31}$/.test(item.id))planningFailure('PLAN_OPTION_ID_INVALID');
+      if(!text(item.label,80))planningFailure('PLAN_OPTION_LABEL_INVALID');
+      if(!text(item.value,160))planningFailure('PLAN_OPTION_VALUE_INVALID');
+    }
+    if(new Set(question.options.map(item=>item.id)).size!==question.options.length)planningFailure('PLAN_OPTION_ID_DUPLICATE');
+  }
   return value;
 }
 // Conservative public-topic screening, never a claim of complete PII detection.
@@ -35,7 +65,7 @@ export function publicResearchTopic(task,reviewed=null){
   return text(subject,120)?subject:null;
 }
 
-export const validQuery=value=>text(value,120)&&/^[\p{L}\p{N}][\p{L}\p{M}\p{N} '\-]*$/u.test(value)&&!/@|https?:|\b(?:password|secret|wallet|personnummer)\b/iu.test(value);
+export const validQuery=value=>text(value,120)&&new RegExp(QUERY_PATTERN,'u').test(value)&&!/@|https?:|\b(?:password|secret|wallet|personnummer)\b/iu.test(value);
 // Search receives only public fields. Optional learning context is for the
 // tool-free source evaluation, and must never be forwarded to hosted search.
 export function validateRetrievalContext(value){

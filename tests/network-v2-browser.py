@@ -21,6 +21,7 @@ with sync_playwright() as p:
           const {createSandbox,newMindling}=await import('/src/preview/sandbox/engine.js');
           const db=await(preview?new PreviewStore():new MindlingDatabase()).open();
           const initial=newMindling(createSandbox(Date.now()),{confirmed:true,id:preview?'v2-preview':'v2-normal',name:'Network fixture'});
+          initial.mind.memories=Array.from({length:24},(_,i)=>({id:'stored-fixture-'+i,content:`Synthetic retained observation ${i}.`,category:'Fixture knowledge',neuronIds:['origin'],synapseIds:[],relatedMemoryIds:i?['stored-fixture-'+(i-1)]:[]}));
           const change=fn=>preview?db.change(fn):db.changeGameplay(fn);await change(()=>initial);
           const read=()=>preview?db.read():db.get('gameplay','primary').then(x=>x.state);
           const before=JSON.stringify(await read());
@@ -28,11 +29,13 @@ with sync_playwright() as p:
           document.querySelector('.dashboard-chrome').classList.remove('is-hidden');const root=document.querySelector('#network-view');root.hidden=false;document.querySelector('#app').classList.add('network-mode');
           let now=1800000000000;const view=new NetworkView(root,{clock:()=>now});view.update({...initial.mind,mindlingId:initial.mind.id});view.setVisible(true);
           const check=(ok,message)=>{if(!ok)throw Error(message);};
-          // Explicit synthetic fixture: actual adapter contract, deterministic timestamps.
-          const offsets=[[-9700,-8400,-6100,-3400,-850],[-9200,-7200,-5700,-4200,-1900],[-9900,-7900,-4900,-2700,-500]];
-          const channels=['TALK','TEACH','DEEP_TRAINING'];
-          offsets.forEach((times,c)=>times.forEach((offset,i)=>view.model.ingest({id:`fixture-${c}-${i}`,activity:channels[c],phase:i%2?'start':'accepted'},now+offset)));
-          view.model.last=null;view.model.size=0;view.model.head=0;view.sync();root.querySelector('h2').textContent='NETWORK · SYNTHETIC TEST FIXTURE';
+          // The visible baseline uses the stored fixture, with no interaction events.
+          check(view.model.events.length===0&&view.brain.summary.memories===24,'not a stored baseline');
+          const first=view.brain.height(.4,now);now+=6000;view.draw();check(view.brain.height(.4,now)!==first,'idle brain not living');
+          check(view.currentValues.every(v=>v===0),'baseline fabricated user activity');
+          const mark=document.createElement('small');mark.textContent='SYNTHETIC STORED-BRAIN FIXTURE';mark.style='position:absolute;bottom:8px;left:12px;font-size:8px;color:var(--text-muted)';root.querySelector('.network-cloud-plot').append(mark);
+          check(!root.querySelector('header,h2,h3,.network-caption,.network-cloud-axis,.network-panel-heading'),'removed chrome remains');
+          check(getComputedStyle(root.querySelector('.network-panel')).borderRadius===getComputedStyle(root).getPropertyValue('--radius').trim(),'theme radius mismatch');
           check(view.spectrum.gl&&!view.spectrum.lost,'WebGL2 cloud unavailable');check(view.frame!==null,'RAF missing');
           check(root.querySelectorAll('.network-panel').length===3,'panel count');
           check(JSON.stringify(await read())===before,'visualization mutated IndexedDB');
@@ -42,8 +45,8 @@ with sync_playwright() as p:
         }''',preview))
         page.wait_for_timeout(200)
         if not preview:
-            page.locator('#network-view').screenshot(path=str(OUT/'network-v2-desktop.png'))
-            page.locator('.network-cloud').screenshot(path=str(OUT/'network-v2-cloud.png'))
+            page.locator('#network-view').screenshot(path=str(OUT/'network-living-desktop.png'))
+            page.locator('.network-cloud').screenshot(path=str(OUT/'network-living-cloud.png'))
         page.locator('[data-mode="2d"]').click()
         assert page.locator('[data-fallback]').is_visible()
         page.locator('[data-mode="3d"]').click()
@@ -63,9 +66,9 @@ with sync_playwright() as p:
         page.locator('[data-pause]').click()
         page.set_viewport_size({'width':430,'height':930});page.wait_for_timeout(100)
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-        if not preview: page.locator('#network-view').screenshot(path=str(OUT/'network-v2-narrow.png'))
+        if not preview: page.locator('#network-view').screenshot(path=str(OUT/'network-living-narrow.png'))
         page.evaluate('window.advance(35000)')
-        assert page.evaluate("window.view.currentValues.every(v=>v===0)&&!document.querySelector('.network-empty').hidden")
+        assert page.evaluate("window.view.currentValues.every(v=>v===0)&&window.view.brain.alive&&window.view.frame!==null")
         assert page.evaluate('async()=>JSON.stringify(await window.read())===window.before')
         page.evaluate('window.gpu=window.view.spectrum.gl;window.program=window.view.spectrum.program;window.view.destroy();window.db.close()')
         assert page.evaluate('!window.gpu.isProgram(window.program)')

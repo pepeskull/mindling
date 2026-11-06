@@ -1,11 +1,11 @@
 // Cloud projection, matte/point layering and depth fog adapted from
 // aiXander/Realtime_PyAudio_FFT (MIT). See third_party/realtime-fft-LICENSE.txt.
-import {spectrum,COLORS} from './activity-model.js';
+import {spectrum} from './activity-model.js';
 const COLS=320,ROWS=180;
 const vertex=`#version 300 es
 precision highp float;
-in vec3 position;uniform vec2 resolution;uniform float dpr;out vec3 color;out float fade;
-void main(){float u=position.x,z=position.z,h=position.y;float s=1.0/(1.0+1.7*z);float y0=.90*resolution.y;float yBack=.24*resolution.y;float y=y0-(1.0-s)/(1.0-1.0/2.7)*(y0-yBack)-h*.57*resolution.y*s;float x=resolution.x*.50+(u-.5)*resolution.x*.96*s;float w=1.0/s;gl_Position=vec4((x/resolution.x*2.0-1.0)*w,(1.0-y/resolution.y*2.0)*w,(.9-1.8*s)*w,w);gl_PointSize=max(1.0,1.65*dpr*sqrt(s));vec3 blue=vec3(.54,.67,.94),green=vec3(.51,.80,.56),amber=vec3(.91,.70,.40);color=u<.5?mix(blue,green,smoothstep(.15,.5,u)):mix(green,amber,smoothstep(.5,.85,u));fade=(1.0-smoothstep(.55,1.0,z)*.92)*(.22+.78*h);}`;
+in vec3 position;uniform vec2 resolution;uniform float dpr;uniform vec3 accent;out vec3 color;out float fade;
+void main(){float u=position.x,z=position.z,h=position.y;float s=1.0/(1.0+1.7*z);float y0=.90*resolution.y;float yBack=.24*resolution.y;float y=y0-(1.0-s)/(1.0-1.0/2.7)*(y0-yBack)-h*.57*resolution.y*s;float x=resolution.x*.50+(u-.5)*resolution.x*.96*s;float w=1.0/s;gl_Position=vec4((x/resolution.x*2.0-1.0)*w,(1.0-y/resolution.y*2.0)*w,(.9-1.8*s)*w,w);gl_PointSize=max(1.0,1.65*dpr*sqrt(s));color=accent*(.65+.35*h);fade=(1.0-smoothstep(.55,1.0,z)*.92)*(.22+.78*h);}`;
 const fragment=`#version 300 es
 precision highp float;in vec3 color;in float fade;uniform float layer;out vec4 outputColor;
 void main(){float alpha=layer<.5?.23:1.0;if(layer>.5&&layer<1.5){float r=length(gl_PointCoord-.5);alpha=1.0-smoothstep(.15,.50,r);}outputColor=vec4(color*(layer<.5?.35:1.0),alpha*fade);}`;
@@ -49,11 +49,11 @@ export class SpectrumRenderer {
   this.index=g.createBuffer();
   g.bindBuffer(g.ELEMENT_ARRAY_BUFFER,this.index);
   g.bufferData(g.ELEMENT_ARRAY_BUFFER,this.indices,g.STATIC_DRAW);
-  this.uniforms=Object.fromEntries(['resolution','dpr','layer'].map(k=>[k,g.getUniformLocation(this.program,k)]));
+  this.uniforms=Object.fromEntries(['resolution','dpr','layer','accent'].map(k=>[k,g.getUniformLocation(this.program,k)]));
   }catch{this.disposeGPU();
   this.gl=null;
   }}
- draw(model,now,seconds,mode){const g=this.gl,useGL=!!g&&!this.lost&&mode==='3d';
+ draw(model,now,seconds,mode,brain=null){const g=this.gl,useGL=!!g&&!this.lost&&mode==='3d';
   this.canvas.hidden=!useGL;
   this.fallback.hidden=useGL;
   const w=this.fallback.width,h=this.fallback.height;
@@ -61,7 +61,7 @@ export class SpectrumRenderer {
   for(let r=0;r<ROWS;r++){const z=r/(ROWS-1),values=model.values(now-z*seconds*1000);
   for(let c=0;c<COLS;c++){const u=c/(COLS-1);
   this.vertices[n++]=u;
-  this.vertices[n++]=spectrum(values,u);
+  this.vertices[n++]=brain?brain.surface(values,u,now-z*seconds*1000):spectrum(values,u);
   this.vertices[n++]=z;
   }}g.viewport(0,0,w,h);
   g.clearColor(0,0,0,0);
@@ -72,6 +72,7 @@ export class SpectrumRenderer {
   g.bufferSubData(g.ARRAY_BUFFER,0,this.vertices);
   g.uniform2f(this.uniforms.resolution,w,h);
   g.uniform1f(this.uniforms.dpr,this.dpr||1);
+  const accent=this.accent||'#b7d8d1';g.uniform3f(this.uniforms.accent,...[1,3,5].map(i=>parseInt(accent.slice(i,i+2),16)/255));
   g.enable(g.BLEND);
   g.blendFunc(g.SRC_ALPHA,g.ONE_MINUS_SRC_ALPHA);
   g.enable(g.DEPTH_TEST);
@@ -94,13 +95,13 @@ export class SpectrumRenderer {
   const c=this.ctx;
   c.clearRect(0,0,w,h);
   const grad=c.createLinearGradient(0,0,w,0);
-  COLORS.forEach((color,i)=>grad.addColorStop(i/2,color));
+  grad.addColorStop(0,this.accent||'#b7d8d1');grad.addColorStop(1,this.accent||'#b7d8d1');
   c.strokeStyle=grad;
   c.fillStyle=grad;
   for(let r=64;r>=0;r--){const z=r/64,s=mode==='2d'?1:1/(1+1.7*z),values=model.values(now-z*seconds*1000);
   c.globalAlpha=(1-z*.87)*.65;
   c.beginPath();
-  for(let x=0;x<=128;x++){const u=x/128,height=spectrum(values,u),px=w*.5+(u-.5)*w*.96*s,py=h*.90-(1-s)/(1-1/2.7)*h*.66-height*h*.57*s-(mode==='2d'?z*h*.55:0);
+  for(let x=0;x<=128;x++){const u=x/128,height=brain?brain.surface(values,u,now-z*seconds*1000):spectrum(values,u),px=w*.5+(u-.5)*w*.96*s,py=h*.90-(1-s)/(1-1/2.7)*h*.66-height*h*.57*s-(mode==='2d'?z*h*.55:0);
   if(x===0)c.moveTo(px,py);
   else c.lineTo(px,py);
   }c.lineWidth=r===0?1.3: .6;
