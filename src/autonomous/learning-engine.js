@@ -19,7 +19,7 @@ import { energyAt, spendEnergy } from '../economy/energy.js';
 import { LIFE_RULES } from '../life/life-system.js';
 import { LIMITS, validTask, writableTasks, tasksFor, terminal, digest } from './tasks.js';
 import { defaultPermissions, validatePermissions } from './research-permissions.js';
-import { INFORMATION_CAPABILITY, publicResearchTopic } from './research-contract.js';
+import { INFORMATION_CAPABILITY, publicResearchTopic, savedPublicTopic } from './research-contract.js';
 import { requestResearchPlanning, requestResearchAcquisition, requestResearchCapabilities, requestResearchEvaluation } from '../cognition/reasoning-client.js';
 import { beginClarification, cancelTaskClarification } from '../learning/clarification.js';
 import { CLIENT_RESEARCH_CODES, clientResearchFailure } from './client-diagnostics.js';
@@ -35,7 +35,7 @@ const activityFor=mode=>mode===LEARNING_MODES.DEEP?'DEEP_TRAINING':mode===LEARNI
 
 export class AutonomousLearningEngine {
   constructor(app){
-    this.app=app;this.abort=new AbortController();this.session=crypto.randomUUID();this.followers=new Map();this.queue=new Set();this.reviewedTopics=new Map();
+    this.app=app;this.abort=new AbortController();this.session=crypto.randomUUID();this.followers=new Map();this.queue=new Set();
     document.addEventListener('visibilitychange',()=>{if(document.hidden)this.active?.controller.abort('HIDDEN');else this.recover();},{signal:this.abort.signal});
     window.addEventListener('pagehide',()=>this.active?.controller.abort('PAGEHIDE'),{signal:this.abort.signal});
     window.addEventListener('offline',()=>this.active?.controller.abort('OFFLINE'),{signal:this.abort.signal});
@@ -44,7 +44,7 @@ export class AutonomousLearningEngine {
   async loadPermissions(fresh=false){
     const id=this.app.state?.mind?.id;if(!id)return defaultPermissions('');
     if(!fresh&&this.permissionIdentity===id)return this.permissionLoading||this.preferences;
-    if(this.permissionIdentity!==id){this.active?.controller.abort('ACCESS_CHANGED');this.preferences=defaultPermissions(id);this.queue.clear();this.reviewedTopics.clear();}this.permissionIdentity=id;
+    if(this.permissionIdentity!==id){this.active?.controller.abort('ACCESS_CHANGED');this.preferences=defaultPermissions(id);this.queue.clear();}this.permissionIdentity=id;
     const loading=(this.app.db||this.app.store).researchPermissions(id).then(value=>{if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');const checked=validatePermissions(value,id);if(checked.revision>=this.preferences.revision)this.preferences=checked;return this.preferences;}).finally(()=>{if(this.permissionLoading===loading)this.permissionLoading=null;});
     this.permissionLoading=loading;return loading;
   }
@@ -103,7 +103,7 @@ export class AutonomousLearningEngine {
           const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ACCESS_DISABLED';item.message='Autonomous learning is disabled. You can enable it in Settings.';});this.notify(blocked);continue;
         }
         if(task.autonomous&&energyAt(this.app.state.mind.energy,Date.now()).remaining<2){await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ENERGY_LOW';item.message='Research paused — Insufficient energy.';});continue;}
-        const topic=this.reviewedTopics.get(id)||task.sourcePlan?.request?.topic||publicResearchTopic(task);
+        const topic=savedPublicTopic(task)||task.sourcePlan?.request?.topic||publicResearchTopic(task);
         if(topic===null){const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='QUERY_REVIEW';item.message='Review a short public topic before sharing a potentially sensitive request with Mindling planning.';});if(!task.autonomous&&this.app.dashboard?.canContinueResearch(this.requestId(task)))this.app.dashboard.showResearchAccess(blocked,this.requestId(task),null);continue;}
         await this.run(task,topic);
       }
@@ -126,7 +126,7 @@ export class AutonomousLearningEngine {
       const tasks=writableTasks(state.mind),existing=tasks.find(item=>item.id===id||!taskId&&(item.queryKey||item.id)===queryKey);
       if(existing){
         if(!taskId){if(existing.engineVersion!==4){const next=structuredClone(state),target=next.mind.learningTasks.find(item=>item.id===existing.id);target.planningCalls=existing.engineVersion===2?Math.min(existing.attempts,2):0;target.modelCalls=target.planningCalls;target.engineVersion=4;target.code='PERMISSION_REQUIRED';target.message=task.message;target.originalText=task.originalText;return next;}return state;}if(existing.status!=='BLOCKED'||!['CLARIFICATION','MODEL_CLARIFICATION'].includes(existing.code))throw Error('This clarification changed.');
-        const next=structuredClone(state),target=next.mind.learningTasks.find(item=>item.id===id);Object.assign(target,{engineVersion:4,queryKey,originalText:task.originalText,objective:task.objective,topic:task.topic,scope:task.scope,interpretationAnswers:task.interpretationAnswers,timeSensitive:task.timeSensitive,code:task.code,message:task.message,run:crypto.randomUUID(),clarificationRounds:(target.clarificationRounds||0)+1,updatedAt:Math.max(target.createdAt,now)});delete target.coordinatorClarification;delete target.sourcePlan;return next;
+        const next=structuredClone(state),target=next.mind.learningTasks.find(item=>item.id===id);Object.assign(target,{engineVersion:4,queryKey,originalText:task.originalText,objective:task.objective,topic:task.topic,scope:task.scope,interpretationAnswers:task.interpretationAnswers,timeSensitive:task.timeSensitive,code:task.code,message:task.message,run:crypto.randomUUID(),clarificationRounds:(target.clarificationRounds||0)+1,updatedAt:Math.max(target.createdAt,now)});delete target.coordinatorClarification;delete target.sourcePlan;delete target.approvedPublicTopic;return next;
       }
       if(tasks.filter(item=>!terminal(item)).length>=LIMITS.unfinished)throw Error('Cancel an unfinished task before starting another.');
       const next=structuredClone(state),retained=tasks.slice();while(retained.length>=LIMITS.tasks){const index=retained.findIndex(terminal);if(index<0)throw Error('Research task history is full.');retained.splice(index,1);}
@@ -149,14 +149,14 @@ export class AutonomousLearningEngine {
     const mind=this.assertLive(this.app.state.mind?.id),task=tasksFor(mind).find(item=>item.id===id);if(!task)throw Error('This research task is unavailable.');
     if(['forget-memory','correct-memory'].includes(action))return this.manageKnowledge(task,action,payload);
     if(action==='clarify')return this.clarification(task);
-    if(action==='cancel'){cancelTaskClarification(this.app,id);this.queue.delete(id);this.reviewedTopics.delete(id);if(this.active?.id===id)this.active.controller.abort('CANCELLED');return this.patch(id,null,item=>{if(terminal(item))return;item.run=crypto.randomUUID();item.status='CANCELLED';item.code='CANCELLED';item.message='Research cancelled. Existing knowledge was preserved.';});}
+    if(action==='cancel'){cancelTaskClarification(this.app,id);this.queue.delete(id);if(this.active?.id===id)this.active.controller.abort('CANCELLED');return this.patch(id,null,item=>{if(terminal(item))return;item.run=crypto.randomUUID();item.status='CANCELLED';item.code='CANCELLED';item.message='Research cancelled. Existing knowledge was preserved.';});}
     if(terminal(task))throw Error('This task has finished.');
     if(task.engineVersion!==4&&action!=='consent')throw Error('This historical task is preserved. Submit the topic again to use autonomous web research.');
     if(action==='consent'||action==='review-topic'){
       if(!(await this.loadPermissions(true)).enabled)throw Error('Enable autonomous learning in Settings before continuing.');
       const topic=publicResearchTopic(task,payload.topic??null);if(topic===null)throw Error('Choose a public topic without private details.');
-      this.reviewedTopics.set(id,topic);
-      const next=await this.patch(id,null,item=>{item.code='QUEUED';item.message='Public topic clarified; continuing under Settings authorization.';});
+      const prefs=this.preferences;
+      const next=await this.patch(id,null,item=>{item.approvedPublicTopic={version:1,queryKey:item.queryKey||item.id,topic,approvedAt:Date.now()};item.code='QUEUED';item.message='Public topic clarified; continuing under Settings authorization.';},{researchGrant:this.grant(prefs)});
       this.startIfAuthorized(next);return {accepted:true,message:'Research continues under your saved Settings authorization.'};
     }
     if(!['retry','continue'].includes(action))throw Error('Unknown research action.');
@@ -220,7 +220,7 @@ export class AutonomousLearningEngine {
       if(receipt)console.warn(JSON.stringify({event:'mindling.research.server-receipt',...receipt}));
       // A changed run/identity is never overwritten, even to record an error.
     }}
-    finally{clearTimeout(deadline);this.reviewedTopics.delete(task.id);if(this.active?.controller===controller)this.active=null;if(!this.disposed&&!this.app.disposed)this.app.renderState();this.schedule();}
+    finally{clearTimeout(deadline);if(this.active?.controller===controller)this.active=null;if(!this.disposed&&!this.app.disposed)this.app.renderState();this.schedule();}
   }
   async saveResearchReceipt(task,run,id,result,prefs,authorizedAt){
     const receivedAt=Date.now(),mode=result.execution.operation;
@@ -364,7 +364,7 @@ export class AutonomousLearningEngine {
       recordTaskActivity({status:'COMMITTING',semanticWork:current.semanticWork},current,current.updatedAt);
       if(!validTask(current,task.mindlingId))throw Error('Research completion was invalid.');return next;
     },{preserveGameplay:true,researchGrant:grant,...(activity==='TALK'||task.autonomous?{}:{journal:{id:`research:${task.id}:${run}`,type:activity}})});
-    const completed=tasksFor(this.app.state.mind).find(item=>item.id===task.id);this.notify(completed);this.recover();if(completed.knowledgeIds.length){const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity:'TEACH'});}return completed;
+    const completed=tasksFor(this.app.state.mind).find(item=>item.id===task.id);this.notify(completed);this.recover();if(completed.knowledgeIds.length){const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity:activityFor(task.mode),autonomous:!!task.autonomous});}return completed;
   }
   reply(task){
     const sv=/[åäö]|\b(?:vilket|sverige|lär)\b/iu.test(task.objective),completed=task.status==='COMPLETED';
@@ -410,5 +410,5 @@ export class AutonomousLearningEngine {
   }
   get status(){return autonomousStatus(this);}
   get diagnostics(){return autonomousDiagnostics(this);}
-  destroy(){clearTimeout(this.wakeTimer);this.disposed=true;this.active?.controller.abort('DISPOSED');this.abort.abort();this.queue.clear();this.reviewedTopics.clear();}
+  destroy(){clearTimeout(this.wakeTimer);this.disposed=true;this.active?.controller.abort('DISPOSED');this.abort.abort();this.queue.clear();}
 }

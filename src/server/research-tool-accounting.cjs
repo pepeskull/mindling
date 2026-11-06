@@ -40,24 +40,28 @@ function accountTools(payload,ceiling,trace){
     }
     calls.push(call);
   }
-  trace.toolAccounting={distinctIds:seen.size,anonymous:calls.filter(c=>!c.id).length,conflicts:conflicts.size,incomplete:calls.filter(c=>!['completed','failed'].includes(c.status)).length,responseCompleted:payload?.status==='completed'};
+  trace.toolAccounting={distinctIds:seen.size,anonymous:calls.filter(c=>!c.id).length,conflicts:conflicts.size,incomplete:calls.filter(c=>!['completed','failed'].includes(c.status)).length,responseCompleted:payload?.status==='completed',requestedLimit:ceiling,reportedCalls:calls.length,duplicateObservations:raw.length-calls.length,terminalCalls:calls.filter(c=>terminal(c.status)&&!conflicts.has(c.id)).length,dispatchUnknown:calls.filter(c=>!terminal(c.status)||conflicts.has(c.id)).length};
   const bounded=calls.length<=64;
   const confirmed=calls.filter(c=>!conflicts.has(c.id));
   trace.completed=bounded?confirmed.filter(c=>c.status==='completed').length:0;
   trace.failed=bounded?confirmed.filter(c=>c.status==='failed').length:0;
   trace.searchCompleted=trace.completed>0;
   trace.outcomeUnknown=!bounded||conflicts.size>0||payload?.status!=='completed'||!Array.isArray(payload?.output)||calls.some(c=>!['completed','failed'].includes(c.status));
-  if(!bounded)throw fail('RESPONSE_PARSE_ERROR','TOOL_ACCOUNTING_LIMIT');
-  if(conflicts.size)throw fail('RESPONSE_PARSE_ERROR','TOOL_EVENT_CONFLICT');
+  if(!bounded)throw fail('INVALID_TOOL_ACCOUNTING','TOOL_ACCOUNTING_LIMIT');
+  if(conflicts.size)throw fail('INVALID_TOOL_ACCOUNTING','TOOL_EVENT_CONFLICT');
   if(calls.length>ceiling){
     // Anonymous repeated-looking entries cannot safely be assumed to be
     // duplicate lifecycle events, nor evidence of distinct billable calls.
     if(calls.some(c=>typeof c.id!=='string'||!c.id)){
       trace.completed=calls.filter(c=>c.id&&c.status==='completed').length;trace.failed=calls.filter(c=>c.id&&c.status==='failed').length;
-      trace.searchCompleted=trace.completed>0;trace.outcomeUnknown=true;throw fail('RESPONSE_PARSE_ERROR','TOOL_ACCOUNTING_AMBIGUOUS');
+      trace.searchCompleted=trace.completed>0;trace.outcomeUnknown=true;throw fail('INVALID_TOOL_ACCOUNTING','TOOL_ACCOUNTING_AMBIGUOUS');
     }
-    throw fail('RESPONSE_PARSE_ERROR','TOOL_BUDGET_EXCEEDED');
+    if(trace.completed+trace.failed>ceiling)throw fail('TOOL_BUDGET_VIOLATION','TOOL_BUDGET_EXCEEDED');
+    // A third ID may be an attempted/ignored invocation. It is not proof of
+    // a third completed or billed search, but is not safe evidence to accept.
+    throw fail('TOOL_LIFECYCLE_INCOMPLETE','TOOL_LIMIT_OUTCOME_UNKNOWN');
   }
+  if(trace.toolAccounting.incomplete)throw fail('TOOL_LIFECYCLE_INCOMPLETE','TOOL_LIFECYCLE_INCOMPLETE');
   return calls;
 }
 module.exports={accountTools};

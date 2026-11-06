@@ -63,6 +63,7 @@ export class Dashboard {
     this.#onNewMindling = onNewMindling;
     this.#unsubscribe = events.on(EVENTS.STATE_READY, (state) => this.render(state));
     this.#eventUnsubscribes = [
+      events.on(EVENTS.NEURAL_INPUT, event => this.#network.ingest(event)),
       events.on(EVENTS.MEMORY_CREATED, () => this.#showStatus("Memory formed")),
       events.on(EVENTS.MEMORY_REINFORCED, () => this.#showStatus("Memory reinforced")),
       events.on(EVENTS.LEARNING_FAILED, () => this.#showStatus("Learning could not be saved")),
