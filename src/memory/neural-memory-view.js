@@ -2,7 +2,6 @@ import {clusterPositions,ElasticCluster} from './cluster-drag.js';
 import {NEUTRAL_COLOR,colors,areaColor} from './area-colors.js';
 import { VIEW_ZOOM } from '../ui/view-zoom.js';
 import { memoryLabel, memoryButton } from './memory-label.js';
-import { openMemoryMaintenance } from './maintenance-view.js';
 import {graphData,filterGraph,layoutGraph,memorySignature,memoryNodeId} from './graph-data.js';
 import { learningSummary } from '../autonomous/learning-summary.js';
 import { tasksFor } from '../autonomous/tasks.js';
@@ -37,7 +36,6 @@ export class NeuralMemoryView {
       const task=event.target.closest('[data-select-learning]');if(task)this.selectTask(task.dataset.selectLearning);
       const page=event.target.closest('[data-memory-page]')?.dataset.memoryPage;if(page){this.page+=page==='next'?1:-1;this.renderIndex();}
     });
-    this.on(document,'keydown',event=>{if(this.visible&&event.altKey&&event.shiftKey&&event.code==='KeyM'){event.preventDefault();for(const dialog of this.root.querySelectorAll('.memory-maintenance'))dialog.close();openMemoryMaintenance(this.root,{getState:()=>this.state,onAction:this.onLearningTask?async(...args)=>{const result=await this.onLearningTask(...args);if(result.changed&&result.memoryId){this.selected=memoryNodeId(result.memoryId);if(this.positions?.has(this.selected)){this.renderInspector();this.renderIndex();this.drawSoon();}}return result;}:null});}});
     this.on(this.canvas,'wheel',event=>{event.preventDefault();const bounds=this.canvas.getBoundingClientRect();this.setZoom(this.zoom*Math.exp(-event.deltaY*VIEW_ZOOM.wheel),event.clientX-bounds.left,event.clientY-bounds.top);},{passive:false});
     this.on(this.canvas,'pointerdown',event=>{if(event.button!==0||this.drag)return;const box=this.canvas.getBoundingClientRect(),hit=this.hit(event.clientX-box.left,event.clientY-box.top);this.elastic=null;this.drag={id:event.pointerId,x:event.clientX,y:event.clientY,pan:{...this.pan},moved:false,cluster:hit?.kind==='area'?new ElasticCluster(clusterPositions(this.layout,hit.id),hit.id):null};this.canvas.setPointerCapture(event.pointerId);});
     this.on(this.canvas,'pointermove',event=>{
@@ -148,5 +146,5 @@ export class NeuralMemoryView {
       chart.append(svg('polygon',{points:axes.map((axis,i)=>point(i,axis.share/scale).join(',')).join(' '),fill:'#82dfcf20',stroke:'#82dfcf','stroke-width':1.8,'stroke-linejoin':'round'}));axes.forEach((axis,i)=>{const [x,y]=point(i,axis.share/scale),circle=svg('circle',{cx:x,cy:y,r:3,fill:'#c1fff1',tabindex:0}),title=svg('title');title.textContent=`${axis.label}: ${axis.count} of ${this.graph.stats.current} current memories (${Math.round(axis.share*100)}%)`;circle.append(title);chart.append(circle);});host.append(chart);const scaleLabel=el('p',`Radial scale: 0–${Math.round(scale*100)}% of current memories`,'radar-scale-label');host.append(scaleLabel);}
     for(const axis of axes){const li=el('li');li.style.setProperty('--memory-area-color',this.colors.get(axis.id)||NEUTRAL_COLOR);const name=el('span',axis.label),value=el('b',`${axis.count} · ${Math.round(axis.share*100)}%`);li.append(name,value);li.title=axis.members?axis.members.map(a=>`${a.label}: ${a.count}`).join(', '):`${axis.label}: ${axis.count} current canonical memories`;list.append(li);}
   }
-  destroy(){if(this.abort.signal.aborted)return;this.cancelDrag?.();for(const dialog of this.root.querySelectorAll('.memory-maintenance'))dialog.close();this.visible=false;this.stopFlow();this.flowPaths=[];this.generation++;document.removeEventListener('visibilitychange',this.visibility);this.abort.abort();this.observer.disconnect();cancelAnimationFrame(this.frame);this.frame=null;this.layout=null;this.graph=null;this.state=null;this.taskNodes=null;this.onLearningTask=null;this.filtered=null;this.positions=null;this.signature=null;this.colors=null;this.drag=null;this.canvas.width=0;this.canvas.height=0;this.ctx=null;this.root.replaceChildren();}
+  destroy(){if(this.abort.signal.aborted)return;this.cancelDrag?.();this.visible=false;this.stopFlow();this.flowPaths=[];this.generation++;document.removeEventListener('visibilitychange',this.visibility);this.abort.abort();this.observer.disconnect();cancelAnimationFrame(this.frame);this.frame=null;this.layout=null;this.graph=null;this.state=null;this.taskNodes=null;this.onLearningTask=null;this.filtered=null;this.positions=null;this.signature=null;this.colors=null;this.drag=null;this.canvas.width=0;this.canvas.height=0;this.ctx=null;this.root.replaceChildren();}
 }

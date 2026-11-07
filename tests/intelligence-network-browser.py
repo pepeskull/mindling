@@ -37,10 +37,10 @@ with sync_playwright() as p:
           await engine.setAccess(true,20);await wait(()=>dispatched===2&&!engine.draining);check(app.state.mind.autonomousLearning.reservedRequests===4,'automatic reservation missing');const reserved=app.state.mind.autonomousLearning.reservedRequests;await engine.tick();check(dispatched===2&&app.state.mind.autonomousLearning.reservedRequests===reserved,'cooldown or duplicate dispatch failed');await engine.setAccess(false);engine.destroy();
           check(JSON.stringify(app.state.mind.energy)===before,'Energy changed');
           const events=new EventBus(),state={...app.state.mind,mindlingId:app.state.mind.id,researchPermissions:{...await db.researchPermissions(app.state.mind.id),loaded:true},autonomousStatus:'IDLE'};
-          const dashboard=new Dashboard(events,{onResearchAccess:async(enabled,limit)=>{state.researchPermissions={...await db.saveResearchPermissions(state.mindlingId,{enabled,automaticRequestLimit:limit}),loaded:true};dashboard.render(state);},onClarification:async()=>{clarifications++;return {accepted:true,message:'Continued'};}});dashboard.render(state);
+          const dashboard=new Dashboard(events,{onResearchAccess:async(enabled,limit)=>{state.researchPermissions={...await db.saveResearchPermissions(state.mindlingId,{enabled,automaticRequestLimit:limit}),loaded:true};dashboard.render(state);return state.researchPermissions;},onClarification:async()=>{clarifications++;return {accepted:true,message:'Continued'};}});dashboard.render(state);
           document.querySelector('.dashboard-chrome').classList.remove('is-hidden');
           window.testDashboard=dashboard;window.testState=state;window.testEvents=events;
-          document.querySelector('.research-settings-link').click();const limit=document.querySelector('[data-automatic-limit]');limit.value='40';check(document.querySelector('[data-automatic-saved]').textContent.includes('20'),'draft looked saved');document.querySelector('[data-save-access]').click();await wait(()=>document.querySelector('[data-settings-feedback]').textContent==='Access preference saved.');check((await db.researchPermissions(state.mindlingId)).automaticRequestLimit===40,'limit did not persist');document.querySelector('[data-close-settings]').click();
+          check(!document.querySelector('.research-settings-link'),'obsolete Settings link');dashboard.researchAccess.open();check(!document.querySelector('[data-research-enabled]').checked,'opt-out changed');document.querySelector('[data-save-research]').click();await wait(()=>document.querySelector('[data-access-status]').textContent==='Research access saved and disabled.');check((await db.researchPermissions(state.mindlingId)).automaticRequestLimit===20,'consent changed budget');document.querySelector('[data-close-research]').click();
           const snapshot=JSON.stringify(await read());events.emit(EVENTS.NEURAL_INPUT,{id:'dashboard-real-event',activity:'DEEP_TRAINING',phase:'start'});document.querySelector('[data-view=network]').click();
           check(!document.querySelector('#network-view').hidden&&document.querySelector('#memory-view').hidden,'navigation');
           check(location.hash==='#network','route');check(!document.querySelector('[data-network-status]'),'custom heading remains');check(document.querySelectorAll('#network-view .network-panel').length===3,'three panels');
@@ -70,6 +70,7 @@ with sync_playwright() as p:
         page.locator('[data-mobile-view=network]').click()
         assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
         assert page.locator('#network-view').is_visible()
+        assert page.locator('#network-view .network-legend span').first.text_content()=='Talk'
         page.locator('[data-mobile-view=memories]').click()
         assert page.locator('#network-view').is_hidden()
         page.locator('[data-mobile-view=network]').click()
@@ -82,6 +83,7 @@ with sync_playwright() as p:
 
         page.wait_for_function("document.querySelector('#network-view')?.hidden===false && document.querySelector('#network-view canvas')")
         assert page.locator('#network-view').is_visible()
+        assert page.locator('#network-view .network-legend span').first.text_content()=='Talk'
         assert not errors,errors
         assert not api_calls,api_calls
         context.close()

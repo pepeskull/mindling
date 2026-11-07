@@ -1,3 +1,4 @@
+import {taskClarification} from './clarification-tasks.js';
 import {researchSubject,subjectMatches} from './research-subject.js';
 import {recordTaskActivity} from '../app/activity-journal.js';
 import {researchLearningContext} from '../learning/research-learning-context.js';
@@ -101,7 +102,7 @@ export class AutonomousLearningEngine {
         this.queue.delete(id);const task=tasksFor(this.app.state.mind).find(item=>item.id===id);if(!task||terminal(task)||task.engineVersion!==4)continue;
         this.assertLive(task.mindlingId);
         if(!prefs.enabled){
-          const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ACCESS_DISABLED';item.message='Autonomous learning is disabled. You can enable it in Settings.';});this.notify(blocked);continue;
+          const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ACCESS_DISABLED';item.message='Autonomous learning is disabled. You can enable it in Research access under Notifications.';});this.notify(blocked);continue;
         }
         if(task.autonomous&&energyAt(this.app.state.mind.energy,Date.now()).remaining<2){await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ENERGY_LOW';item.message='Research paused — Insufficient energy.';});continue;}
         if(task.sourcePlan&&!subjectMatches(task,task.sourcePlan.request.topic)){await this.patch(id,null,item=>{item.status='BLOCKED';item.code='SUBJECT_MISMATCH';item.message='Research paused — The saved search subject differs from the original request. Existing knowledge and reservations are preserved.';});continue;}
@@ -143,8 +144,8 @@ export class AutonomousLearningEngine {
     return tasksFor(this.app.state.mind).find(item=>item.id===id);
   }
   clarification(task){
-    const original=task.originalText||task.objective,answers=task.interpretationAnswers||{},interpretation={...understandInput(original,activityFor(task.mode),{answers})};
-    if(task.coordinatorClarification)interpretation.clarification=task.coordinatorClarification;
+    const model=taskClarification(task);if(!model)throw Error('This task no longer needs clarification.');
+    const original=task.originalText||task.objective,answers=task.interpretationAnswers||{},interpretation={clarification:model};
     return beginClarification(this.app,original,activityFor(task.mode),task.requestId,interpretation,{taskId:task.id,paid:task.energyCharged,answers});
   }
   async act(action,id,payload={}){
@@ -155,15 +156,15 @@ export class AutonomousLearningEngine {
     if(terminal(task))throw Error('This task has finished.');
     if(task.engineVersion!==4&&action!=='consent')throw Error('This historical task is preserved. Submit the topic again to use autonomous web research.');
     if(action==='consent'||action==='review-topic'){
-      if(!(await this.loadPermissions(true)).enabled)throw Error('Enable autonomous learning in Settings before continuing.');
+      if(!(await this.loadPermissions(true)).enabled)throw Error('Enable autonomous learning in Research access under Notifications before continuing.');
       const topic=publicResearchTopic(task,payload.choice==='confirm-subject'?researchSubject(task):payload.topic??null);if(topic===null)throw Error('Choose a public topic without private details.');
       const prefs=this.preferences;
-      const next=await this.patch(id,null,item=>{item.approvedPublicTopic={version:1,queryKey:item.queryKey||item.id,topic,approvedAt:Date.now()};item.code='QUEUED';item.message='Public topic clarified; continuing under Settings authorization.';},{researchGrant:this.grant(prefs)});
-      this.startIfAuthorized(next);return {accepted:true,message:'Research continues under your saved Settings authorization.'};
+      const next=await this.patch(id,null,item=>{item.approvedPublicTopic={version:1,queryKey:item.queryKey||item.id,topic,approvedAt:Date.now()};item.code='QUEUED';item.message='Public topic clarified; continuing under saved research authorization.';},{researchGrant:this.grant(prefs)});
+      this.startIfAuthorized(next);return {accepted:true,message:'Research continues under your saved research authorization.'};
     }
     if(!['retry','continue'].includes(action))throw Error('Unknown research action.');
     if(!canRetryResearch(task))throw Error(SERVICE_MESSAGES.BUDGET_EXHAUSTED);
-    if(!(await this.loadPermissions(true)).enabled)throw Error('Allow Mindling planning in Settings before continuing this historical or interrupted task.');
+    if(!(await this.loadPermissions(true)).enabled)throw Error('Allow Mindling planning in Research access under Notifications before continuing this historical or interrupted task.');
     const next=await this.patch(id,null,item=>{if(item.engineVersion===2&&item.planningCalls===undefined){item.planningCalls=Math.min(item.attempts,2);item.modelCalls=item.planningCalls;}if(!item.pendingSourceEvaluation&&!item.pendingEvidence?.length)item.attempts++;item.engineVersion=4;item.code='QUEUED';item.status='BLOCKED';item.message='Mindling planning queued under current authorization.';});this.startIfAuthorized(next);return next;
   }
   context(task,topic){const scope=task.scope||{};return {...(task.autonomous?{autonomous:true}:{}),topic,mode:task.mode,freshness:task.timeSensitive,scope:{criterion:scope.metric||null,geography:scope.regions||[scope.region].filter(Boolean),geographyMode:scope.regionMode||null,period:scope.period||null,quantity:Number.isSafeInteger(scope.count)&&scope.count>0?scope.count:null}};}

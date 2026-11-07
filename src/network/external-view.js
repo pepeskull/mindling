@@ -109,7 +109,8 @@ export class ExternalView {
     a.view.updateLabels(peers);this.notice.hidden=!eligible(this.owner())||['development','memories'].includes(a.primaryView);
     this.buttons.forEach((button,index)=>{const peer=peers[index];button.hidden=!peer?.id;button.textContent=peer?.name||'';button.dataset.id=peer?.id||'';button.disabled=!peer?.connected||this.visit.transitioning;});
     a.host.dataset.network=a.timeline.network.state;
-    if(!this.locked)document.querySelector('#network-view span').textContent=eligible(this.owner())?'Demo Agent Mind network. Select a connected name to visit. Live player discovery is unavailable.':'Network participation requires Agent Mind.';
+    // Peer eligibility belongs to the external-visit UI, never the Network activity legend.
+    this.notice.setAttribute('aria-label',eligible(this.owner())?'Demo Agent Mind connections':'Network participation requires Agent Mind.');
   }
   destroy(){if(this.locked)this.restore();for(const event of ['click','submit','keydown','change'])document.removeEventListener(event,this.block,true);this.panel.remove();this.notice.remove();}
 }
