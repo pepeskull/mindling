@@ -7,7 +7,7 @@ const labels={
   foundation:['Förklara grunderna','Explain the foundations','foundations'],relationships:['Jämför samband','Compare relationships','relationships']
 };
 export function clarification(kind,question,field,choices=[],sv=false){
-  return {version:1,kind,question,field,options:choices.map(id=>({id,label:labels[id][sv?0:1],value:labels[id][2]})),freeText:choices.length===0};
+  return {version:1,kind,question,field,options:choices.map(id=>({id,label:labels[id][sv?0:1],value:labels[id][2]})),freeText:false};
 }
 export function validClarification(value){return !!value&&value.version===1&&/^[a-z_-]{1,40}$/.test(value.kind)&&typeof value.question==='string'&&value.question.length<=400&&['metric','regionMode','period','action','detail','focus'].includes(value.field)&&Array.isArray(value.options)&&value.options.length<=4&&value.options.every(option=>/^[a-z_-]{1,32}$/.test(option.id)&&typeof option.label==='string'&&option.label.length<=80&&typeof option.value==='string'&&option.value.length<=160)&&new Set(value.options.map(option=>option.id)).size===value.options.length&&typeof value.freeText==='boolean';}
 export function validateAnswers(answers={}){

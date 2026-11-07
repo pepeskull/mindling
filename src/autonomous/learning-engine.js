@@ -1,3 +1,4 @@
+import {researchSubject,subjectMatches} from './research-subject.js';
 import {recordTaskActivity} from '../app/activity-journal.js';
 import {researchLearningContext} from '../learning/research-learning-context.js';
 import {semanticQueue} from '../semantic/scheduling.js';
@@ -89,7 +90,7 @@ export class AutonomousLearningEngine {
     this.schedule();
   }
   startIfAuthorized(task){
-    if(!task||terminal(task)||task.engineVersion!==4||!canRetryResearch(task)||['CLARIFICATION','MODEL_CLARIFICATION','SOURCE_UNSUPPORTED','QUERY_REVIEW','BUDGET_EXHAUSTED','NO_EVIDENCE','INFORMATION_UNCONFIGURED','INFORMATION_UNSUPPORTED','INFORMATION_UNAUTHORIZED'].includes(task.code)||this.disposed)return;
+    if(!task||terminal(task)||task.engineVersion!==4||!canRetryResearch(task)||['CLARIFICATION','MODEL_CLARIFICATION','SOURCE_UNSUPPORTED','SUBJECT_MISMATCH','CLARIFICATION_UNAVAILABLE','QUERY_REVIEW','BUDGET_EXHAUSTED','NO_EVIDENCE','INFORMATION_UNCONFIGURED','INFORMATION_UNSUPPORTED','INFORMATION_UNAUTHORIZED'].includes(task.code)||this.disposed)return;
     this.queue.add(task.id);this.drain();
   }
   async drain(){
@@ -103,8 +104,9 @@ export class AutonomousLearningEngine {
           const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ACCESS_DISABLED';item.message='Autonomous learning is disabled. You can enable it in Settings.';});this.notify(blocked);continue;
         }
         if(task.autonomous&&energyAt(this.app.state.mind.energy,Date.now()).remaining<2){await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ENERGY_LOW';item.message='Research paused — Insufficient energy.';});continue;}
-        const topic=savedPublicTopic(task)||task.sourcePlan?.request?.topic||publicResearchTopic(task);
-        if(topic===null){const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='QUERY_REVIEW';item.message='Review a short public topic before sharing a potentially sensitive request with Mindling planning.';});if(!task.autonomous&&this.app.dashboard?.canContinueResearch(this.requestId(task)))this.app.dashboard.showResearchAccess(blocked,this.requestId(task),null);continue;}
+        if(task.sourcePlan&&!subjectMatches(task,task.sourcePlan.request.topic)){await this.patch(id,null,item=>{item.status='BLOCKED';item.code='SUBJECT_MISMATCH';item.message='Research paused — The saved search subject differs from the original request. Existing knowledge and reservations are preserved.';});continue;}
+        const topic=savedPublicTopic(task)||publicResearchTopic(task);
+        if(topic===null){const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='QUERY_REVIEW';item.message='Mindling could not safely identify a public research subject. The original request is preserved and no planning call was sent.';});if(!task.autonomous&&this.app.dashboard?.canContinueResearch(this.requestId(task)))this.app.dashboard.showResearchAccess(blocked,this.requestId(task),null);continue;}
         await this.run(task,topic);
       }
     }catch{const waiting=[...this.queue];this.queue.clear();if(!this.disposed&&!this.app.disposed&&!document.hidden)for(const id of waiting){try{const blocked=await this.patch(id,null,item=>{if(terminal(item))return;item.status='BLOCKED';item.code='PLANNING_UNAVAILABLE';item.message='Mindling planning could not confirm access. No planning request was sent.';});this.notify(blocked);}catch{/* A changed identity or read-only view owns this state. */}}}
@@ -154,7 +156,7 @@ export class AutonomousLearningEngine {
     if(task.engineVersion!==4&&action!=='consent')throw Error('This historical task is preserved. Submit the topic again to use autonomous web research.');
     if(action==='consent'||action==='review-topic'){
       if(!(await this.loadPermissions(true)).enabled)throw Error('Enable autonomous learning in Settings before continuing.');
-      const topic=publicResearchTopic(task,payload.topic??null);if(topic===null)throw Error('Choose a public topic without private details.');
+      const topic=publicResearchTopic(task,payload.choice==='confirm-subject'?researchSubject(task):payload.topic??null);if(topic===null)throw Error('Choose a public topic without private details.');
       const prefs=this.preferences;
       const next=await this.patch(id,null,item=>{item.approvedPublicTopic={version:1,queryKey:item.queryKey||item.id,topic,approvedAt:Date.now()};item.code='QUEUED';item.message='Public topic clarified; continuing under Settings authorization.';},{researchGrant:this.grant(prefs)});
       this.startIfAuthorized(next);return {accepted:true,message:'Research continues under your saved Settings authorization.'};
@@ -182,11 +184,13 @@ export class AutonomousLearningEngine {
         current=await this.patch(task.id,run,item=>{
           item.plan=result.planning.plan;item.plannedAt=Date.now();item.completedWork=[...new Set([...item.completedWork,'plan'])];item.status='BLOCKED';
           const question=result.planning.clarification;
-          if(question&&!(item.clarificationRounds>=1)&&item.modelCalls<LIMITS.inferenceCalls){item.coordinatorClarification={version:1,kind:'model-scope',field:'detail',question:question.question,options:question.options,freeText:question.options.length===0};item.code='MODEL_CLARIFICATION';item.message=question.question;}
+          if(question&&question.options.length>=2&&!(item.clarificationRounds>=1)&&item.modelCalls<LIMITS.inferenceCalls){item.coordinatorClarification={version:1,kind:'model-scope',field:'detail',question:question.question,options:question.options,freeText:false};item.code='MODEL_CLARIFICATION';item.message=question.question;}
+          else if(question){item.code='CLARIFICATION_UNAVAILABLE';item.message='Research paused — The subject could not be resolved safely with the available choices.';}
           else{item.sourcePlan={request:context,queries:result.planning.queries,sourceCategory:result.planning.sourceCategory,available:result.information?.available===true};item.code='QUEUED';item.message='Mindling has prepared a bounded source search.';}
         },{researchGrant:this.grant(prefs)});
         if(current.code==='MODEL_CLARIFICATION'){if(!current.autonomous&&this.app.dashboard?.canContinueResearch(this.requestId(current)))this.app.dashboard.showClarification(this.clarification(current).talkResponse);return;}
       }
+      if(current.code==='CLARIFICATION_UNAVAILABLE'){this.notify(current);return;}
       await this.sources(current,run,controller);
     }catch(error){
       if(error.clientDiagnostic){this.clientFailure={taskId:task.id,run,diagnostic:error.clientDiagnostic};console.warn(JSON.stringify({event:'mindling.research.client',...error.clientDiagnostic}));}
@@ -251,6 +255,7 @@ export class AutonomousLearningEngine {
   }
   async sources(task,run,controller){
     const block=async(code,message)=>{const stopped=await this.patch(task.id,run,item=>{item.status='BLOCKED';item.code=code;item.message=message;});this.notify(stopped);return stopped;};
+    if(!task.sourcePlan||!subjectMatches(task,task.sourcePlan.request.topic))return block('SUBJECT_MISMATCH','Research paused — The saved search does not match the original subject. No new knowledge was accepted.');
     if(!task.pendingEvidence?.length&&!task.pendingSourceEvaluation){
       if(task.sourcePlan.sourceCategory!=='web')return block('SOURCE_UNSUPPORTED','Research paused — This request cannot be safely researched.');
       if(!task.sourcePlan.available){const id=await digest(JSON.stringify([task.id,run,'capabilities'])),result=await requestResearchCapabilities({id,context:{},signal:controller.signal});if(!result.information.available)return block('INFORMATION_UNCONFIGURED','Research paused — Web information access is not configured.');task=await this.patch(task.id,run,item=>{item.sourcePlan.available=true;});}
@@ -322,6 +327,7 @@ export class AutonomousLearningEngine {
   async integrate(task,run,controller,prefs){
     prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
     const evidence=task.pendingEvidence||[];for(const claim of evidence)if(await digest(claim.quote)!==claim.quoteHash)throw Error('Saved evidence changed.');
+    if(!task.sourcePlan||!subjectMatches(task,task.sourcePlan.request.topic))throw Error('SUBJECT_MISMATCH');
     await this.patch(task.id,run,item=>{item.status='COMMITTING';item.code='INTEGRATING';item.message='Integrating accepted source-backed knowledge.';item.acceptedQuotes=evidence.map(item=>item.quoteHash);});
     const activity=activityFor(task.mode),grant=this.grant(prefs);
     await this.app.change(state=>{
@@ -372,7 +378,7 @@ export class AutonomousLearningEngine {
     const sources=task.sourceReferences.filter(source=>memories.some(memory=>memory.research?.sourceURL===source.url||memory.researchSupport?.some(e=>e.taskId===task.id&&e.sourceURL===source.url))).map(({url,title,publishedAt})=>({url,title:title||url,publishedAt}));
     const quotes=memories.map(memory=>{const position=memory.content.indexOf(': ',memory.content.indexOf(' from '));return position>=0?memory.content.slice(position+2):memory.content;});
     const found=task.sourceReferences.some(source=>source.hash),unsupported=task.code==='SOURCE_UNSUPPORTED',active=['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status);
-    const paused=unsupported?(sv?'Jag kan inte verifiera den här frågan med de tillgängliga källorna.':'I can’t verify this question with the available sources.'):found?(sv?'Jag hittade källor, men kunde inte säkert behålla ytterligare kunskap från dem. Dina befintliga minnen är oförändrade.':'I found sources, but couldn’t safely retain additional knowledge from them. Your existing memories are unchanged.'):active?(sv?'Jag undersöker vilket underlag som finns för din fråga.':'I’m checking the available evidence for your request.'):(sv?'Jag förstår vad du vill lära dig, men kan inte hämta tillräckligt tillförlitliga källor just nu. Forskningsuppgiften är pausad.':'I understand what you want to learn, but I can’t retrieve reliable supporting sources right now. The research task is paused.');
+    const paused=task.code==='CLARIFICATION_UNAVAILABLE'?(sv?'Jag kan inte säkert avgränsa frågan med de tillgängliga alternativen. Ingen ytterligare sökning har startats.':'I can’t safely resolve the remaining ambiguity with the available choices. No further search was started.'):task.code==='SUBJECT_MISMATCH'?(sv?'Det sparade sökämnet stämmer inte med din ursprungliga fråga. Jag har pausat uppgiften utan att ändra dina minnen.':'The saved search subject does not match your original request. I paused the task without changing your memories.'):unsupported?(sv?'Jag kan inte verifiera den här frågan med de tillgängliga källorna.':'I can’t verify this question with the available sources.'):found?(sv?'Jag hittade källor, men kunde inte säkert behålla ytterligare kunskap från dem. Dina befintliga minnen är oförändrade.':'I found sources, but couldn’t safely retain additional knowledge from them. Your existing memories are unchanged.'):active?(sv?'Jag undersöker vilket underlag som finns för din fråga.':'I’m checking the available evidence for your request.'):(sv?'Jag förstår vad du vill lära dig, men kan inte hämta tillräckligt tillförlitliga källor just nu. Forskningsuppgiften är pausad.':'I understand what you want to learn, but I can’t retrieve reliable supporting sources right now. The research task is paused.');
     const answer=completed?(sv?'Här är vad jag kunde behålla från de källstödda sökresultaten:':'Here is what I could retain from the source-supported search report:')+'\n\n'+quotes.join('\n\n'):task.code==='NO_EVIDENCE'?paused+' '+(sv?'Källornas underlag eller aktualitet räckte inte för att spara ett nytt påstående.':'The source evidence or its date did not establish a supported new claim. See the learning task for details.'):paused;
     return {answer,memoryIds:memories.map(memory=>memory.id),sources,uncertainty:completed?'medium':'high',insufficientInformation:!completed||!memories.length,researchTaskId:task.id};
   }

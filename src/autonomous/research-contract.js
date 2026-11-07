@@ -1,3 +1,4 @@
+import {researchSubject,subjectMatches} from './research-subject.js';
 import {validateResearchLearningContext} from '../learning/research-learning-context.js';
 import { passageIssue } from '../memory/passage-integrity.js';
 import { citedPassages, supportsClaimDate } from './evidence-dates.js';
@@ -66,9 +67,9 @@ export function validatePlanningResult(value){
 export function publicResearchTopic(task,reviewed=null){
   const identifier=/@|https?:|\b[A-Za-z0-9+/_=-]{32,}\b|\b(?:[0-9]{6,}|password|secret|wallet|address|phone|personnummer|lösenord|plånbok|adress|telefon)\b/iu;
   const personal=/\b(?:my|mine|our|mitt|min|mina|vår|jag|patient|diagnosis|medical record|diagnos|journal|legal case|salary|lön)\b/iu;
-  if(reviewed!==null){if(!text(reviewed,120)||identifier.test(reviewed)||personal.test(reviewed))throw Error('Use a short public topic without personal identifiers or private details.');return reviewed;}
-  const subject=[task.topic,task.scope?.detail].filter(Boolean).join(' ').trim();
-  if(identifier.test(task.objective)||personal.test(task.objective)||/(?:^|\s)\p{Lu}[\p{Ll}\p{M}]{2,}\s+\p{Lu}[\p{Ll}\p{M}]{2,}(?:\s|$|[,.!?])/u.test(subject)||subject.length>120)return null;
+  if(reviewed!==null){if(!subjectMatches(task,reviewed)||!text(reviewed,120)||identifier.test(reviewed)||personal.test(reviewed))throw Error('Use a short public topic without personal identifiers or private details.');return reviewed;}
+  const subject=researchSubject(task);if(!subject)return null;
+  if(identifier.test(task.objective)||personal.test(task.objective)||identifier.test(subject)||personal.test(subject)||/(?:^|\s)\p{Lu}[\p{Ll}\p{M}]{2,}\s+\p{Lu}[\p{Ll}\p{M}]{2,}(?:\s|$|[,.!?])/u.test(subject)||subject.length>120)return null;
   return text(subject,120)?subject:null;
 }
 
@@ -88,14 +89,15 @@ export function publicSourceURL(value){
 }
 const claimSchema={type:'object',additionalProperties:false,required:['sourceId','quote','category','topic','reason','validAt'],properties:{sourceId:{type:'string'},quote:{type:'string',minLength:40,maxLength:700},category:{type:'string',minLength:1,maxLength:80},topic:{type:'string',minLength:1,maxLength:100},reason:{type:'string',minLength:1,maxLength:240},validAt:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'}}};
 export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:limitationSchema,maxItems:3},nextQuestion:{type:['string','null'],minLength:1,maxLength:120}}};
-export function sourceEvaluationSchemaFor(sources){
+export function sourceEvaluationSchemaFor(sources,{subjectCheck=false}={}){
   const schema=structuredClone(sourceEvaluationSchema);
   schema.properties.claims.items.properties.sourceId.enum=sources.map(source=>source.id);
+  if(subjectCheck){const claim=schema.properties.claims.items;claim.required.push('relevance');claim.properties.relevance={type:'string',enum:['direct','background','off_topic','uncertain']};}
   return schema;
 }
 // The schema constrains shape/length/IDs; exact attribution and calendar support
 // remain application checks. Quotes are never trimmed, paraphrased or repaired.
-export const SOURCE_EVALUATION_RULES=Object.freeze(['CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_INCOMPLETE','QUOTE_BOUNDARY_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
+export const SOURCE_EVALUATION_RULES=Object.freeze(['SUBJECT_RELEVANCE_MISSING','SUBJECT_RELEVANCE_INVALID','SUBJECT_MISMATCH','CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_INCOMPLETE','QUOTE_BOUNDARY_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
 const evaluationFailure=(detail,metadata={})=>{throw Object.assign(Error('Mindling could not validate the source evaluation. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail,...metadata});};
 function validateLimitations(values){
   for(const [index,value] of values.entries()){
@@ -137,13 +139,22 @@ export function validateSourceEvaluation(value,sources){
 }
 // At the model boundary only, reject individual proposals independently. Return
 // fixed rule/index diagnostics; never disclose or rewrite the rejected content.
-export function selectSourceEvaluation(value,sources,{allowFollowup=true}={}){
+export function selectSourceEvaluation(value,sources,{allowFollowup=true,subjectCheck=false}={}){
   evaluationShape(value);
   // Limitations may qualify the whole assessment. Never silently erase them.
   validateLimitations(value.limitations);
   const validation={version:1,candidates:value.claims.length,accepted:0,rejections:[],metadataRejections:[]};
-  const claims=value.claims.filter((claim,index)=>{
-    const rule=claimRejection(claim,sources);if(rule)validation.rejections.push({index,rule});return !rule;
+  const claims=[];
+  value.claims.forEach((proposal,index)=>{
+    let claim=proposal,rule=null;
+    if(subjectCheck){
+      if(!object(proposal)||!Object.hasOwn(proposal,'relevance'))rule='SUBJECT_RELEVANCE_MISSING';
+      else if(!['direct','background','off_topic','uncertain'].includes(proposal.relevance))rule='SUBJECT_RELEVANCE_INVALID';
+      else if(proposal.relevance!=='direct')rule='SUBJECT_MISMATCH';
+      if(object(proposal)){const {relevance,...supported}=proposal;claim=supported;}
+    }
+    rule=rule||claimRejection(claim,sources);
+    if(rule)validation.rejections.push({index,rule});else claims.push(claim);
   });
   const validFollowup=value.nextQuestion===null||allowFollowup&&validQuery(value.nextQuestion);
   if(!validFollowup)validation.metadataRejections.push({field:'nextQuestion',rule:'FOLLOWUP_INVALID'});

@@ -1,3 +1,4 @@
+import {direct as relevantFixture} from './support/subject-evaluation-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -27,7 +28,7 @@ async function call(mode,input,upstream,{timeout=false}={}){
  const res=Object.assign(new EventEmitter(),{status(code){this.code=code;return this;},json(body){this.body=body;this.writableEnded=true;return this;}});
  try{await handler(req,res);return {...res,logs,calls};}finally{globalThis.fetch=fetcher;console.warn=warn;globalThis.setTimeout=timer;for(const key of ['SERVICE_API','SERVICE_MODEL','MINDLING_WEB_SEARCH'])if(before[key]===undefined)delete process.env[key];else process.env[key]=before[key];}
 }
-const okay=async url=>url.includes('/models/')?Response.json({id:'opaque-model'}):url.endsWith('/responses')?Response.json(searchPayload()):Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]});
+const okay=async url=>url.includes('/models/')?Response.json({id:'opaque-model'}):url.endsWith('/responses')?Response.json(searchPayload()):Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(result))}}]});
 test('success retains mandatory hosted search and fixed ceilings, with safe completed execution metadata',async()=>{
  const res=await call('research-acquire',context,okay);assert.equal(res.code,200);assert.equal(res.body.acquisition.evaluation.claims.length,1);
  const d=validateServiceDiagnostic(res.body.execution);assert.equal(d.completed,1);assert.equal(d.searchCompleted,true);assert.equal(d.fallbackReason,'none');assert.equal(res.calls.length,3);

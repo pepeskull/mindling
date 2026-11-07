@@ -1,3 +1,4 @@
+import {direct as relevantFixture} from './subject-evaluation-fixture.cjs';
 import {createRequire} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {AutonomousLearningEngine} from '../../src/autonomous/learning-engine.js';
@@ -50,7 +51,7 @@ export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='s
   if(url.endsWith('/responses')){control.elapsed+=23087;return Response.json(fixture.searchPayload());}
   if(url!=='https://api.openai.com/v1/chat/completions')throw Error('External target forbidden');
   const request=JSON.parse(options.body),data=JSON.parse(request.messages[1].content);
-  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(request.response_format.json_schema.name==='mindling_planning'?{plan:['Find supported Gaming rules'],clarification:null,queries:['Gaming game rules'],sourceCategory:'web'}:fixture.evaluation(data.sources))}}]});
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(request.response_format.json_schema.name==='mindling_planning'?{plan:['Find supported Gaming rules'],clarification:null,queries:['Gaming game rules'],sourceCategory:'web'}:relevantFixture(fixture.evaluation(data.sources)))}}]});
  };
  try{
   await engine.loadPermissions();await engine.setAccess(true);

@@ -9,6 +9,7 @@ const root=path.resolve(__dirname,'../..');
 const learningHandler=require('../../api/mindling/learn.js'),correctionFixture=require('./memory-correction-fixture.cjs');
 process.env.SERVICE_API='synthetic-local-only';process.env.SERVICE_MODEL='opaque-model';process.env.MINDLING_WEB_SEARCH='enabled';
 const analysisAttempts=new Map();
+const {direct:relevantFixture}=require('./subject-evaluation-fixture.cjs');
 const sourceEvaluationFixture=require('./source-evaluation-fixtures.cjs');
 const gamingFixture=require('./gaming-research-fixture.cjs');
 let gamingMode='invalid';
@@ -43,25 +44,25 @@ globalThis.fetch=async(target,options)=>{
     return Response.json({id:'resp_synthetic_local',status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url}]}},{type:'message',status:'completed',content:[{type:'output_text',text:quote+' [1]',annotations:[{type:'url_citation',start_index:quote.length+1,end_index:quote.length+4,title:'Explicit synthetic source fixture',url}]}]}]});
   }
   const data=JSON.parse(body.messages[1].content),name=body.response_format.json_schema.name;
-  if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('intelligence ')){if(data.request.topic.includes('recovery')){const n=intelligenceAttempts.get(data.request.topic)||0;intelligenceAttempts.set(data.request.topic,n+1);if(!n)return Response.json({error:{}},{status:503});}return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(intelligenceFixture.evaluation(data.sources))}}]});}
+  if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('intelligence ')){if(data.request.topic.includes('recovery')){const n=intelligenceAttempts.get(data.request.topic)||0;intelligenceAttempts.set(data.request.topic,n+1);if(!n)return Response.json({error:{}},{status:503});}return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(intelligenceFixture.evaluation(data.sources)))}}]});}
   if(name==='mindling_memory_assessment'&&data.input===intelligenceFixture.corrected){const decision={...correctionFixture.decision('Definition','Blockchain transactions')};return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({subjectChanged:false,decision})}}]});}
-  if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('semantic crypto'))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(semanticFixture.evaluation(data.sources))}}]});
-  if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('evolution '))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(evolutionFixture.evaluation(data.sources))}}]});
-  if(name==='mindling_source_evaluation'&&data.request.topic==='video game genres')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(correctionFixture.sourceEvaluation(data.sources))}}]});
+  if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('semantic crypto'))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(semanticFixture.evaluation(data.sources)))}}]});
+  if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('evolution '))return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(evolutionFixture.evaluation(data.sources)))}}]});
+  if(name==='mindling_source_evaluation'&&data.request.topic==='video game genres')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(correctionFixture.sourceEvaluation(data.sources)))}}]});
   if(name==='mindling_memory_assessment')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(correctionFixture.assessment(data))}}]});
-  if(successEnabled&&name==='mindling_source_evaluation'&&data.request.topic==='Gaming')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(successFixture.evaluation(data.sources))}}]});
-  if(name==='mindling_source_evaluation'&&data.request.topic==='Gaming')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(gamingFixture.evaluation(data.sources,gamingMode==='invalid'?['x'.repeat(241)]:[gamingFixture.limitation],true))}}]});
+  if(successEnabled&&name==='mindling_source_evaluation'&&data.request.topic==='Gaming')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(successFixture.evaluation(data.sources)))}}]});
+  if(name==='mindling_source_evaluation'&&data.request.topic==='Gaming')return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(gamingFixture.evaluation(data.sources,gamingMode==='invalid'?['x'.repeat(241)]:[gamingFixture.limitation],true)))}}]});
   if(name==='mindling_source_evaluation'&&data.request.topic.startsWith('source validation')){
     const topic=data.request.topic,used=analysisAttempts.get(topic)||0;analysisAttempts.set(topic,used+1);
     if(topic.includes('recovery')&&!used)return Response.json({error:{message:'Synthetic interrupted source evaluation'}},{status:503});
     const mode=topic.includes('zero')?'zero':topic.includes('recovery')?'recovery':'mixed';
-    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(sourceEvaluationFixture.evaluation(data.sources,mode))}}]});
+    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(sourceEvaluationFixture.evaluation(data.sources,mode)))}}]});
   }
   if(name==='mindling_source_evaluation'&&data.request.topic.includes('analysis once')){const used=analysisAttempts.get(data.request.topic)||0;analysisAttempts.set(data.request.topic,used+1);if(!used)return Response.json({error:{type:'server_error',message:'Synthetic analysis failure'}},{status:503});}
   let result;
   if(name==='mindling_planning')result=data.topic.includes('ambiguous orientation')?{plan:['Choose a foundational focus'],clarification:{question:'Which optional learning focus do you prefer?',options:[]},queries:[],sourceCategory:'web'}:{plan:['Find reliable public sources','Compare cited evidence'],clarification:null,queries:['public knowledge learning'],sourceCategory:'web'};
   else if(name==='mindling_source_evaluation')result={claims:data.sources.map(source=>({sourceId:source.id,quote:data.request.topic.includes('LaLiga')?'Synthetic Club A leads Spain’s top men’s football league standings.':source.text,category:data.request.topic.includes('LaLiga')?'Sports':data.request.topic.includes('stars')?'Science':'Biology',topic:data.request.topic.includes('LaLiga')?'Football':data.request.topic.includes('stars')?'Astronomy':'Neuroscience',reason:'Synthetic local evidence assessment',validAt:data.request.topic.includes('LaLiga dated evidence')?new Date().toISOString().slice(0,10):null})),limitations:['Synthetic test data only; no second source comparison demonstrated.'],nextQuestion:'How do stars generate energy'};
-  if(!result)throw Error('Unsupported synthetic completion');return Response.json({choices:[{message:{content:JSON.stringify(result)}}]});
+  if(!result)throw Error('Unsupported synthetic completion');return Response.json({choices:[{message:{content:JSON.stringify(relevantFixture(result))}}]});
 };
 const mime={'.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.html':'text/html','.png':'image/png','.json':'application/json'};
 let requestNumber=0;

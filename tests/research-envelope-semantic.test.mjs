@@ -1,3 +1,4 @@
+import {direct as relevantFixture} from './support/subject-evaluation-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -17,7 +18,7 @@ let sequence=0;
 async function mocked(callback,{payload=fixture.searchPayload(),propose=fixture.evaluation}={}){
  const old={fetch:globalThis.fetch,warn:console.warn,api:process.env.SERVICE_API,model:process.env.SERVICE_MODEL,enabled:process.env.MINDLING_WEB_SEARCH};Object.assign(process.env,{SERVICE_API:'synthetic-envelope-secret',SERVICE_MODEL:'opaque-model',MINDLING_WEB_SEARCH:'enabled'});
  const calls=[],logs=[];console.warn=line=>logs.push(JSON.parse(line));
- globalThis.fetch=async(url,options)=>{calls.push(url);if(url.includes('/models/'))return Response.json({id:'opaque-model'});if(url.endsWith('/responses'))return Response.json(payload);assert.equal(url,'https://api.openai.com/v1/chat/completions');const data=JSON.parse(JSON.parse(options.body).messages[1].content);return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(propose(data.sources))}}]});};
+ globalThis.fetch=async(url,options)=>{calls.push(url);if(url.includes('/models/'))return Response.json({id:'opaque-model'});if(url.endsWith('/responses'))return Response.json(payload);assert.equal(url,'https://api.openai.com/v1/chat/completions');const data=JSON.parse(JSON.parse(options.body).messages[1].content);return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(propose(data.sources)))}}]});};
  const api=async(mode='research-acquire',input=context)=>{const id=sha('envelope'+(++sequence)),req=Object.assign(new EventEmitter(),{method:'POST',headers:{host:'localhost','x-forwarded-for':'envelope-'+sequence},body:{id,mode,context:input}}),res=Object.assign(new EventEmitter(),{status(code){this.code=code;return this;},json(value){this.body=value;this.writableEnded=true;return this;}});await handler(req,res);return {...res,id};};
  try{return await callback({api,calls,logs});}finally{globalThis.fetch=old.fetch;console.warn=old.warn;for(const [key,value]of [['SERVICE_API',old.api],['SERVICE_MODEL',old.model],['MINDLING_WEB_SEARCH',old.enabled]])if(value===undefined)delete process.env[key];else process.env[key]=value;}
 }
