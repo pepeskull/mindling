@@ -1,4 +1,4 @@
-import { OnboardingSphere } from './onboarding-sphere.js';
+import { OnboardingNetwork } from './onboarding-network.js';
 import { PATHWAYS } from '../pathways/pathways.js';
 const DIMENSIONS = [
   ["thinkingStyle", "Thinking style", "Creative", "Logical"],
@@ -21,19 +21,19 @@ export class Onboarding {
   #host; #onCreate; #step = 0; #busy = false;
   #draft = { pathways: [], dimensions: Object.fromEntries(DIMENSIONS.map(([key]) => [key, 0.5])), name: "" };
 
-  constructor(host, onCreate, {three=null}={}) { this.#host = host; this.#onCreate = onCreate; this.three=three; }
+  constructor(host, onCreate) { this.#host = host; this.#onCreate = onCreate; }
   show() {
     this.#host.hidden=false;document.querySelector('#app').classList.add('onboarding-active');
     this.chrome=document.querySelector('.dashboard-chrome');this.chromeWasInert=this.chrome.inert;this.chrome.inert=true;
-    this.#host.innerHTML='<div class="onboarding-brand"><a href="/" aria-label="Play Mindling"><img src="./logo.png" alt="" width="25" height="25">PLAY MINDLING</a><details class="onboarding-help"><summary aria-label="Help with setup">?</summary><p>Create your Mindling locally. Choose at least three origin interests, shape its tendencies and give it a name. Existing saved Mindlings open their Dashboard directly.</p></details></div><div class="onboarding-experience"><div class="onboarding-sphere" aria-hidden="true"></div><div data-onboarding-content></div><ol class="onboarding-progress" aria-label="Setup progress"></ol></div>';
-    this.content=this.#host.querySelector('[data-onboarding-content]');this.sphere=new OnboardingSphere(this.#host.querySelector('.onboarding-sphere'),this.three);this.#render();
+    this.#host.innerHTML='<div class="onboarding-brand"><a href="/" aria-label="Play Mindling"><img src="./logo.png" alt="" width="25" height="25">PLAY MINDLING</a><details class="onboarding-help"><summary aria-label="Help with setup">?</summary><p>Create your Mindling locally. Choose at least three origin interests, shape its tendencies and give it a name. Existing saved Mindlings open their Dashboard directly.</p></details></div><div class="onboarding-experience"><div class="onboarding-network" aria-hidden="true"></div><div data-onboarding-content></div><ol class="onboarding-progress" aria-label="Setup progress"></ol></div>';
+    this.content=this.#host.querySelector('[data-onboarding-content]');this.network=new OnboardingNetwork(this.#host.querySelector('.onboarding-network'));this.#render();
   }
-  hide() { this.sphere?.destroy();this.sphere=null;this.#host.hidden=true;this.#host.replaceChildren();document.querySelector('#app').classList.remove('onboarding-active');if(this.chrome)this.chrome.inert=this.chromeWasInert; }
+  hide() { this.network?.destroy();this.network=null;this.#host.hidden=true;this.#host.replaceChildren();document.querySelector('#app').classList.remove('onboarding-active');if(this.chrome)this.chrome.inert=this.chromeWasInert; }
 
   #render() {
     const steps = [this.#welcome, this.#pathways, this.#personality, this.#name, this.#review];
     this.content.innerHTML = `<section class="onboarding-card" aria-labelledby="onboarding-title">${steps[this.#step].call(this)}</section>`;
-    this.sphere.setStep(this.#step);this.#host.dataset.step=String(this.#step);
+    this.network.setStep(this.#step);this.#host.dataset.step=String(this.#step);
     const progress=this.#host.querySelector('.onboarding-progress');progress.replaceChildren();
     ['Welcome','Pathways','Personality','Identity','Review','Birth'].forEach((label,index)=>{const item=document.createElement('li');item.textContent=label;if(index===this.#step)item.setAttribute('aria-current','step');else if(index<this.#step)item.dataset.complete='true';progress.append(item);});
     this.#bind();
@@ -89,7 +89,7 @@ export class Onboarding {
   }
 
   async birth(name,{create=async()=>{}}={}) {
-    this.#host.hidden=false;this.sphere.setStep(5);this.#host.dataset.step='birth';
+    this.#host.hidden=false;this.network.setStep(5);this.#host.dataset.step='birth';
     this.content.innerHTML=`<section class="birth-card" aria-labelledby="birth-title"><p>MINDLING / BIRTH</p><h1 id="birth-title" aria-live="polite">Awakening ${this.#escape(name)}.</h1><span>A small beginning. A mind of its own.</span><div class="awakening-progress"><p data-install-detail role="status">Creating identity and local memory.</p><progress aria-label="Mindling awakening"></progress></div></section>`;
     const stages=this.#host.querySelector('.onboarding-progress').children;for(const [index,item]of [...stages].entries()){item.removeAttribute('aria-current');if(index===5)item.setAttribute('aria-current','step');else item.dataset.complete='true';}
     const title=this.#host.querySelector('#birth-title'),detail=this.#host.querySelector('[data-install-detail]'),progress=this.#host.querySelector('progress');

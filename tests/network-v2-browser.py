@@ -1,11 +1,9 @@
-"""Local-only rendering fixtures. Screenshots are synthetic event demonstrations."""
+"""Local-only rendering and lifecycle checks; no screenshots or model calls."""
 import os
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 BASE=os.environ.get('MINDLING_TEST_URL','http://127.0.0.1:8769')
 ROOT=Path(__file__).resolve().parents[1]
-OUT=ROOT/'docs/screenshots'
-OUT.mkdir(exist_ok=True)
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox','--enable-unsafe-swiftshader'])
     for preview in [False,True]:
@@ -44,12 +42,8 @@ with sync_playwright() as p:
           return `${preview?'Preview':'Normal'}: WebGL2, shared fixture, three panels, isolated read-only database passed`;
         }''',preview))
         page.wait_for_timeout(200)
-        if not preview:
-            page.locator('#network-view').screenshot(path=str(OUT/'network-living-desktop.png'))
-            page.locator('.network-cloud').screenshot(path=str(OUT/'network-living-cloud.png'))
-        page.locator('[data-mode="2d"]').click()
-        assert page.locator('[data-fallback]').is_visible()
-        page.locator('[data-mode="3d"]').click()
+        assert page.evaluate('view.history===30 && view.mode==="3d"')
+        assert page.locator('.network-controls,[data-pause],[data-history]').count()==0
         page.evaluate("window.loseContext=window.view.spectrum.gl.getExtension('WEBGL_lose_context');window.loseContext.loseContext()")
         page.wait_for_function('window.view.spectrum.lost===true')
         assert page.locator('[data-fallback]').is_visible()
@@ -61,12 +55,8 @@ with sync_playwright() as p:
         page.emulate_media(reduced_motion='reduce');page.wait_for_function('window.view.frame===null')
         assert page.evaluate('window.view.frame===null')
         page.emulate_media(reduced_motion='no-preference');page.wait_for_timeout(80)
-        page.locator('[data-pause]').click();assert page.evaluate('window.view.frame===null')
-        assert page.evaluate("()=>{const before=JSON.stringify(view.currentValues);advance(1000);view.ingest({id:'while-paused',activity:'TALK',phase:'accepted'});return before===JSON.stringify(view.currentValues);}")
-        page.locator('[data-pause]').click()
         page.set_viewport_size({'width':430,'height':930});page.wait_for_timeout(100)
         assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
-        if not preview: page.locator('#network-view').screenshot(path=str(OUT/'network-living-narrow.png'))
         page.evaluate('window.advance(35000)')
         assert page.evaluate("window.view.currentValues.every(v=>v===0)&&window.view.brain.alive&&window.view.frame!==null")
         assert page.evaluate('async()=>JSON.stringify(await window.read())===window.before')
@@ -77,4 +67,4 @@ with sync_playwright() as p:
         assert not errors,errors
         context.close()
     browser.close()
-print('PASS: normal/preview WebGL2, fallback, context loss/restoration, reduced motion, pause, idle, viewport, teardown; zero API requests.')
+print('PASS: normal/preview WebGL2, fallback, context loss/restoration, reduced motion, fixed 30s history, idle, viewport, teardown; zero API requests.')
