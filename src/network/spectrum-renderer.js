@@ -4,8 +4,8 @@ import {spectrum} from './activity-model.js';
 const COLS=320,ROWS=180;
 const vertex=`#version 300 es
 precision highp float;
-in vec3 position;uniform vec2 resolution;uniform float dpr;uniform vec3 accent;out vec3 color;out float fade;
-void main(){float u=position.x,z=position.z,h=position.y;float s=1.0/(1.0+1.7*z);float y0=.90*resolution.y;float yBack=.24*resolution.y;float y=y0-(1.0-s)/(1.0-1.0/2.7)*(y0-yBack)-h*.57*resolution.y*s;float x=resolution.x*.50+(u-.5)*resolution.x*.96*s;float w=1.0/s;gl_Position=vec4((x/resolution.x*2.0-1.0)*w,(1.0-y/resolution.y*2.0)*w,(.9-1.8*s)*w,w);gl_PointSize=max(1.0,1.65*dpr*sqrt(s));color=accent*(.65+.35*h);fade=(1.0-smoothstep(.55,1.0,z)*.92)*(.22+.78*h);}`;
+in vec3 tint;in vec3 position;uniform vec2 resolution;uniform float dpr;uniform vec3 accent;out vec3 color;out float fade;
+void main(){float u=position.x,z=position.z,h=position.y;float s=1.0/(1.0+1.7*z);float y0=.90*resolution.y;float yBack=.24*resolution.y;float y=y0-(1.0-s)/(1.0-1.0/2.7)*(y0-yBack)-h*.57*resolution.y*s;float x=resolution.x*.50+(u-.5)*resolution.x*.96*s;float w=1.0/s;gl_Position=vec4((x/resolution.x*2.0-1.0)*w,(1.0-y/resolution.y*2.0)*w,(.9-1.8*s)*w,w);gl_PointSize=max(1.0,1.65*dpr*sqrt(s));color=tint*(.65+.35*h);fade=(1.0-smoothstep(.55,1.0,z)*.92)*(.22+.78*h);}`;
 const fragment=`#version 300 es
 precision highp float;in vec3 color;in float fade;uniform float layer;out vec4 outputColor;
 void main(){float alpha=layer<.5?.23:1.0;if(layer>.5&&layer<1.5){float r=length(gl_PointCoord-.5);alpha=1.0-smoothstep(.15,.50,r);}outputColor=vec4(color*(layer<.5?.35:1.0),alpha*fade);}`;
@@ -14,6 +14,7 @@ export class SpectrumRenderer {
   this.fallback=fallback;
   this.ctx=fallback.getContext('2d');
   this.vertices=new Float32Array(COLS*ROWS*3);
+  this.colors=new Float32Array(COLS*ROWS*3);
   this.indices=new Uint16Array((COLS-1)*(ROWS-1)*6);
   let n=0;
   for(let r=0;r<ROWS-1;r++)for(let c=0;c<COLS-1;c++){const i=r*COLS+c;
@@ -46,6 +47,10 @@ export class SpectrumRenderer {
   const a=g.getAttribLocation(this.program,'position');
   g.enableVertexAttribArray(a);
   g.vertexAttribPointer(a,3,g.FLOAT,false,0,0);
+  this.colorBuffer=g.createBuffer();
+  g.bindBuffer(g.ARRAY_BUFFER,this.colorBuffer);
+  g.bufferData(g.ARRAY_BUFFER,this.colors.byteLength,g.DYNAMIC_DRAW);
+  const tint=g.getAttribLocation(this.program,'tint');g.enableVertexAttribArray(tint);g.vertexAttribPointer(tint,3,g.FLOAT,false,0,0);
   this.index=g.createBuffer();
   g.bindBuffer(g.ELEMENT_ARRAY_BUFFER,this.index);
   g.bufferData(g.ELEMENT_ARRAY_BUFFER,this.indices,g.STATIC_DRAW);
@@ -57,9 +62,12 @@ export class SpectrumRenderer {
   this.canvas.hidden=!useGL;
   this.fallback.hidden=useGL;
   const w=this.fallback.width,h=this.fallback.height;
+  const base=[1,3,5].map(i=>parseInt((this.accent||'#b7d8d1').slice(i,i+2),16)/255);
   if(useGL){let n=0;
   for(let r=0;r<ROWS;r++){const z=r/(ROWS-1),values=model.values(now-z*seconds*1000);
+  brain?.prepareRow(brain.playback.time-z*seconds*1000);
   for(let c=0;c<COLS;c++){const u=c/(COLS-1);
+  if(brain)brain.colorInto(u,base,this.colors,n);else this.colors.set(base,n);
   this.vertices[n++]=u;
   this.vertices[n++]=brain?brain.surface(values,u,now-z*seconds*1000):spectrum(values,u);
   this.vertices[n++]=z;
@@ -70,6 +78,7 @@ export class SpectrumRenderer {
   g.bindVertexArray(this.vao);
   g.bindBuffer(g.ARRAY_BUFFER,this.buffer);
   g.bufferSubData(g.ARRAY_BUFFER,0,this.vertices);
+  g.bindBuffer(g.ARRAY_BUFFER,this.colorBuffer);g.bufferSubData(g.ARRAY_BUFFER,0,this.colors);
   g.uniform2f(this.uniforms.resolution,w,h);
   g.uniform1f(this.uniforms.dpr,this.dpr||1);
   const accent=this.accent||'#b7d8d1';g.uniform3f(this.uniforms.accent,...[1,3,5].map(i=>parseInt(accent.slice(i,i+2),16)/255));
@@ -99,6 +108,9 @@ export class SpectrumRenderer {
   c.strokeStyle=grad;
   c.fillStyle=grad;
   for(let r=64;r>=0;r--){const z=r/64,s=mode==='2d'?1:1/(1+1.7*z),values=model.values(now-z*seconds*1000);
+  brain?.prepareRow(brain.playback.time-z*seconds*1000);
+  const tint=c.createLinearGradient(w*.5-w*.48*s,0,w*.5+w*.48*s,0);
+  for(let i=0;i<=32;i++){const color=brain?brain.color(i/32,base):base;tint.addColorStop(i/32,`rgb(${color.map(v=>Math.round(v*255)).join(',')})`);}c.strokeStyle=tint;
   c.globalAlpha=(1-z*.87)*.65;
   c.beginPath();
   for(let x=0;x<=128;x++){const u=x/128,height=brain?brain.surface(values,u,now-z*seconds*1000):spectrum(values,u),px=w*.5+(u-.5)*w*.96*s,py=h*.90-(1-s)/(1-1/2.7)*h*.66-height*h*.57*s-(mode==='2d'?z*h*.55:0);
@@ -119,6 +131,7 @@ export class SpectrumRenderer {
   g.bindBuffer(g.ARRAY_BUFFER,null);
   g.bindBuffer(g.ELEMENT_ARRAY_BUFFER,null);
   g.deleteBuffer(this.buffer);
+  g.deleteBuffer(this.colorBuffer);
   g.deleteBuffer(this.index);
   g.deleteVertexArray(this.vao);
   g.deleteProgram(this.program);
