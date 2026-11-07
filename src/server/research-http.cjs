@@ -22,7 +22,9 @@ async function requestJSON(url,options,trace,limit=65536){
     if(target==='responses'&&[400,401,403,404,422,429].includes(response.status))trace.outcomeUnknown=false;
     const code=body?.error?.code,param=body?.error?.param;
     const category=target==='models'&&response.status===404||code==='model_not_found'||param==='model'?'MODEL_UNAVAILABLE':code==='unsupported_tool'||code==='tool_not_supported'||response.status===400&&typeof param==='string'&&/^(?:tools|tool_choice)(?:\b|\[|\.)/.test(param)?'TOOL_UNSUPPORTED':response.status===400?'INVALID_REQUEST':response.status===429?'RATE_LIMITED':'UPSTREAM_HTTP_ERROR';
-    throw Object.assign(fail(category,'HTTP_REJECTED'),{status:response.status});
+    // Classify only allowlisted metadata, never provider messages or arbitrary params.
+    const detail=code==='invalid_json_schema'?'SCHEMA_REJECTED':typeof param==='string'&&/^(?:response_format)(?:$|\.|\[)/.test(param)?'RESPONSE_FORMAT_REJECTED':code==='unsupported_parameter'?'PARAMETER_UNSUPPORTED':'HTTP_REJECTED';
+    throw Object.assign(fail(category,detail),{status:response.status});
   }
   try{return await readJSON(response,limit);}catch(error){if(error.code)throw error;throw fail(options.signal?.aborted?'REQUEST_INTERRUPTED':error.name==='TypeError'?'UPSTREAM_NETWORK_ERROR':'RESPONSE_PARSE_ERROR','RESPONSE_BODY_FAILED');}
 }

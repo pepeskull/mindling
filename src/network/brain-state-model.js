@@ -44,5 +44,4 @@ export class BrainStateModel {
     return value*(.86+.10*Math.sin(time/4700+this.phase+u*5)+.04*Math.sin(time/8300+u*13));
   }
   surface(values,u,time){return clamp(this.height(u,time)+.62*spectrum(values,u));}
-  frozen(){const copy=new BrainStateModel();copy.profile.set(this.profile);copy.summary={...this.summary};copy.phase=this.phase;return copy;}
 }

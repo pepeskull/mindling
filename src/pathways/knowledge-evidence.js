@@ -33,7 +33,7 @@ export function knowledgeEvidence(mind={},graph=graphData(mind)){
     const narrow=[...group.specific.values()].map(item=>{const e=diversity(item.rows),related=relationships(item.rows);return {id:item.definition.id,family:group.id,title:item.definition.title,count:item.rows.length,topics:e.topics,relationships:related,evidenceUnits:item.rows.filter(row=>row.record).length,
       ready:item.rows.length>=POLICY.specificClaims&&item.rows.length/group.rows.length>=POLICY.specificShare&&e.topics>=POLICY.specificTopics&&e.submissions>=POLICY.specificSubmissions&&e.strong>=3&&related>=POLICY.specificRelationships};}).sort((a,b)=>b.count-a.count||a.id.localeCompare(b.id,'en'));
     specializations.push(...narrow);
-    if(broadReady){const best=narrow.find(item=>item.ready);candidates.push({id:group.id,title:best?.title||group.definition.title,area:group.definition.aliases[0],count:group.rows.length,share:graph.stats.current?group.rows.length/graph.stats.current:0,source:'knowledge',specific:Boolean(best),topics:d.canonicalTopics,relationships:links});}
+    if(broadReady){const best=narrow.find(item=>item.ready);candidates.push({id:group.id,title:best?.title||group.definition.title,area:group.definition.aliases[0],count:group.rows.length,share:graph.stats.current?group.rows.length/graph.stats.current:0,source:'knowledge',areaIds:[...new Set(group.rows.map(row=>row.node.areaId))].sort(),specific:Boolean(best),topics:d.canonicalTopics,relationships:links});}
   }
   domains.sort((a,b)=>b.count-a.count||a.id.localeCompare(b.id,'en'));candidates.sort((a,b)=>b.count-a.count||(a.id<b.id?-1:a.id>b.id?1:0));
   const retainedMatches=records.filter(row=>row.record).length;ignoredEvidence+=Math.max(0,recorded.size-retainedMatches);

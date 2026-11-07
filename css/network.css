@@ -11,15 +11,5 @@
 .network-legend span:nth-child(2){color:var(--accent)}
 .network-legend span:nth-child(3){color:var(--life-nutrition)}
 .network-legend span:before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;margin-right:5px}
-.network-controls{display:flex;justify-content:flex-end;gap:12px;align-items:center;flex:none;margin-bottom:12px;font-size:10px;color:var(--text-secondary)}
-.network-controls label{display:flex;gap:7px;align-items:center}
-.network-controls select,.network-controls button,.network-about>summary{font-family:var(--font);font-size:10px;color:var(--text-secondary);background:var(--surface-deep);border:1px solid var(--border-subtle);border-radius:6px;padding:5px 9px;cursor:pointer}
-.network-controls button[aria-pressed=true]{background:var(--accent-muted);color:var(--accent);border-color:var(--border-hover)}
-.network-controls :is(button,select,summary):focus-visible{outline:1px solid var(--accent);outline-offset:3px}
-.network-about{position:relative}
-.network-about>summary{list-style:none}
-.network-about>summary::-webkit-details-marker{display:none}
-.network-about>div{position:absolute;z-index:2;right:0;top:32px;width:min(330px,75vw);padding:14px 16px;background:var(--surface-deep);border:1px solid var(--border-hover);border-radius:var(--radius);color:var(--text-secondary);font-size:11px;line-height:1.6}
-.network-about p{margin:0 0 10px}.network-about p:last-child{margin-bottom:0}
 .network-mode .scene,.network-mode .scene-vignette,.network-mode .dashboard{visibility:hidden;pointer-events:none}
-@media(max-width:800px){.network-view{bottom:80px;padding:16px}.network-grid{grid-template-columns:minmax(130px,.9fr) minmax(0,1.6fr);grid-template-rows:220px 380px;flex:1;gap:12px}.network-panel{padding:8px}.network-legend{gap:7px;font-size:8px;flex-wrap:wrap}.network-controls{gap:7px;font-size:9px}.network-controls select,.network-controls button,.network-about>summary{padding:5px;font-size:9px}}
+@media(max-width:800px){.network-view{bottom:80px;padding:16px}.network-grid{grid-template-columns:minmax(130px,.9fr) minmax(0,1.6fr);grid-template-rows:220px 380px;flex:1;gap:12px}.network-panel{padding:8px}.network-legend{gap:7px;font-size:8px;flex-wrap:wrap}}

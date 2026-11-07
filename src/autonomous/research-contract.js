@@ -26,6 +26,13 @@ export const planningSchema={type:'object',additionalProperties:false,required:[
   plan:{type:'array',items:boundedText(160),minItems:1,maxItems:3},
   clarification:{anyOf:[{type:'null'},{type:'object',additionalProperties:false,required:['question','options'],properties:{question:boundedText(400),options:{type:'array',items:option,minItems:0,maxItems:4}}}]}
 }};
+// Provider grammar uses a conservative structural subset. Semantic/Unicode text
+// constraints remain authoritative in validatePlanningResult and the instructions.
+// Do not send engine-specific Unicode regexes in the hosted schema.
+export function planningTransportSchema(){
+  const visit=value=>Array.isArray(value)?value.map(visit):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).filter(([key])=>!['pattern','minLength','maxLength'].includes(key)).map(([key,item])=>[key,visit(item)])):value;
+  return visit(planningSchema);
+}
 export const PLANNING_OUTPUT_RULES = 'Exact output limits: plan has 1–3 trimmed single-line objectives, each 1–160 characters; queries has 0–2 trimmed strings, each 1–120 characters. Queries must start with a Unicode letter or digit and contain only letters, combining marks, digits, ordinary spaces, straight apostrophes and ASCII hyphens. No commas, colons, slashes, ampersands, question marks, URLs, field operators or private identifiers in queries. A web plan without clarification requires at least one query. Clarification question is 1–400 characters; options has 0–4 items with unique lowercase ASCII IDs matching [a-z][a-z_-]{0,31}, labels 1–80 characters and values 1–160 characters. All strings are trimmed, single-line and free of control/format characters. Do not return extra fields. These are output formatting requirements, not restrictions on which public subjects can be researched.';
 const planningFailure=rule=>{throw Object.assign(Error('Mindling could not validate the research plan. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail:rule});};
 export function validatePlanningResult(value){
