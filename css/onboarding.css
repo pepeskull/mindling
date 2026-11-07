@@ -17,19 +17,17 @@
 .onboarding-card, .birth-card { width: 100%; margin: auto; text-align: center; animation: onboarding-in .25s ease both; }
 .onboarding-kicker, .onboarding-step, .birth-card > p { margin: 0 0 12px; color: var(--text-muted); font-size: 9px; letter-spacing: .18em; text-transform: uppercase; }
 .onboarding-card h1, .birth-card h1 { margin: 0; font-size: clamp(27px, 3.2vw, 42px); font-weight: 420; line-height: 1.15; letter-spacing: -.035em; text-wrap: balance; }
-.onboarding-lead { margin: 18px 0 12px; color: var(--text-secondary); font-size: 14px; line-height: 1.7; }
-.onboarding-copy { max-width: 490px; margin: 16px auto 24px; color: var(--text-secondary); font-size: 12px; line-height: 1.7; text-wrap: pretty; }
-.onboarding-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin-top: 24px; }
+.onboarding-actions { display: flex; justify-content: center; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
 .onboarding-actions button { min-width: 120px; min-height: 44px; padding: 12px 22px; border: 1px solid var(--border-subtle); border-radius: 100px; background: rgba(255,255,255,.035); color: var(--text-secondary); cursor: pointer; font-size: 11px; transition: background .2s ease, border-color .2s ease; }
 .onboarding-actions button.primary { background: var(--text-primary); color: var(--void); }
 .onboarding-actions button:disabled { opacity: .3; cursor: not-allowed; }
-.pathway-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
+.pathway-grid { margin-top: 28px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; }
 .pathway-choice { min-height: 54px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 13px; background: rgba(255,255,255,.025); color: var(--text-secondary); cursor: pointer; font-size: 12px; transition: border-color .2s ease, background .2s ease; }
 .pathway-choice:hover { border-color: var(--border-hover); background: rgba(255,255,255,.05); }
 .pathway-choice.selected { border-color: rgba(219,169,223,.55); background: rgba(177,104,183,.09); color: var(--text-primary); }
 .selection-count { margin: 15px 0 0; color: var(--text-muted); font-size: 10px; }
 .selection-count strong { color: var(--text-secondary); }
-.trait-list { display: grid; gap: 18px; width: min(480px,100%); margin: auto; text-align: left; }
+.trait-list { display: grid; gap: 24px; width: min(480px,100%); margin: 28px auto 0; text-align: left; }
 .trait-control label { display: block; margin-bottom: 8px; color: var(--text-primary); font-size: 11px; }
 .dimension-labels { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--text-secondary); font-size: 10px; }
 .trait-control input[type=range] { display: block; width: 100%; margin: 0; min-height: 26px; accent-color: #d0a6d5; cursor: pointer; }
@@ -45,7 +43,6 @@
 .profile-list { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
 .profile-list li { display: flex; flex-direction: column; gap: 7px; padding: 12px; border: 1px solid var(--border-subtle); border-radius: 12px; color: var(--text-muted); font-size: 10px; }
 .profile-list strong { color: var(--text-secondary); font-weight: 500; }
-.identity-note { max-width: 500px; margin: 18px auto 0; color: var(--text-muted); font-size: 10px; line-height: 1.7; }
 .creation-error { min-height: 15px; color: #d6a7a7; font-size: 11px; }
 .birth-card > span { display: block; margin-top: 14px; color: var(--text-secondary); font-size: 12px; }
 .awakening-progress { width: min(440px,100%); margin: 22px auto 0; padding: 16px; }

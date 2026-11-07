@@ -1,6 +1,7 @@
 import {NetworkView} from '../network/network-view.js';
-import {semanticSummary} from '../network/activity-data.js';
-import { bindSemanticAllowance } from './semantic-allowance-control.js';
+import {ClarificationNotifications} from './clarification-notifications.js';
+import {ResearchAccess} from './research-access.js';
+import {pendingClarifications} from '../autonomous/clarification-tasks.js';
 import { activityReward } from '../economy/xp.js';
 import { StageChip } from './stage-chip.js';
 import { stageMorphologyCounts } from '../renderer/stage-presentation.js';
@@ -39,7 +40,6 @@ export class Dashboard {
   #eventUnsubscribes = [];
   #onClarification;
   #onResearchAccess;
-  #onSemanticAllowance;
   #onCancelClarification;
 
   constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, onSemanticAllowance=null, readOnly = false } = {}) {
@@ -49,7 +49,7 @@ export class Dashboard {
       node.title=label;node.setAttribute('aria-label',label);
       const small=node.querySelector('small');if(small)small.textContent=`${policy.energyCost} Energy · +${reward} XP`;
     }
-    this.#onSemanticAllowance=readOnly?null:onSemanticAllowance;this.#onResearchAccess=onResearchAccess;this.onLearningTask=onLearningTask;this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
+    this.#onResearchAccess=onResearchAccess;this.onLearningTask=onLearningTask;this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
     this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
     this.primaryView='dashboard';
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask});
@@ -70,7 +70,13 @@ export class Dashboard {
       events.on(EVENTS.EVENT_HANDLER_FAILED, () => this.#showStatus("A dashboard update could not be completed")),
       events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
-    this.#mountResearchSettings();
+    if(!readOnly&&onResearchAccess)this.researchAccess=new ResearchAccess(document.querySelector('#app'),{getState:()=>this.#state,onSave:enabled=>this.#onResearchAccess(enabled),canAct:()=>!this.locked});
+    this.notifications=new ClarificationNotifications(document.querySelector('.header-status'),{canAct:()=>!this.locked,onAccess:this.researchAccess?()=>this.researchAccess.open():null,onTask:!readOnly&&onLearningTask?async id=>{
+      if(this.#pending||!pendingClarifications(this.#state).some(task=>task.id===id))throw Error('Clarification unavailable.');
+      const identity=this.#state.mindlingId,result=await this.onLearningTask('clarify',id);
+      if(identity!==this.#state?.mindlingId||this.#listeners.signal.aborted)return;
+      if(result?.needsClarification){this.showClarification(result.talkResponse);document.querySelector('[data-talk-content] button')?.focus();}
+    }:null});
     this.#form = document.querySelector("#interaction-form");
     this.#handleSubmit = (event) => this.#submitInteraction(event);
     if (!readOnly) {
@@ -124,13 +130,9 @@ export class Dashboard {
   }
 
   render(state) {
-    if(this.#state?.mindlingId!==state.mindlingId){this.researchDialog?.close();this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
+    if(this.#state?.mindlingId!==state.mindlingId){this.researchAccess?.close();this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
-    if(this.researchSetting&&!this.researchDialog.open){this.researchSetting.checked=Boolean(state.researchPermissions?.enabled);}
-    this.semanticAllowance?.refresh(!this.researchDialog.open);
-    const learningStatus=this.researchDialog?.querySelector('[data-autonomous-status]');if(learningStatus)learningStatus.textContent=`Autonomous learning: ${state.autonomousStatus||'PAUSED'}${state.autonomousTask?' · '+state.autonomousTask:''}${state.autonomousReason?' — '+state.autonomousReason:''}`;
-    const savedLimit=this.researchDialog?.querySelector('[data-automatic-saved]');if(savedLimit)savedLimit.textContent=`Saved ceiling: ${state.researchPermissions?.automaticRequestLimit??12} inference reservations per UTC day`;
-    const summary=this.researchDialog?.querySelector('[data-semantic-summary]');if(summary){const d=semanticSummary(state);summary.textContent=`Semantic analysis: ${d.pending} scheduled · ${d.running} running · ${d.completed} completed · ${d.failed} failed. Today: ${d.reserved} reserved, ${d.callsCompleted} completed, ${d.remaining} extra calls available. Detailed diagnostics are in Network.`;}
+    this.researchAccess?.refresh();this.notifications?.update(state);
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
       neurons: brain.neurons ?? '—',
@@ -315,18 +317,6 @@ export class Dashboard {
     if(access.topic){const button=document.createElement('button');button.type='button';button.textContent=`Confirm public subject: ${access.topic}`;content.append(button);button.addEventListener('click',async()=>{if(this.#pending)return;button.disabled=true;try{const result=await this.onLearningTask('review-topic',access.taskId,{choice:'confirm-subject'});status.textContent=result.message;content.replaceChildren();}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});}
   }
 
-  #mountResearchSettings(){
-    if(!this.#onResearchAccess)return;
-    const footer=document.querySelector('.footer-links'),open=document.createElement('button'),dialog=document.createElement('dialog');open.type='button';open.textContent='Settings';open.className='research-settings-link';
-    dialog.className='research-settings glass-panel';dialog.setAttribute('aria-labelledby','research-settings-title');
-    dialog.innerHTML='<h2 id="research-settings-title">Mindling settings</h2><label><input type="checkbox" data-planning-access> Enable autonomous learning</label><p>Mindling researches public topics and follows useful knowledge gaps while the app is active. The existing AI connection and hosted web search may incur charges. Automatic tasks are at least 10 minutes apart and require Energy readiness. A daily reservation ceiling limits API exposure; unknown work remains reserved. Automatic research does not spend additional Energy. Each task: at most 2 web tool calls, 4 inference requests and 3 accepted memories. Search receives public topics only. Private identity keys and wallet data are never shared. External actions require separate authorization. Disabling stops active work and prevents new memory integration.</p><label>Automatic research safety limit <select data-automatic-limit><option value="4">4 inference reservations/day</option><option value="8">8 inference reservations/day</option><option value="12">12 inference reservations/day</option><option value="20">20 inference reservations/day</option><option value="40">40 inference reservations/day</option></select></label><p>Each automatic task reserves 4 requests before starting. Raising this limit authorizes additional potential API costs. Reservations are ceilings, not billed usage.</p><p data-automatic-saved></p><label>Extra semantic analysis <select data-semantic-allowance aria-describedby="semantic-cost-note"><option value="0">0 calls/day</option><option value="1">1 call/day</option><option value="2">2 calls/day</option><option value="3">3 calls/day</option></select></label><p id="semantic-cost-note">Additional API costs may apply. Extra calls are shared across this Mindling’s deferred semantic tasks, within existing scheduling limits. Select 0 to disable extra calls.</p><p data-semantic-saved role="status"></p><div class="clarification-choices"><button type="button" data-save-semantic>Save extra semantic analysis</button></div><p data-semantic-feedback role="status"></p><p data-semantic-summary></p><p data-autonomous-status role="status"></p><p data-settings-feedback role="status"></p><div class="clarification-choices"><button type="button" data-save-access>Save</button><button type="button" data-close-settings>Close</button></div>';
-
-    this.researchSetting=dialog.querySelector('[data-planning-access]');document.querySelector('#app').append(dialog);footer.append(open);this.researchDialog=dialog;this.researchSettingsButton=open;
-    this.semanticAllowance=bindSemanticAllowance(dialog,{getState:()=>this.#state,onSave:this.#onSemanticAllowance,listen:(...args)=>this.#listen(...args),alive:()=>!this.#listeners.signal.aborted,onPending:pending=>{dialog.querySelector('[data-save-access]').disabled=pending;this.researchSetting.disabled=pending;}});
-    this.#listen(open,'click',()=>{this.semanticAllowance.refresh(true);this.researchSetting.checked=Boolean(this.#state?.researchPermissions?.enabled);dialog.querySelector('[data-automatic-limit]').value=String(this.#state?.researchPermissions?.automaticRequestLimit??12);dialog.showModal();});this.#listen(dialog.querySelector('[data-close-settings]'),'click',()=>dialog.close());
-    this.#listen(dialog.querySelector('[data-save-access]'),'click',async event=>{const button=event.currentTarget,identity=this.#state?.mindlingId;button.disabled=true;this.semanticAllowance.setBusy(true);try{await this.#onResearchAccess(this.researchSetting.checked,Number(dialog.querySelector('[data-automatic-limit]').value));if(this.#state?.mindlingId===identity)dialog.querySelector('[data-settings-feedback]').textContent='Access preference saved.';}catch(error){dialog.querySelector('[data-settings-feedback]').textContent=error.message;}finally{button.disabled=false;this.semanticAllowance.setBusy(false);}});
-  }
-
   async #resumeClarification(model,choice,detail=''){
     if(this.#pending||this.talkDismissed||this.talkRequest!==model.requestId||!this.#onClarification)return;
     this.#pending=true;const identity=this.#state?.mindlingId,panel=document.querySelector('[data-talk-response]'),controls=[...panel.querySelectorAll('button:not([data-dismiss-talk]),input')];controls.forEach(node=>node.disabled=true);this.#form.classList.add('processing');
@@ -346,7 +336,7 @@ export class Dashboard {
 
   destroy() {
     if (this.#listeners.signal.aborted) return;
-    this.researchDialog?.close();this.researchDialog?.remove();this.researchSettingsButton?.remove();
+    this.researchAccess?.destroy();this.notifications?.destroy();
     this.#listeners.abort();
     this.#setPrimaryView("dashboard",false);
     this.#memoryMap.destroy();
