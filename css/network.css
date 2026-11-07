@@ -6,7 +6,7 @@
 .network-plot{position:relative;flex:1;min-height:0;overflow:hidden;border-radius:6px;background:var(--surface-deep)}
 .network-plot canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .network-cloud{grid-column:1/-1}
-.network-cloud-plot{background:radial-gradient(ellipse at 50% 55%,var(--accent-muted),transparent 65%),var(--surface-deep)}
+.network-cloud-plot{background:transparent}
 .network-legend{display:flex;justify-content:flex-end;gap:16px;flex:none;margin:0 2px 12px;font-size:9px;color:var(--life-rest)}
 .network-legend span:nth-child(2){color:var(--accent)}
 .network-legend span:nth-child(3){color:var(--life-nutrition)}
