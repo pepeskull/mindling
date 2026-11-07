@@ -1,3 +1,4 @@
+import {direct as relevantFixture} from './support/subject-evaluation-fixture.cjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {createHash,webcrypto} from 'node:crypto';
@@ -44,7 +45,7 @@ async function api(context,{mode='research-acquire',finish='stop',forgedQuote=fa
   inferences++;assert.equal(body.max_completion_tokens,2600);const data=JSON.parse(body.messages[1].content);
   assert.deepEqual(data.existingKnowledge,learning);assert.match(body.messages[0].content,/Different provenance does not imply/);
   const claim={sourceId:data.sources[0].id,quote:forgedQuote?taught.content:data.sources[0].text,category:data.existingKnowledge.categories[0].name,topic:'Dendrites, soma, and axon',reason:'Mock classification: substantial anatomical overlap, with additional nucleus detail; not whole-claim equivalence.',validAt:null};
-  return Response.json({choices:[{finish_reason:finish,message:{content:JSON.stringify({claims:[claim],limitations:['Tool-cited synthesis is not independently verified.'],nextQuestion:null})}}]});
+  return Response.json({choices:[{finish_reason:finish,message:{content:JSON.stringify(relevantFixture({claims:[claim],limitations:['Tool-cited synthesis is not independently verified.'],nextQuestion:null}))}}]});
  };
  const req=Object.assign(new EventEmitter(),{method:'POST',headers:{host:'localhost','x-forwarded-for':'neuron-'+(++serial)},body:{id:sha(String(serial)),mode,context}});
  const res=Object.assign(new EventEmitter(),{setHeader(){},status(n){this.code=n;return this;},json(b){this.body=b;this.writableEnded=true;return this;}});
@@ -69,7 +70,7 @@ try{
  app.state.mind.memories=[structuredClone(taught)];app.state.mind.categories=structuredClone(mind.categories);
  const at=Date.now(),id=sha('neuron-task'),source=res.body.acquisition.sources[0];
  const pending={quote:claim.quote,quoteHash:sha(claim.quote),sourceURL:source.url,sourceHash:source.hash,observedAt:at,validAt:null,category:claim.category,topic:claim.topic};
- const task={id,version:1,engineVersion:4,mindlingId:app.state.mind.id,requestId:id,run:'run',mode:'FOUNDATION',topic:'Neuroscience',objective:'Learn about Neuroscience',autonomous:true,energyCharged:true,status:'EVALUATING',code:'EVALUATING',message:'Checking evidence.',createdAt:at,updatedAt:at,attempts:1,sourceRequests:2,completedWork:['understanding','plan','source','evidence','retrieval'],referenceIds:[taught.id],knowledgeIds:[],plan:input.plan,timeSensitive:false,limitations:res.body.acquisition.evaluation.limitations,pendingEvidence:[pending],sourceReferences:[{url:source.url,hash:source.hash,authorizedAt:at,observedAt:at,type:'web-search-synthesis'}]};
+ const task={id,version:1,engineVersion:4,mindlingId:app.state.mind.id,requestId:id,run:'run',mode:'FOUNDATION',sourcePlan:{request,queries:input.queries,sourceCategory:'web',available:true},topic:'Neuroscience',objective:'Learn about Neuroscience',autonomous:true,energyCharged:true,status:'EVALUATING',code:'EVALUATING',message:'Checking evidence.',createdAt:at,updatedAt:at,attempts:1,sourceRequests:2,completedWork:['understanding','plan','source','evidence','retrieval'],referenceIds:[taught.id],knowledgeIds:[],plan:input.plan,timeSensitive:false,limitations:res.body.acquisition.evaluation.limitations,pendingEvidence:[pending],sourceReferences:[{url:source.url,hash:source.hash,authorizedAt:at,observedAt:at,type:'web-search-synthesis'}]};
  app.state.mind.learningTasks=[task];const energy=structuredClone(app.state.mind.energy),xp=app.state.mind.lifetimeXP;
  const engine={app,loadPermissions:async()=>({enabled:true}),grant:()=>null,assertLive(){},notify(){},recover(){},async patch(id,run,fn){await app.change(s=>{fn(s.mind.learningTasks[0]);return s;});return app.state.mind.learningTasks[0];}};
  await AutonomousLearningEngine.prototype.integrate.call(engine,task,'run',new AbortController(),{enabled:true});

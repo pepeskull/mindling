@@ -1,3 +1,4 @@
+import {direct as relevantFixture} from './support/subject-evaluation-fixture.cjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
@@ -21,11 +22,11 @@ async function api({mode='research-acquire',context:input=context,propose=evalua
     if(url.endsWith('/responses')){assert.equal(JSON.parse(options.body).max_tool_calls,2);return Response.json(searchPayload());}
     assert.equal(url,'https://api.openai.com/v1/chat/completions');
     const body=JSON.parse(options.body),data=JSON.parse(body.messages[1].content);
-    assert.equal(body.max_completion_tokens,2600);assert.equal(body.model,'opaque-model');assert.deepEqual(body.response_format.json_schema.schema,sourceEvaluationSchemaFor(data.sources));
+    assert.equal(body.max_completion_tokens,2600);assert.equal(body.model,'opaque-model');assert.deepEqual(body.response_format.json_schema.schema,sourceEvaluationSchemaFor(data.sources,{subjectCheck:true}));
     assert.ok(data.sources.every(source=>Number.isSafeInteger(source.observedAt)));
     if(upstreamFailure==='abort')throw new DOMException('PRIVATE interrupted evaluation','AbortError');
     if(upstreamFailure)return Response.json({error:{message:'PRIVATE upstream failure'}},{status:503});
-    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(propose(data.sources)),refusal:null}}]});
+    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(propose(data.sources))),refusal:null}}]});
   };
   const req=Object.assign(new EventEmitter(),{method:'POST',headers:{host:'localhost','x-forwarded-for':`source-eval-${++sequence}`},body:{id:sha(String(sequence)),mode,context:input}});
   const res=Object.assign(new EventEmitter(),{status(code){this.code=code;return this;},json(body){this.body=body;this.writableEnded=true;return this;}});
@@ -114,4 +115,10 @@ test('legacy signed source text without separate passage metadata retains its ex
   const checkpoint=seal(evidence,request,sha('legacy-checkpoint'),'synthetic-private-key',context.plan);
   validateResearchCheckpoint(checkpoint);const before=structuredClone(checkpoint);
   const res=await api({mode:'research-evaluate',context:{checkpoint}});assert.equal(res.code,200);assert.equal(res.body.acquisition.evaluation.claims.length,2);assert.deepEqual(checkpoint,before);assert.equal(res.calls.some(c=>c.url.endsWith('/responses')),false);
+});
+
+test('off-topic assessment finishes source evaluation without claiming objective success',async()=>{
+ const input={...context,request:{...context.request,topic:'Italian Serie A'}};
+ const res=await api({context:input,propose:s=>{const value=evaluation(s);value.claims=value.claims.map(c=>({...c,relevance:'background'}));return value;}});
+ assert.equal(res.code,200);assert.equal(res.body.acquisition.sources.length,2);assert.equal(res.body.acquisition.evaluation.claims.length,0);assert.equal(res.body.execution.detail,'INSUFFICIENT_EVIDENCE');assert(res.body.execution.validation.rejections.every(r=>r.rule==='SUBJECT_MISMATCH'));assert.equal(res.calls.filter(c=>c.url.endsWith('/responses')).length,1);
 });

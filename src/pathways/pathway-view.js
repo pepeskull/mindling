@@ -28,12 +28,12 @@ export class AdaptivePathwaysView {
     for(let index=0;index<3;index++){
       const pathway=pathways[index],row=el('li');
       if(pathway&&pathway.source==='knowledge'){
-        const palette=(pathway.areaIds||[]).map(areaColor);
-        row.style.borderLeft='2px solid '+(palette[0]||NEUTRAL_COLOR);
-        row.style.paddingLeft='10px';
-        if(palette.length>1)row.style.borderImage=`linear-gradient(${palette.join(',')}) 1`;
-        row.style.setProperty('--pathway-area-color',palette[0]||NEUTRAL_COLOR);
-        row.append(el('strong',pathway.title,'development-live-title'),el('span',percent.format(pathway.share),'development-live-share'),el('span',pathway.area,'development-live-area'),el('span',`${pathway.count.toLocaleString()} retained ${pathway.count===1?'memory':'memories'}`,'development-live-count'));
+        row.append(el('strong',pathway.title,'development-live-title'),el('span',percent.format(pathway.share),'development-live-share'));
+        const areas=el('span',undefined,'development-live-area');
+        for(const area of pathway.areas||[]){const marker=el('span',`${area.label} · ${area.count}`);marker.style.display='inline-block';marker.style.marginRight='10px';marker.style.borderLeft=`2px solid ${area.label==='Uncategorized'?NEUTRAL_COLOR:areaColor(area.id)}`;marker.style.paddingLeft='6px';marker.dataset.areaId=area.id;areas.append(marker);}
+        if(!areas.childNodes.length)areas.textContent=pathway.area;
+        row.append(areas,el('span',`${pathway.count.toLocaleString()} retained ${pathway.count===1?'memory':'memories'}`,'development-live-count'));
+
       }else if(pathway?.source==='origin'){
         row.append(el('strong',pathway.title,'development-live-title'),el('span','Origin interest · develops through learning.','development-live-area'));
       }else{

@@ -293,7 +293,7 @@ export class Dashboard {
       const model=reply.clarification;status.textContent='';const question=document.createElement('p');question.textContent=model.question;content.append(question);
       const choices=document.createElement('div');choices.className='clarification-choices';choices.setAttribute('role','group');choices.setAttribute('aria-label',model.question);
       for(const option of model.options){const button=document.createElement('button');button.type='button';button.textContent=option.label;button.disabled=!this.#onClarification;button.addEventListener('click',()=>this.#resumeClarification(model,option.id));choices.append(button);}content.append(choices);
-      if(model.freeText){const form=document.createElement('form'),label=document.createElement('label'),input=document.createElement('input'),send=document.createElement('button');label.textContent='Your clarification';input.maxLength=300;input.required=true;input.setAttribute('aria-label',model.question);send.type='submit';send.textContent='Continue';label.append(input);label.className='clarification-input';form.className='clarification-form';form.append(label,send);form.addEventListener('submit',event=>{event.preventDefault();if(input.reportValidity())this.#resumeClarification(model,'text',input.value);});content.append(form);}
+      if(!model.options.length){const note=document.createElement('p');note.textContent='Mindling cannot safely resolve this request from the available information. No research will start.';content.append(note);}
       this.clarificationInputValue=document.querySelector('#mindling-input').value;return;
     }
     status.textContent=reply.memoryIds.length?`${reply.memoryIds.length} stored memories referenced · ${reply.uncertainty} uncertainty${reply.insufficientInformation?' · Limited supporting knowledge':''}`:'No relevant stored knowledge available';
@@ -310,11 +310,11 @@ export class Dashboard {
     this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply:{researchAccess:{taskId:task.id,requestId:id,topic},memoryIds:[]}});
   }
   #renderResearchAccess(content,status,access){
-    status.textContent='Which public topic should Mindling research?';
-    const copy=document.createElement('p');copy.textContent='Omit personal details. Your saved Settings authorization remains in control.';content.append(copy);
-    const label=document.createElement('label'),input=document.createElement('input'),button=document.createElement('button');label.textContent='Public topic';input.maxLength=120;input.required=true;input.value=access.topic||'';label.append(input);button.type='button';button.textContent='Continue';content.append(label,button);
-    button.addEventListener('click',async()=>{if(!input.reportValidity()||this.#pending)return;button.disabled=true;try{const result=await this.onLearningTask('review-topic',access.taskId,{topic:input.value.trim()});status.textContent=result.message;content.replaceChildren();}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});
+    status.textContent='Mindling could not safely confirm a public research subject.';
+    const copy=document.createElement('p');copy.textContent='The original request is preserved. Private or ambiguous information will not be sent automatically.';content.append(copy);
+    if(access.topic){const button=document.createElement('button');button.type='button';button.textContent=`Confirm public subject: ${access.topic}`;content.append(button);button.addEventListener('click',async()=>{if(this.#pending)return;button.disabled=true;try{const result=await this.onLearningTask('review-topic',access.taskId,{choice:'confirm-subject'});status.textContent=result.message;content.replaceChildren();}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});}
   }
+
   #mountResearchSettings(){
     if(!this.#onResearchAccess)return;
     const footer=document.querySelector('.footer-links'),open=document.createElement('button'),dialog=document.createElement('dialog');open.type='button';open.textContent='Settings';open.className='research-settings-link';

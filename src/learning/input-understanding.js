@@ -38,7 +38,7 @@ export function understandInput(text, activity, {answers={}}={}) {
   }
   const exclusion=normalizedText.match(/(?:do not|don't|never)\s+(?:learn|research|study)(?:\s+about)?\s+(.+?)(?:[.!?]|$)/iu)?.[1]||normalizedText.match(/lär(?: dig)? inte(?: om)?\s+(.+?)(?:[.!?]|$)/iu)?.[1];
   if(pending?.kind==='restriction'&&answers.detail&&exclusion&&exclusion.length<=80){pending=null;intent=activity==='TALK'?'QUESTION':activity==='DEEP_TRAINING'?'DEEP_LEARNING':'TOPIC_LEARNING';}
-  const topic=normalizedText.replace(command,'').replace(/^\s*(?:about|om)\s+/iu,'').replace(/[.!?。！？]+$/u,'').trim().slice(0,160)||normalizedText.slice(0,160);
+  const topic=normalizedText.replace(command,'').replace(/^\s*(?:about|abot|om)\s+/iu,'').replace(/[.!?。！？]+$/u,'').trim().slice(0,160)||normalizedText.slice(0,160);
   const researchRequest=['QUESTION','TOPIC_LEARNING','DEEP_LEARNING'].includes(intent);
   const scope={};if(exclusion&&answers.detail)scope.excludedTopics=[exclusion];
   const count=normalizedText.match(/\b(?:top|first|last|topp|första|sista)\s+(\d{1,3})\b/iu);if(count)scope.count=Number(count[1]);
@@ -61,6 +61,7 @@ export function understandInput(text, activity, {answers={}}={}) {
   if(answers.detail)scope.detail=answers.detail;
   const suffix=answerText(answers),requestText=suffix?`${normalizedText}\nClarification: ${suffix}`:normalizedText;
   if(requestText.length>2000)throw Error('The clarified request exceeds 2,000 characters. Shorten the request without dropping its constraints.');
+  if(pending&&!pending.options.length&&['criterion','depth'].includes(pending.kind)&&researchRequest)pending=null;
   if(pending)intent='CLARIFICATION';
   const depth=activity==='DEEP_TRAINING'?LEARNING_MODES.DEEP:activity==='TALK'?LEARNING_MODES.TALK_RESEARCH:LEARNING_MODES.FOUNDATION;
   return Object.freeze({version:1,intent,normalizedText,topic,scope:Object.freeze(scope),depth,requiresResearch:['TOPIC_LEARNING','DEEP_LEARNING'].includes(intent),timeSensitive:fresh.test(normalizedText)||/\b(?:who|which team|vilket lag)\b.*\b(?:leads?|leder)\b/iu.test(normalizedText)||['standings','form'].includes(answers.metric)||Boolean(answers.period),clarification:pending,selfInquiry,requestText,answers:{...answers},factText:answers.action==='statement'?answers.detail:null,language:sv?'sv':'en',
