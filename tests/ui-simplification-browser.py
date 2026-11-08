@@ -8,7 +8,7 @@ with sync_playwright() as p:
   context=browser.new_context(viewport={'width':1500,'height':1000},reduced_motion='reduce');errors=[];api=[]
   context.route('**/*',lambda r:r.continue_() if r.request.url.startswith(BASE+'/') and '/api/' not in r.request.url else r.abort())
   context.route('**/js/bootstrap.js',lambda r:r.fulfill(body='',content_type='application/javascript'))
-  page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:api.append(r.url) if '/api/' in r.url else None)
+  page=context.new_page();handle_dialog=lambda d:d.accept();page.on('dialog',handle_dialog);page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:api.append(r.url) if '/api/' in r.url else None)
   page.goto(BASE+('/?stage-preview=1' if preview else '/'))
   page.evaluate('''async()=>{const {Onboarding}=await import('/src/ui/onboarding.js');window.draft=null;window.onboarding=new Onboarding(document.querySelector('#onboarding'),async value=>{window.draft=value;await onboarding.birth(value.name);});onboarding.show();}''')
   assert page.locator('.onboarding-lead,.onboarding-copy,.identity-note').count()==0
@@ -59,7 +59,11 @@ with sync_playwright() as p:
   bell.click();switch=page.get_by_role('switch')
   assert switch.get_attribute('aria-checked')=='false'
   assert page.evaluate('engine.preferences.enabled===false && !engine.preferences.decided')
-  switch.click();page.wait_for_function('engine.preferences.enabled===true')
+  assert page.locator('#research-consent').count()==0
+  page.remove_listener('dialog',handle_dialog);page.once('dialog',lambda d:d.dismiss());switch.click()
+  assert switch.get_attribute('aria-checked')=='false'
+  assert page.evaluate('engine.preferences.enabled===false')
+  page.on('dialog',handle_dialog);switch.click();page.wait_for_function('engine.preferences.enabled===true')
   assert switch.get_attribute('aria-checked')=='true'
   assert page.evaluate('recoveries===1 && engine.preferences.automaticRequestLimit===12 && engine.preferences.semanticCallsPerDay===0')
   switch.click();page.wait_for_function('engine.preferences.enabled===false && engine.preferences.decided')

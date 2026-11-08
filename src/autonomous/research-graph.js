@@ -40,5 +40,5 @@ export function layoutResearch(layout,graph){
     });
   });
   const ids=new Set(nodes.map(node=>node.id));
-  return {nodes,edges:graph.edges.filter(edge=>ids.has(edge.from)&&ids.has(edge.to)),width:Math.max(layout.width,Math.min(3,roots.length)*280+60),height:base+Math.floor((roots.length-1)/3)*250+130};
+  return {nodes,edges:[...layout.edges,...graph.edges.filter(edge=>edge.kind==='research')].filter(edge=>ids.has(edge.from)&&ids.has(edge.to)),width:Math.max(layout.width,Math.min(3,roots.length)*280+60),height:base+Math.floor((roots.length-1)/3)*250+130};
 }

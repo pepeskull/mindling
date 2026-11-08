@@ -13,7 +13,7 @@ test('canonical hierarchy is direction-independent, retains claims and child ide
  assert.deepEqual(m,before);assert.deepEqual(next.memories,before.memories);assert.equal(after.stats.areas,2);assert.equal(after.stats.canonical,3);assert.equal(after.stats.associations,1);assert.equal(after.areas.length,3);
  assert.equal(after.areas.find(a=>a.id===b).parentId,a);assert.equal(after.coverage.reduce((n,a)=>n+a.count,0),3);assert.equal(after.coverage.find(n=>n.id===a).count,2);assert.equal(after.distribution.find(n=>n.id===b).count,1);
  assert.equal(filterGraph(after,{area:a}).memories.length,2);assert.equal(filterGraph(after,{area:b}).memories.length,1);assert.notEqual(memorySignature(m),memorySignature(next));
- const layout=layoutGraph(filterGraph(after)),root=layout.nodes.find(n=>n.id===a);assert(root.r>18);assert(clusterPositions(layout,a).some(p=>p.node.id===b));assert(!clusterPositions(layout,b).some(p=>p.node.id===a));
+ const layout=layoutGraph(filterGraph(after)),root=layout.nodes.find(n=>n.id===a);assert(root.r>18);assert(clusterPositions(layout,a).some(p=>p.node.id===b));assert.equal(layout.nodes.find(n=>n.id===b).kind,'topic');assert(!clusterPositions(layout,b).some(p=>p.node.id===a));
  assert.throws(()=>commitHierarchy(next,after,p),/changed/);assert.equal(mergeProposal(after,next.knowledgeHierarchy,a,b).valid,false);
 });
 test('unrelated, siblings, substring-only, unknown, dangling and cyclic proposals fail closed',()=>{
@@ -42,11 +42,11 @@ test('Live Pathways retains child colors, per-area attribution, ranking and perc
  const child=after[0].areas.find(a=>a.label==='Association football');assert.deepEqual(child.path,['Sport','Association football']);assert.equal(child.count,2);assert.equal(areaColor(child.id),areaColor(before[0].areas.find(a=>a.id===child.id).id));
 });
 test('research switch shows only persisted authorization, locks pending writes and preserves explicit opt-out after failures',async()=>{
- const old=globalThis.document;class Element{constructor(){this.attrs={};this.children=[];}setAttribute(k,v){this.attrs[k]=v;}append(n){this.children.push(n);}addEventListener(){}querySelector(s){return this.children[s]??=new Element();}remove(){}}
+ const oldConfirm=globalThis.confirm;globalThis.confirm=()=>true;const old=globalThis.document;class Element{constructor(){this.attrs={};this.children=[];}setAttribute(k,v){this.attrs[k]=v;}append(n){this.children.push(n);}addEventListener(){}querySelector(s){return this.children[s]??=new Element();}remove(){}}
  globalThis.document={createElement:()=>new Element()};let state={mindlingId:'one',researchPermissions:{loaded:true,enabled:false,decided:true,semanticCallsPerDay:3}},resolve;
  const control=new ResearchAccess(new Element(),{getState:()=>state,onSave:enabled=>new Promise(r=>{resolve=()=>{state.researchPermissions={...state.researchPermissions,enabled};r(state.researchPermissions);};})});
  try{assert.equal(control.save.attrs['aria-checked'],'false');const pending=control.commit();assert.equal(control.save.disabled,true);assert.equal(control.save.attrs['aria-checked'],'false');resolve();await pending;assert.equal(control.save.attrs['aria-checked'],'true');assert.equal(state.researchPermissions.semanticCallsPerDay,3);
  control.onSave=async()=>{throw Error('write rejected');};await control.commit();assert.equal(control.save.attrs['aria-checked'],'true');assert.match(control.status.textContent,/unchanged/);
  state={mindlingId:'two',researchPermissions:{loaded:true,enabled:false,decided:true}};control.refresh();assert.equal(control.save.attrs['aria-checked'],'false');
- }finally{control.destroy();globalThis.document=old;}
+ }finally{control.destroy();globalThis.document=old;globalThis.confirm=oldConfirm;}
 });

@@ -27,7 +27,7 @@ export function commitHierarchy(mind,graph,proposal){
  if(!fresh.valid||fresh.parentId!==proposal.parentId)throw Error(fresh.reason||'Hierarchy validation failed.');
  return {...mind,knowledgeHierarchy:{version:1,revision:proposal.revision+1,links:[...hierarchyLinks(mind.knowledgeHierarchy,graph.areas),{parentId:fresh.parentId,childId:fresh.childId,basis:fresh.basis}]}};
 }
-export const areaRadius=area=>18+Math.min(24,Math.sqrt(Math.max(0,(area.descendantMemoryIds?.length||area.memoryIds.length)-area.memoryIds.length))*4);
+export const areaRadius=area=>18+Math.min(38,7*Math.sqrt(Math.max(0,new Set(area.descendantMemoryIds||area.memoryIds).size-1)));
 export function projectHierarchy(areas,memories,edges,hierarchy){
  const byId=new Map(areas.map(a=>[a.id,a]));
  for(const a of areas){a.childIds=[];a.ancestorIds=[];a.descendantMemoryIds=[...a.memoryIds];}
