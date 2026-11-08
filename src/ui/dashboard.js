@@ -42,7 +42,7 @@ export class Dashboard {
   #onResearchAccess;
   #onCancelClarification;
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, onSemanticAllowance=null, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onMemoryView=null, onMergeAreas=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, onSemanticAllowance=null, readOnly = false } = {}) {
     for(const node of document.querySelectorAll('[data-activity-mode], [data-input-mode]')){
       const mode=node.dataset.activityMode||node.dataset.inputMode,policy=LIFE_RULES.activity[mode];if(!policy)continue;
       const reward=activityReward(mode),label=`${policy.label}: ${policy.energyCost} Energy · +${reward} XP`;
@@ -52,7 +52,7 @@ export class Dashboard {
     this.#onResearchAccess=onResearchAccess;this.onLearningTask=onLearningTask;this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
     this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
     this.primaryView='dashboard';
-    this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask});
+    this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask,onMemoryView,onMergeAreas});
     this.#development = new DevelopmentView(document.querySelector("#development-view"));
     this.#network = new NetworkView(document.querySelector("#network-view"));
     this.#onViewChange = onViewChange;
@@ -70,13 +70,13 @@ export class Dashboard {
       events.on(EVENTS.EVENT_HANDLER_FAILED, () => this.#showStatus("A dashboard update could not be completed")),
       events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
-    if(!readOnly&&onResearchAccess)this.researchAccess=new ResearchAccess(document.querySelector('#app'),{getState:()=>this.#state,onSave:enabled=>this.#onResearchAccess(enabled),canAct:()=>!this.locked});
-    this.notifications=new ClarificationNotifications(document.querySelector('.header-status'),{canAct:()=>!this.locked,onAccess:this.researchAccess?()=>this.researchAccess.open():null,onTask:!readOnly&&onLearningTask?async id=>{
+    this.notifications=new ClarificationNotifications(document.querySelector('.header-status'),{canAct:()=>!this.locked,onTask:!readOnly&&onLearningTask?async id=>{
       if(this.#pending||!pendingClarifications(this.#state).some(task=>task.id===id))throw Error('Clarification unavailable.');
       const identity=this.#state.mindlingId,result=await this.onLearningTask('clarify',id);
       if(identity!==this.#state?.mindlingId||this.#listeners.signal.aborted)return;
       if(result?.needsClarification){this.showClarification(result.talkResponse);document.querySelector('[data-talk-content] button')?.focus();}
     }:null});
+    if(!readOnly&&onResearchAccess)this.researchAccess=new ResearchAccess(this.notifications.panel,{getState:()=>this.#state,onSave:enabled=>this.#onResearchAccess(enabled),canAct:()=>!this.locked});
     this.#form = document.querySelector("#interaction-form");
     this.#handleSubmit = (event) => this.#submitInteraction(event);
     if (!readOnly) {
@@ -130,7 +130,7 @@ export class Dashboard {
   }
 
   render(state) {
-    if(this.#state?.mindlingId!==state.mindlingId){this.researchAccess?.close();this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
+    if(this.#state?.mindlingId!==state.mindlingId){this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
     this.researchAccess?.refresh();this.notifications?.update(state);
     const brain=stageMorphologyCounts(state.stage);

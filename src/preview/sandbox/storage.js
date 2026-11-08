@@ -1,3 +1,4 @@
+import {memoryViewStore} from '../../memory/view-state.js';
 import { reconcileEvolution } from './engine.js';
 import { loadTraining, saveTraining, trainingSource } from '../../training/persistence.js';
 import { loadResearchPermissions, saveResearchPermissions, assertResearchGrant } from '../../autonomous/research-permissions.js';
@@ -10,6 +11,7 @@ export class PreviewStore {
   trainingSource(mindId) { return trainingSource(this.db, true, mindId); }
   trainingHistory(mindId) { return loadTraining(this.db, true, mindId); }
   saveTraining(record) { return saveTraining(this.db, true, record); }
+  memoryView(id,value){return memoryViewStore(this.db,true,id,value);}
   researchPermissions(id){return loadResearchPermissions(this.db,true,id);}
   saveResearchPermissions(id,choice){return saveResearchPermissions(this.db,true,id,choice);}
   async read() { return new Promise((resolve,reject)=>{const r=this.db.transaction('sandbox').objectStore('sandbox').get('state');r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error);}); }

@@ -30,7 +30,7 @@ export class AdaptivePathwaysView {
       if(pathway&&pathway.source==='knowledge'){
         row.append(el('strong',pathway.title,'development-live-title'),el('span',percent.format(pathway.share),'development-live-share'));
         const areas=el('span',undefined,'development-live-area');
-        for(const area of pathway.areas||[]){const marker=el('span',`${area.label} · ${area.count}`);marker.style.display='inline-block';marker.style.marginRight='10px';marker.style.borderLeft=`2px solid ${area.label==='Uncategorized'?NEUTRAL_COLOR:areaColor(area.id)}`;marker.style.paddingLeft='6px';marker.dataset.areaId=area.id;areas.append(marker);}
+        for(const area of pathway.areas||[]){const marker=el('span',`${area.path?.join(' › ')||area.label} · ${area.count}`);marker.style.display='inline-block';marker.style.marginRight='10px';marker.style.borderLeft=`2px solid ${area.label==='Uncategorized'?NEUTRAL_COLOR:areaColor(area.id)}`;marker.style.paddingLeft='6px';marker.dataset.areaId=area.id;areas.append(marker);}
         if(!areas.childNodes.length)areas.textContent=pathway.area;
         row.append(areas,el('span',`${pathway.count.toLocaleString()} retained ${pathway.count===1?'memory':'memories'}`,'development-live-count'));
 

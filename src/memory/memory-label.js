@@ -7,7 +7,7 @@ export const contextualLabel=(label,context)=>generic.test(label||'')&&context&&
 export function memoryLabel(node){
   const memory=node.raw||node,topic=semantic(memory.topic),area=semantic(node.areaLabel)||semantic(memory.category)||semantic(memory.areaSuggestion);
   const subject=claimStructure(memory).subjectLabel,context=semantic(subject);
-  return {title:contextualLabel(topic,context||area)||contextualLabel(area,context)||context||'Untitled memory',topic,subtitle:area||'Knowledge area unassigned',historical:node.historical??Boolean(memory.supersededBy||memory.intelligence?.current===false||memory.kind==='historical'||memory.intelligence?.kind==='historical')};
+  return {title:contextualLabel(topic,context||area)||contextualLabel(area,context)||context||'Untitled memory',topic,subtitle:node.areaPath?.length>1?node.areaPath.join(' › '):area||'Knowledge area unassigned',historical:node.historical??Boolean(memory.supersededBy||memory.intelligence?.current===false||memory.kind==='historical'||memory.intelligence?.kind==='historical')};
 }
 export function memoryContext(memory){const text=editableMemoryText(memory).replace(/\s+/gu,' ').trim();if(/https?:|source observation/iu.test(text))return 'Additional saved context';return text.length>96?text.slice(0,95)+'…':text;}
 export function memoryButton(node){

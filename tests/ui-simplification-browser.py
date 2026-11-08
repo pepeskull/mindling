@@ -55,22 +55,21 @@ with sync_playwright() as p:
   page.locator('[data-talk-content] .clarification-choices button').first.click()
   page.wait_for_function('document.querySelector(".notification-count").textContent==="1"')
   assert page.evaluate('app.state.mind.learningTasks.find(t=>t.id===ids[0]).scope.detail==="Foundations of Italian football"')
-  # Consent is preselected, explicitly inactive until saved, and not a full settings menu.
-  bell.click();page.get_by_role('button',name='Research access · Consent required',exact=True).click()
-  assert page.locator('[data-research-enabled]').is_checked()
+  # Switch reflects persisted state, including rejected saves and explicit opt-out.
+  bell.click();switch=page.get_by_role('switch')
+  assert switch.get_attribute('aria-checked')=='false'
   assert page.evaluate('engine.preferences.enabled===false && !engine.preferences.decided')
-  page.locator('[data-save-research]').click();page.wait_for_function('engine.preferences.enabled===true')
+  switch.click();page.wait_for_function('engine.preferences.enabled===true')
+  assert switch.get_attribute('aria-checked')=='true'
   assert page.evaluate('recoveries===1 && engine.preferences.automaticRequestLimit===12 && engine.preferences.semanticCallsPerDay===0')
-  page.locator('[data-research-enabled]').uncheck();page.locator('[data-save-research]').click();page.wait_for_function('engine.preferences.enabled===false && engine.preferences.decided')
-  page.locator('[data-close-research]').click();bell.click();page.get_by_role('button',name='Research access · Disabled',exact=True).click();assert not page.locator('[data-research-enabled]').is_checked()
-  page.locator('[data-close-research]').click()
+  switch.click();page.wait_for_function('engine.preferences.enabled===false && engine.preferences.decided')
+  assert switch.get_attribute('aria-checked')=='false'
   assert page.evaluate('''async()=>{await db.saveResearchPermissions(app.state.mind.id,{enabled:false,semanticCallsPerDay:3,automaticRequestLimit:8});await engine.loadPermissions(true);app.renderState();await engine.setAccess(false);const saved=await db.researchPermissions(app.state.mind.id);return saved.semanticCallsPerDay===3&&saved.automaticRequestLimit===8&&!saved.enabled;}''')
-  # A rejected save cannot make the selected draft look authorized.
   page.evaluate("()=>{window.savedAccess=engine.setAccess;engine.setAccess=async()=>{throw Error('offline save rejection');};}")
-  bell.click();page.get_by_role('button',name='Research access · Disabled',exact=True).click();page.locator('[data-research-enabled]').check();page.locator('[data-save-research]').click()
-  page.wait_for_function("document.querySelector('[data-access-status]').textContent.includes('could not be saved')")
+  switch.click();page.wait_for_function("document.querySelector('.research-access-switch [role=status]').textContent.includes('Could not save')")
+  assert switch.get_attribute('aria-checked')=='false'
   assert page.evaluate('engine.preferences.enabled===false && recoveries===1')
-  page.locator('[data-close-research]').click();page.evaluate('()=>{engine.setAccess=savedAccess;}')
+  page.evaluate('()=>{engine.setAccess=savedAccess;}');page.keyboard.press('Escape')
   # Exact remaining task can be cancelled; record and reserved accounting stay stored.
   page.evaluate('engine.act("cancel",ids[1])');page.wait_for_function('document.querySelector(".notification-count").hidden')
   assert page.evaluate('''()=>JSON.stringify([app.state.mind.memories,app.state.mind.pathways,app.state.mind.energy,app.state.mind.lifetimeXP])===original''')

@@ -87,6 +87,6 @@ test('two completed hosted calls plus one unfinished ID returns explicit account
   assert(url.endsWith('/responses'),'uncertain accounting must stop before evidence analysis');
   const payload=searchPayload();const tool=payload.output[0];payload.output=[{...tool,id:'one'},{...tool,id:'two'},{...tool,id:'three',status:'in_progress'},payload.output[1]];return Response.json(payload);
  });
- assert.equal(res.code,502);assert.equal(res.body.error.code,'TOOL_LIFECYCLE_INCOMPLETE');const d=validateServiceDiagnostic(res.body.error.diagnostic);assert.equal(d.detail,'TOOL_LIMIT_OUTCOME_UNKNOWN');assert.equal(d.completed,2);assert.equal(d.sourceCount,0);assert.equal(d.toolAccounting.dispatchUnknown,1);assert.equal(d.outcomeUnknown,true);assert.equal(res.body.acquisition,undefined);assert.equal(res.body.sourceCheckpoint,undefined);assert.equal(res.calls.filter(url=>url.endsWith('/responses')).length,1);
+ assert.equal(res.code,409);assert.equal(res.body.error.code,'TOOL_LIFECYCLE_INCOMPLETE');const d=validateServiceDiagnostic(res.body.error.diagnostic);assert.equal(d.detail,'TOOL_LIMIT_OUTCOME_UNKNOWN');assert.equal(d.completed,2);assert.equal(d.sourceCount,0);assert.equal(d.toolAccounting.dispatchUnknown,1);assert.equal(d.outcomeUnknown,true);assert.equal(res.body.acquisition,undefined);assert.equal(res.body.sourceCheckpoint,undefined);assert.equal(res.calls.filter(url=>url.endsWith('/responses')).length,1);
  assert.equal(canRetryResearch({code:res.body.error.code,sourceRequests:2,modelCalls:2,attempts:1,sourcePlan:{}}),false);
 });
