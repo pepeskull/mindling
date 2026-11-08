@@ -1,3 +1,4 @@
+import {renderHierarchy} from './merge-projection.js';
 import {projectHierarchy,areaRadius} from './knowledge-hierarchy.js';
 import { memoryLabel, contextualLabel, memoryContext } from './memory-label.js';
 // Read-only presentation projection. Never opens a database, classifies text or
@@ -77,6 +78,7 @@ export function filterGraph(graph,{area='all',query=''}={}) {
   return {nodes:graph.nodes.filter(node=>keep.has(node.id)),edges:graph.edges.filter(edge=>keep.has(edge.from)&&keep.has(edge.to)),memories:graph.memories.filter(node=>memoryIds.has(node.id))};
 }
 export function layoutGraph(graph) {
+  graph=renderHierarchy(graph);
   const result=new Map(),byId=new Map(graph.nodes.map(node=>[node.id,node]));
   const areas=graph.nodes.filter(node=>node.kind==='area').sort((a,b)=>compare(a.id,b.id));
   const membersByTopic=new Map(),topicsByArea=new Map();
@@ -95,27 +97,14 @@ export function layoutGraph(graph) {
     const cx=widths.slice(0,col).reduce((a,b)=>a+b,0)+widths[col]/2,cy=heights.slice(0,row).reduce((a,b)=>a+b,0)+heights[row]/2;
     result.set(area.id,{...area,x:cx,y:cy,r:areaRadius(area),clusterRadius:radius});
     topics.forEach((topic,j)=>{
-      const angle=-Math.PI/2+j*Math.PI*2/topics.length+index*.73;
+      const angle=-Math.PI/2+j*Math.PI*2/topics.length+(area.childIds?.length?0:index*.73);
       const x=cx+Math.cos(angle)*orbit,y=cy+Math.sin(angle)*orbit;
       result.set(topic.id,{...topic,x,y,r:8});
       const members=(membersByTopic.get(topic.id)||[]).slice().sort((a,b)=>compare(a.id,b.id));
       members.forEach((node,k)=>{const theta=k*2.399963229728653+angle,dist=35+22*Math.sqrt(k);result.set(node.id,{...node,x:x+Math.cos(theta)*dist,y:y+Math.sin(theta)*dist,r:node.historical?4:5.5});});
     });
   }
-  for(const area of areas.filter(a=>a.parentId).sort((a,b)=>a.ancestorIds.length-b.ancestorIds.length)){
-    const node=result.get(area.id),parent=result.get(area.parentId);if(!parent)continue;
-    const siblings=areas.filter(a=>a.parentId===area.parentId),i=siblings.indexOf(area),angle=i*2*Math.PI/siblings.length;
-    const distance=parent.clusterRadius+node.clusterRadius*.65,dx=parent.x+Math.cos(angle)*distance-node.x,dy=parent.y+Math.sin(angle)*distance-node.y;
-    for(const n of result.values())if(n.id===area.id||n.areaId===area.id){n.x+=dx;n.y+=dy;}
-  }
-  // The parent halo contains its retained child clusters; core size remains bounded.
-  for(const area of areas.filter(a=>a.parentId).sort((a,b)=>b.ancestorIds.length-a.ancestorIds.length)){
-    const node=result.get(area.id),parent=result.get(area.parentId);if(parent)parent.clusterRadius=Math.max(parent.clusterRadius,Math.hypot(node.x-parent.x,node.y-parent.y)+node.clusterRadius);
-  }
-  const hierarchical=areas.some(a=>a.parentId);
-  const values=[...result.values()],minX=Math.min(0,...values.map(n=>n.x-n.r-50)),minY=Math.min(0,...values.map(n=>n.y-n.r-50));
-  for(const n of values){n.x-=minX;n.y-=minY;}
-  return {nodes:[...result.values()],edges:graph.edges.filter(edge=>byId.has(edge.from)&&byId.has(edge.to)),width:hierarchical?Math.max(300,...values.map(n=>n.x+n.r+80)):Math.max(300,widths.reduce((a,b)=>a+b,0)),height:hierarchical?Math.max(260,...values.map(n=>n.y+n.r+80)):Math.max(260,heights.reduce((a,b)=>a+b,0))};
+  return {nodes:[...result.values()],edges:graph.edges.filter(edge=>byId.has(edge.from)&&byId.has(edge.to)),width:Math.max(300,widths.reduce((a,b)=>a+b,0)),height:Math.max(260,heights.reduce((a,b)=>a+b,0))};
 }
 
 // Observe only fields the visualization consumes. Life/Energy ticks must not

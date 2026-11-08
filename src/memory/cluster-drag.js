@@ -1,7 +1,7 @@
 // Only organization descendants move. Semantic bridges must not pull unrelated areas.
 export function clusterPositions(layout,areaId){
-  const areas=new Set([areaId,...layout.nodes.filter(node=>node.kind==='area'&&node.ancestorIds?.includes(areaId)).map(n=>n.id)]);
-  const ids=new Set(layout.nodes.filter(node=>areas.has(node.id)||areas.has(node.areaId)).map(n=>n.id));
+  const areas=new Set([areaId,...layout.nodes.filter(node=>(node.kind==='area'||node.hierarchyArea)&&node.ancestorIds?.includes(areaId)).map(n=>n.id)]);
+  const ids=new Set(layout.nodes.filter(node=>areas.has(node.id)||areas.has(node.areaId)||node.ancestorAreaIds?.includes(areaId)).map(n=>n.id));
   // Display-only task groups anchored to this area belong to its layout cluster.
   for(const node of layout.nodes)if(node.kind==='research'&&areas.has(node.anchor))ids.add(node.id);
   return layout.nodes.filter(node=>ids.has(node.id)).map(node=>({node,x:node.x,y:node.y}));
