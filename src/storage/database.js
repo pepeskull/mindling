@@ -1,3 +1,4 @@
+import {memoryViewStore} from '../memory/view-state.js';
 import { loadTraining, saveTraining, trainingSource } from '../training/persistence.js';
 import { reconcileEvolution } from '../preview/sandbox/engine.js';
 import { energyAt } from '../economy/energy.js';
@@ -31,6 +32,7 @@ export class MindlingDatabase {
   trainingSource(mindId) { return trainingSource(this.#db, false, mindId); }
   trainingHistory(mindId) { if (!this.#db) return Promise.reject(Error('Local storage is unavailable.')); return loadTraining(this.#db, false, mindId); }
   saveTraining(record) { if (!this.#db) return Promise.reject(Error('Local storage is unavailable.')); return saveTraining(this.#db, false, record); }
+  memoryView(id,value){return memoryViewStore(this.#db,false,id,value);}
   researchPermissions(id){return loadResearchPermissions(this.#db,false,id);}
   saveResearchPermissions(id,choice){return saveResearchPermissions(this.#db,false,id,choice);}
   async get(store, id) { return this.#request(store, "readonly", target => target.get(id)); }

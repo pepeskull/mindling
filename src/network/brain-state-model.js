@@ -24,7 +24,7 @@ export class BrainStateModel {
     const links=graph.edges.filter(edge=>edge.kind==='association'&&edge.persisted&&current.has(edge.from)&&current.has(edge.to)).sort((a,b)=>compare({id:a.from+'|'+a.to},{id:b.from+'|'+b.to}));
     this.playback.update(memories,links,graph.areas);
     const neurons=brain.nodes.slice().sort(compare),synapses=brain.synapses.slice().sort(compare);
-    this.summary={memories:memories.length,neurons:neurons.length,synapses:synapses.length,associations:links.length};
+    this.summary={areas:graph.stats.areas,memories:memories.length,neurons:neurons.length,synapses:synapses.length,associations:links.length};
     this.phase=hash(String(state.mindlingId||state.id||''))*Math.PI*2;
     const positions=new Map();this.profile.fill(0);
     const add=(center,width,weight)=>{for(let i=0;i<BINS;i++){const distance=(i/(BINS-1)-center)/width;this.profile[i]+=weight*Math.exp(-distance*distance);}};

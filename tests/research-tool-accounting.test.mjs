@@ -27,7 +27,7 @@ test('observation counters may report rejected provider overrun, while reservati
 });
 test('production HTTP200: two completed IDs and one unfinished ID is uncertain, not three completed searches',()=>{
  const trace={};assert.throws(()=>accountTools({status:'completed',output:[tool('a'),tool('b'),tool('c','in_progress')]},2,trace),e=>e.code==='TOOL_LIFECYCLE_INCOMPLETE'&&e.detail==='TOOL_LIMIT_OUTCOME_UNKNOWN');
- assert.equal(trace.completed,2);assert.equal(trace.observedToolEvents,3);assert.equal(trace.outcomeUnknown,true);assert.deepEqual(trace.toolAccounting,{distinctIds:3,anonymous:0,conflicts:0,incomplete:1,responseCompleted:true,requestedLimit:2,reportedCalls:3,duplicateObservations:0,terminalCalls:2,dispatchUnknown:1});
+ assert.equal(trace.completed,2);assert.equal(trace.observedToolEvents,3);assert.equal(trace.outcomeUnknown,true);assert.deepEqual(trace.toolAccounting,{distinctIds:3,anonymous:0,conflicts:0,incomplete:1,responseCompleted:true,requestedLimit:2,reportedCalls:3,duplicateObservations:0,terminalCalls:2,dispatchUnknown:1,queued:0,inProgress:1,searching:0,otherPending:0});
  const task={code:'TOOL_LIFECYCLE_INCOMPLETE',sourceRequests:2,modelCalls:3,pendingSourceEvidence:{}};assert.equal(canRetryResearch(task),false);
 });
 test('same-ID lifecycle merges without counting another invocation; conflicting terminal states fail',()=>{

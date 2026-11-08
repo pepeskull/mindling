@@ -41,6 +41,9 @@ function accountTools(payload,ceiling,trace){
     calls.push(call);
   }
   trace.toolAccounting={distinctIds:seen.size,anonymous:calls.filter(c=>!c.id).length,conflicts:conflicts.size,incomplete:calls.filter(c=>!['completed','failed'].includes(c.status)).length,responseCompleted:payload?.status==='completed',requestedLimit:ceiling,reportedCalls:calls.length,duplicateObservations:raw.length-calls.length,terminalCalls:calls.filter(c=>terminal(c.status)&&!conflicts.has(c.id)).length,dispatchUnknown:calls.filter(c=>!terminal(c.status)||conflicts.has(c.id)).length};
+  // Status counts distinguish provider lifecycle shapes without logging IDs,
+  // queries, source text or assuming that a pending invocation was dispatched.
+  if(trace.toolAccounting.incomplete){const unfinished=calls.filter(c=>!terminal(c.status));Object.assign(trace.toolAccounting,{queued:unfinished.filter(c=>c.status==='queued').length,inProgress:unfinished.filter(c=>c.status==='in_progress').length,searching:unfinished.filter(c=>c.status==='searching').length,otherPending:unfinished.filter(c=>!pending(c.status)).length});}
   const bounded=calls.length<=64;
   const confirmed=calls.filter(c=>!conflicts.has(c.id));
   trace.completed=bounded?confirmed.filter(c=>c.status==='completed').length:0;

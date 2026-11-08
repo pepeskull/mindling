@@ -38,7 +38,7 @@ export function understandInput(text, activity, {answers={}}={}) {
   }
   const exclusion=normalizedText.match(/(?:do not|don't|never)\s+(?:learn|research|study)(?:\s+about)?\s+(.+?)(?:[.!?]|$)/iu)?.[1]||normalizedText.match(/lär(?: dig)? inte(?: om)?\s+(.+?)(?:[.!?]|$)/iu)?.[1];
   if(pending?.kind==='restriction'&&answers.detail&&exclusion&&exclusion.length<=80){pending=null;intent=activity==='TALK'?'QUESTION':activity==='DEEP_TRAINING'?'DEEP_LEARNING':'TOPIC_LEARNING';}
-  const topic=normalizedText.replace(command,'').replace(/^\s*(?:about|abot|om)\s+/iu,'').replace(/[.!?。！？]+$/u,'').trim().slice(0,160)||normalizedText.slice(0,160);
+  const topic=normalizedText.replace(command,'').replace(/^\s*(?:about|abot|aboout|om)\s+/iu,'').replace(/[.!?。！？]+$/u,'').trim().slice(0,160)||normalizedText.slice(0,160);
   const researchRequest=['QUESTION','TOPIC_LEARNING','DEEP_LEARNING'].includes(intent);
   const scope={};if(exclusion&&answers.detail)scope.excludedTopics=[exclusion];
   const count=normalizedText.match(/\b(?:top|first|last|topp|första|sista)\s+(\d{1,3})\b/iu);if(count)scope.count=Number(count[1]);
