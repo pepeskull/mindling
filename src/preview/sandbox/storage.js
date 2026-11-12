@@ -1,3 +1,4 @@
+import {reconcileAreaEvidence} from '../../semantic/reconcile-area-evidence.js';
 import {memoryViewStore} from '../../memory/view-state.js';
 import { reconcileEvolution } from './engine.js';
 import { loadTraining, saveTraining, trainingSource } from '../../training/persistence.js';
@@ -21,7 +22,7 @@ export class PreviewStore {
         const previousId=previousMind?.id;
         const knownEvents=new Set((previousMind?.history||[]).map(event=>event.id));
         const previousStages=previousMind?.stageHistory?.length||0;
-        next=reconcileEvolution(reducer(structuredClone(r.result)));
+        next=reconcileAreaEvidence(reconcileEvolution(reducer(structuredClone(r.result))));
         // Keep simulation timestamps for gameplay; add real save time only to new records.
         const recordedAt=Date.now(),sameMind=next.mind?.id===previousId;
         for(const event of next.mind?.history||[])if(!sameMind||!knownEvents.has(event.id))event.recordedAt=recordedAt;

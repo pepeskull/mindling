@@ -1,3 +1,4 @@
+import {areaDirections} from '../semantic/area-relations.js';
 import {specializationFor} from '../pathways/specialization-taxonomy.js';
 
 // Canonical area membership only. Claims and their original area IDs never move.
@@ -14,17 +15,19 @@ export function mergeProposal(graph,hierarchy,first,second){
  if(hierarchy&&(hierarchy.version!==1||!Number.isSafeInteger(hierarchy.revision)||hierarchy.revision<0||!Array.isArray(hierarchy.links)||hierarchyLinks(hierarchy,graph.areas).length!==hierarchy.links.length))return fail('Existing hierarchy requires review before merging.');
  const a=graph.areas.find(a=>a.id===first),b=graph.areas.find(a=>a.id===second);if(!a||!b||a===b)return fail('Choose two existing knowledge areas.');
  const ta=specializationFor(a.label),tb=specializationFor(b.label);
- if(!ta||!tb||ta.family!==tb.family||ta.specific===tb.specific)return fail('No supported parent–child relationship.');
- const parent=ta.specific?b:a,child=ta.specific?a:b;
+ const resolved=areaDirections(graph.areaRelations||[],a.id,b.id),directions=new Map(resolved.directions.map(d=>[d.parentId,d]));
+ if(ta&&tb&&ta.family===tb.family&&ta.specific!==tb.specific){const parentId=ta.specific?b.id:a.id;directions.set(parentId,{parentId,childId:ta.specific?a.id:b.id,basis:{taxonomy:'specialization-taxonomy',parent:ta.specific?tb.id:ta.id,child:ta.specific?ta.id:tb.id}});}
+ if(directions.size!==1||resolved.equivalent)return fail('No unambiguous supported parent–child relationship.');
+ const decision=[...directions.values()][0],parent=graph.areas.find(a=>a.id===decision.parentId),child=graph.areas.find(a=>a.id===decision.childId);
  const links=hierarchyLinks(hierarchy,graph.areas),parents=new Map(links.map(l=>[l.childId,l.parentId]));
  if(parents.has(child.id))return fail('This area already belongs to a parent.');
  let cursor=parent.id;while(cursor){if(cursor===child.id)return fail('A hierarchy cannot contain a cycle.');cursor=parents.get(cursor);}
- return {valid:true,parentId:parent.id,childId:child.id,revision:hierarchy?.revision||0,basis:{taxonomy:'specialization-taxonomy',parent:ta.specific?tb.id:ta.id,child:ta.specific?ta.id:tb.id}};
+ return {valid:true,parentId:parent.id,childId:child.id,revision:hierarchy?.revision||0,areaRevision:graph.areaRevision||0,basis:decision.basis};
 }
 export function commitHierarchy(mind,graph,proposal){
  if(!proposal?.valid||(mind.knowledgeHierarchy?.revision||0)!==proposal.revision)throw Error('Knowledge hierarchy changed. Select the areas again.');
  const fresh=mergeProposal(graph,mind.knowledgeHierarchy,proposal.parentId,proposal.childId);
- if(!fresh.valid||fresh.parentId!==proposal.parentId)throw Error(fresh.reason||'Hierarchy validation failed.');
+ if(!fresh.valid||fresh.parentId!==proposal.parentId||(proposal.areaRevision||0)!==(graph.areaRevision||0)||JSON.stringify(fresh.basis)!==JSON.stringify(proposal.basis))throw Error(fresh.reason||'Hierarchy validation failed.');
  return {...mind,knowledgeHierarchy:{version:1,revision:proposal.revision+1,links:[...hierarchyLinks(mind.knowledgeHierarchy,graph.areas),{parentId:fresh.parentId,childId:fresh.childId,basis:fresh.basis}]}};
 }
 export const areaRadius=area=>18+Math.min(38,7*Math.sqrt(Math.max(0,new Set(area.descendantMemoryIds||area.memoryIds).size-1)));

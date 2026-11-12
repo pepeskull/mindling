@@ -15,7 +15,7 @@ with sync_playwright() as p:
    const {AutonomousLearningEngine}=await import('/src/autonomous/learning-engine.js'),{understandInput}=await import('/src/learning/input-understanding.js');
    window.db=await(preview?new PreviewStore():new MindlingDatabase()).open();window.read=()=>preview?db.read():db.get('gameplay','primary').then(v=>v.state);window.write=(fn,opts)=>preview?db.change(fn,opts):db.changeGameplay(fn,opts);
    await write(()=>newMindling(createSandbox(Date.now()),{confirmed:true,id:'hierarchy-'+preview}));
-   await write(s=>{s.mind.memories=[{id:'a',content:'A broad sport observation.',category:'Sport',categoryId:'sport',relatedMemoryIds:['b']},{id:'b',content:'A football observation.',category:'Association football',categoryId:'football',relatedMemoryIds:['a'],research:{sourceURL:'https://example.org/evidence',quoteHash:'preserved'}},{id:'c',content:'A scientific observation.',category:'Science',categoryId:'science'},{id:'d',content:'Another distinct football observation.',category:'Association football',categoryId:'football'}];s.mind.memories.forEach((m,i)=>{m.source='SERVICE';m.topic='Fixture topic '+i;});return s;});
+   await write(s=>{s.mind.memories=[{id:'a',content:'A broad sport observation.',category:'Sport',categoryId:'sport',relatedMemoryIds:['b']},{id:'b',content:'A football observation.',category:'Association football',categoryId:'football',relatedMemoryIds:['a'],research:{sourceURL:'https://example.org/evidence',quoteHash:'preserved'}},{id:'c',content:'A scientific observation.',category:'Science',categoryId:'science'},{id:'d',content:'Another distinct football observation.',category:'Association football',categoryId:'football'}];s.mind.memories.forEach((m,i)=>{m.source='SERVICE';m.analysis={name:'mindling-learning-service',verification:'unverified-player-claim'};m.intelligence={kind:'claim',current:true};m.contentIntegrity={version:1,status:'captured',length:m.content.length};m.topic='Fixture topic '+i;});return s;});
    window.app={state:await read(),store:db,renderState(){},async change(fn,opts){this.state=await write(fn,opts);}};
    const engine=new AutonomousLearningEngine(app);await engine.loadPermissions();
    for(let i=0;i<8;i++)await engine.prepare(understandInput('Learn about public topic '+i,'TEACH'),'fixture-'+i);engine.destroy();
@@ -37,7 +37,12 @@ with sync_playwright() as p:
     assert page.evaluate('view.mergePreview.radius>18 && view.mergePreview.layout.nodes.filter(n=>n.kind==="area").length===1 && view.mergePreview.layout.nodes.filter(n=>n.kind==="memory").length===3')
    else:assert page.evaluate('view.mergePreview.layout===null && view.mergePreview.involved.size>2')
    assert page.evaluate('''valid=>{const strokes=[],ctx=view.ctx,stroke=ctx.stroke;ctx.strokeStyle=valid?'#83dba688':'#969a9f66';const expected=ctx.strokeStyle;ctx.stroke=function(){strokes.push(this.strokeStyle);return stroke.call(this);};try{view.draw();}finally{ctx.stroke=stroke;}return strokes.filter(c=>c===expected).length>=2;}''',valid)
-   page.wait_for_timeout(650 if commit else 50);page.mouse.up();page.wait_for_timeout(200)
+   if commit:page.wait_for_timeout(650);page.mouse.up()
+   else:
+    # Freeze the brief-release interval inside one browser task: host CPU load
+    # must not turn a deliberate short crossing into a 600ms merge hold.
+    page.evaluate('''()=>{view.mergePreview.since=performance.now();view.canvas.dispatchEvent(new PointerEvent('pointerup',{pointerId:view.drag.id}));}''');page.mouse.up()
+   page.wait_for_timeout(200)
   # A simple click selects; unrelated drag rolls back all displayed positions.
   point=page.evaluate('point','Sport');page.mouse.click(point['x'],point['y']);assert page.evaluate('view.selected===view.graph.areas.find(a=>a.label==="Sport").id')
   positions=page.evaluate('view.layout.nodes.map(n=>[n.id,n.x,n.y])')

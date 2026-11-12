@@ -60,11 +60,11 @@ with sync_playwright() as p:
   assert switch.get_attribute('aria-checked')=='false'
   assert page.evaluate('engine.preferences.enabled===false && !engine.preferences.decided')
   assert page.locator('#research-consent').count()==0
-  page.remove_listener('dialog',handle_dialog);page.once('dialog',lambda d:d.dismiss());switch.click()
-  assert switch.get_attribute('aria-checked')=='false'
-  assert page.evaluate('engine.preferences.enabled===false')
-  page.on('dialog',handle_dialog);switch.click();page.wait_for_function('engine.preferences.enabled===true')
+  page.remove_listener('dialog',handle_dialog);dialogs=[];page.on('dialog',lambda d:(dialogs.append(d.message),d.dismiss()))
+  assert 'API costs' in switch.get_attribute('title')
+  switch.click();page.wait_for_function('engine.preferences.enabled===true')
   assert switch.get_attribute('aria-checked')=='true'
+  assert dialogs==[]
   assert page.evaluate('recoveries===1 && engine.preferences.automaticRequestLimit===12 && engine.preferences.semanticCallsPerDay===0')
   switch.click();page.wait_for_function('engine.preferences.enabled===false && engine.preferences.decided')
   assert switch.get_attribute('aria-checked')=='false'
