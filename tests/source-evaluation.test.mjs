@@ -13,7 +13,7 @@ const sources=quotes.map((text,index)=>({id:`web:${sha(urls[index]+'\n'+text)}`,
 const request={topic:'neural communication',mode:'FOUNDATION',autonomous:true,freshness:false,scope:{criterion:null,geography:[],geographyMode:null,period:null,quantity:null}};
 const context={request,queries:['neurons synapses communication'],remainingCalls:2,plan:['Compare actual cited source passages']};
 let sequence=0;
-async function api({mode='research-acquire',context:input=context,propose=evaluation,upstreamFailure=false}={}){
+async function api({mode='research-acquire',context:input=context,propose=evaluation,upstreamFailure=false,raw=false}={}){
   const old={fetch:globalThis.fetch,warn:console.warn,api:process.env.SERVICE_API,model:process.env.SERVICE_MODEL,enabled:process.env.MINDLING_WEB_SEARCH};
   process.env.SERVICE_API='synthetic-private-key';process.env.SERVICE_MODEL='opaque-model';process.env.MINDLING_WEB_SEARCH='enabled';
   const calls=[],logs=[];console.warn=line=>logs.push(JSON.parse(line));
@@ -26,7 +26,7 @@ async function api({mode='research-acquire',context:input=context,propose=evalua
     assert.ok(data.sources.every(source=>Number.isSafeInteger(source.observedAt)));
     if(upstreamFailure==='abort')throw new DOMException('PRIVATE interrupted evaluation','AbortError');
     if(upstreamFailure)return Response.json({error:{message:'PRIVATE upstream failure'}},{status:503});
-    return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(relevantFixture(propose(data.sources))),refusal:null}}]});
+    return Response.json({choices:[{finish_reason:'stop',message:{content:raw?propose(data.sources):JSON.stringify(relevantFixture(propose(data.sources))),refusal:null}}]});
   };
   const req=Object.assign(new EventEmitter(),{method:'POST',headers:{host:'localhost','x-forwarded-for':`source-eval-${++sequence}`},body:{id:sha(String(sequence)),mode,context:input}});
   const res=Object.assign(new EventEmitter(),{status(code){this.code=code;return this;},json(body){this.body=body;this.writableEnded=true;return this;}});
@@ -121,4 +121,15 @@ test('off-topic assessment finishes source evaluation without claiming objective
  const input={...context,request:{...context.request,topic:'Italian Serie A'}};
  const res=await api({context:input,propose:s=>{const value=evaluation(s);value.claims=value.claims.map(c=>({...c,relevance:'background'}));return value;}});
  assert.equal(res.code,200);assert.equal(res.body.acquisition.sources.length,2);assert.equal(res.body.acquisition.evaluation.claims.length,0);assert.equal(res.body.execution.detail,'INSUFFICIENT_EVIDENCE');assert(res.body.execution.validation.rejections.every(r=>r.rule==='SUBJECT_MISMATCH'));assert.equal(res.calls.filter(c=>c.url.endsWith('/responses')).length,1);
+});
+
+// Zero candidates is a model-generation outcome, distinct from filtering.
+test('source diagnostics distinguish generation, parsing, schema and evidence rejection without logging content',async()=>{
+ const empty=await api({propose:()=>({claims:[],limitations:['No directly supported fact was selected.'],nextQuestion:null})});
+ assert.equal(empty.code,200);assert.equal(empty.body.execution.candidateOutcome,'NO_GENERATED_CANDIDATES');assert.equal(empty.body.execution.sourceCount,2);assert.equal(empty.body.execution.validation.candidates,0);validateServiceDiagnostic(empty.body.execution);validateResearchCheckpoint(empty.body.sourceCheckpoint);
+ const parse=await api({raw:true,propose:()=>'{malformed private response'});assert.equal(parse.code,502);assert.equal(parse.body.error.diagnostic.candidateOutcome,'CANDIDATE_PARSE_FAILED');validateResearchCheckpoint(parse.body.sourceCheckpoint);
+ const shape=await api({raw:true,propose:()=>JSON.stringify({claims:null,limitations:[],nextQuestion:null})});assert.equal(shape.code,502);assert.equal(shape.body.error.diagnostic.candidateOutcome,'CANDIDATE_SCHEMA_FAILED');
+ const evidence=await api({propose:s=>{const v=evaluation(s);v.claims.forEach(c=>c.sourceId='unknown');return v;}});assert.equal(evidence.body.execution.candidateOutcome,'CANDIDATE_EVIDENCE_REJECTED');assert.equal(evidence.body.execution.validation.candidates,2);
+ const success=await api();assert.equal(success.body.execution.candidateOutcome,'CANDIDATES_ACCEPTED');
+ for(const res of [empty,parse,shape,evidence,success]){const logs=JSON.stringify(res.logs);assert(!logs.includes('malformed private response'));assert(!logs.includes(quotes[0]));assert(!logs.includes('synthetic-private-key'));}
 });

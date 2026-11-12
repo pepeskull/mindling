@@ -1,3 +1,6 @@
+import {graphData} from '../memory/graph-data.js';
+import {validateAreaContext,validateAreaResults} from './area-relations.js';
+import {materialize} from './evidence-spans.js';
 import {editableMemoryText,currentMemoryVersion} from '../learning/correction-content.js';
 import {semanticText} from './semantic-text.js';
 import {sourceStatus} from '../memory/content-integrity.js';
@@ -32,15 +35,15 @@ export function semanticEligibilityIssue(m){
  return null;
 }
 export function eligibleSemanticMemory(m){return semanticEligibilityIssue(m)===null;}
-const snapshot=m=>storedClaim(m)?{id:m.id,text:editableMemoryText(m),sourceHash:null,quoteHash:null,sourceURL:null,observedAt:null,provenance:{kind:'stored-claim',verification:'unverified-player-claim',correctsMemoryId:m.correctsMemoryId||null}}:{id:m.id,text:editableMemoryText(m),sourceHash:m.research.sourceHash,quoteHash:m.research.quoteHash,sourceURL:m.research.sourceURL,observedAt:m.research.observedAt};
+export const semanticSnapshot=m=>storedClaim(m)?{id:m.id,text:editableMemoryText(m),sourceHash:null,quoteHash:null,sourceURL:null,observedAt:null,provenance:{kind:'stored-claim',verification:'unverified-player-claim',correctsMemoryId:m.correctsMemoryId||null}}:{id:m.id,text:editableMemoryText(m),sourceHash:m.research.sourceHash,quoteHash:m.research.quoteHash,sourceURL:m.research.sourceURL,observedAt:m.research.observedAt};
 export function validateSemanticContext(value){
- if(!exact(value,['version','pairs'])||value.version!==VERSION||!Array.isArray(value.pairs)||value.pairs.length>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
+ if(!exact(value,value?.areas===undefined?['version','pairs']:['version','pairs','areas'])||value.version!==VERSION||!Array.isArray(value.pairs)||value.pairs.length>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
  const seen=new Set(),memories=new Map();for(const pair of value.pairs){if(!exact(pair,['a','b']))fail('INVALID_SCHEMA');for(const m of [pair.a,pair.b]){
   const claim=exact(m,['id','text','sourceHash','quoteHash','sourceURL','observedAt','provenance'])&&exact(m.provenance,['kind','verification','correctsMemoryId'])&&m.provenance.kind==='stored-claim'&&m.provenance.verification==='unverified-player-claim'&&(m.provenance.correctsMemoryId===null||text(m.provenance.correctsMemoryId,100))&&m.sourceHash===null&&m.quoteHash===null&&m.sourceURL===null&&m.observedAt===null;
   const research=exact(m,['id','text','sourceHash','quoteHash','sourceURL','observedAt'])&&hash(m.sourceHash)&&hash(m.quoteHash)&&text(m.sourceURL,500)&&Number.isSafeInteger(m.observedAt)&&m.observedAt>=0;
   if(!text(m.id,100)||!text(m.text,2000)||(!claim&&!research))fail('INVALID_SCHEMA');
   if(memories.has(m.id)&&memories.get(m.id)!==JSON.stringify(m))fail('STALE_EVIDENCE');memories.set(m.id,JSON.stringify(m));
- }const key=pairKey(pair.a.id,pair.b.id);if(pair.a.id===pair.b.id||seen.has(key))fail('DUPLICATE_RELATION');seen.add(key);}return value;
+ }const key=pairKey(pair.a.id,pair.b.id);if(pair.a.id===pair.b.id||seen.has(key))fail('DUPLICATE_RELATION');seen.add(key);}if(value.areas!==undefined)validateAreaContext(value.areas,value.pairs);return value;
 }
 const string=maxLength=>({type:'string',minLength:1,maxLength});
 const spanSchema={type:'object',additionalProperties:false,required:['start','end','quote'],properties:{start:{type:'integer',minimum:0,maximum:2000},end:{type:'integer',minimum:1,maximum:2000},quote:string(2000)}};
@@ -56,7 +59,7 @@ function spanIssue(span,passage){
  return starts.has(span.start)&&ends.has(span.end)?null:'QUALIFICATION_MISMATCH';
 }
 export function validateSemanticResult(value,context){
- validateSemanticContext(context);if(!exact(value,['version','relationships'])||value.version!==VERSION||!Array.isArray(value.relationships)||value.relationships.length>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA','RESULT_ENVELOPE_INVALID');
+ validateSemanticContext(context);if(!exact(value,value?.areaRelationships===undefined?['version','relationships']:['version','relationships','areaRelationships'])||value.version!==VERSION||!Array.isArray(value.relationships)||value.relationships.length>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA','RESULT_ENVELOPE_INVALID');
  const accepted=[],rejections=[],seen=new Set();
  const reject=(index,code)=>rejections.push({index,code});
  for(const [index,r]of value.relationships.entries()){
@@ -73,22 +76,28 @@ export function validateSemanticResult(value,context){
   if(a.support!=='supported'||!a.evidenceSufficient){reject(index,'INSUFFICIENT_SUPPORT');continue;}
   seen.add(key);accepted.push({...r,version:VERSION,snapshotA:pair.a,snapshotB:pair.b});
  }
- return {accepted,rejected:rejections.length,rejections,abstained:value.relationships.length===0};
+ const areas=validateAreaResults(value.areaRelationships||[],context,materialize);
+ return {accepted,rejected:rejections.length,rejections,abstained:value.relationships.length===0,areas};
 }
 // Receipts identify the exact evidence version, never inferred semantic truth.
 // Bounded by four pairs per attempt and the existing four attempts per task.
 export const semanticPairReceipt=pair=>JSON.stringify([VERSION,...[pair.a,pair.b].sort((a,b)=>a.id<b.id?-1:1).map(m=>[m.id,m.sourceHash,m.quoteHash,m.sourceURL,m.observedAt,...(m.provenance?[m.provenance,m.text]:[])])]);
-export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS}={}){
+export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,includeAreaReconsideration=false}={}){
  if(!Number.isSafeInteger(limit)||limit<1||limit>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
  const list=mind.memories||[],counts=new Map();for(const m of list)counts.set(m?.id,(counts.get(m?.id)||0)+1);
  const selected=new Set(ids.map(id=>currentMemoryVersion(list,id)?.id||id)),completed=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.pairs||[])));
  const unresolved=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>['DISPATCHED','OUTCOME_UNKNOWN'].includes(a.state)).flatMap(a=>a.pairs||[])));
+ const areaGraph=includeAreaReconsideration?graphData(mind):null,areaByMemory=new Map((areaGraph?.memories||[]).map(n=>[n.recordId,n.areaId]));
+ const areaAttempted=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.areaPairs||[])));
  const ordered=list.filter(m=>counts.get(m?.id)===1&&eligibleSemanticMemory(m)).sort((a,b)=>Number(selected.has(b.id))-Number(selected.has(a.id))||(a.id<b.id?-1:a.id>b.id?1:0));
- const eligible=ordered.slice(0,CONNECTION_LIMITS.records),snapshots=new Map(eligible.map(m=>[m.id,snapshot(m)])),pairs=[],decisions=[];
+ const eligible=ordered.slice(0,CONNECTION_LIMITS.records),snapshots=new Map(eligible.map(m=>[m.id,semanticSnapshot(m)])),pairs=[],decisions=[];
  for(let i=0;i<eligible.length;i++)for(let j=i+1;j<eligible.length;j++){
   const [a,b]=[eligible[i],eligible[j]].sort((a,b)=>a.id<b.id?-1:1),pair={a:snapshots.get(a.id),b:snapshots.get(b.id)};
-  let reason=!selected.has(a.id)&&!selected.has(b.id)?'OUTSIDE_TASK':a.relatedMemoryIds?.includes(b.id)||b.relatedMemoryIds?.includes(a.id)?'EXISTING_LINK':
-   [a,b].some(m=>new Set((m.semanticAssociations||[]).map(e=>e.memoryId)).size>=CONNECTION_LIMITS.links)?'DEGREE_LIMIT':completed.has(semanticPairReceipt(pair))?'ALREADY_ANALYZED':unresolved.has(semanticPairReceipt(pair))?'OUTCOME_UNRESOLVED':null;
+  const areaA=areaByMemory.get(a.id),areaB=areaByMemory.get(b.id),receipt=semanticPairReceipt(pair);
+  const areaNeeded=includeAreaReconsideration&&areaA!==areaB&&!areaAttempted.has(receipt)&&!areaGraph.areaRelations.some(r=>[r.from,r.to].includes(areaA)&&[r.from,r.to].includes(areaB));
+  let reason=!selected.has(a.id)&&!selected.has(b.id)?'OUTSIDE_TASK':unresolved.has(receipt)?'OUTCOME_UNRESOLVED':
+   !areaNeeded&&(a.relatedMemoryIds?.includes(b.id)||b.relatedMemoryIds?.includes(a.id))?'EXISTING_LINK':
+   !areaNeeded&&[a,b].some(m=>new Set((m.semanticAssociations||[]).map(e=>e.memoryId)).size>=CONNECTION_LIMITS.links)?'DEGREE_LIMIT':!areaNeeded&&completed.has(receipt)?'ALREADY_ANALYZED':null;
   if(!reason){pairs.push(pair);reason=pairs.length<=limit?'SELECTED':'BATCH_LIMIT';}
   decisions.push({ids:[a.id,b.id],reason});
  }
@@ -101,17 +110,24 @@ export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS}={}
  const current=list.filter(m=>m&&counts.get(m.id)===1&&!m.supersededBy&&m.intelligence?.current!==false&&(m.intelligence?.kind||m.kind)!=='historical');
  return {totalStoredRecordPairs:list.length*(list.length-1)/2,totalPossiblePairs:current.length*(current.length-1)/2,eligibleMemories:eligible.length,recordLimitExcluded:ordered.length-eligible.length,
   excludedMemories:list.filter(m=>counts.get(m?.id)!==1||!eligibleSemanticMemory(m)).map(m=>({id:m?.id,reason:counts.get(m?.id)!==1?'DUPLICATE_ID':semanticEligibilityIssue(m)})),
-  generated:pairs.length,decisions,context:{version:VERSION,pairs:pairs.slice(0,limit)}};
+  generated:pairs.length,decisions,context:areaContext(mind,{version:VERSION,pairs:pairs.slice(0,limit)})};
 }
 export function semanticCandidates(mind,ids,options){return semanticCandidateReport(mind,ids,options).context;}
 export function persistSemantic(mind,accepted){
  const outcomes=[];for(const r of accepted){
  const a=mind.memories.find(m=>m.id===r.memoryA),b=mind.memories.find(m=>m.id===r.memoryB);
- let code=!a||!b?'UNKNOWN_MEMORY':!eligibleSemanticMemory(a)||!eligibleSemanticMemory(b)?'MEMORY_INELIGIBLE':JSON.stringify(snapshot(a))!==JSON.stringify(r.snapshotA)||JSON.stringify(snapshot(b))!==JSON.stringify(r.snapshotB)?'STALE_EVIDENCE':null;
+ let code=!a||!b?'UNKNOWN_MEMORY':!eligibleSemanticMemory(a)||!eligibleSemanticMemory(b)?'MEMORY_INELIGIBLE':JSON.stringify(semanticSnapshot(a))!==JSON.stringify(r.snapshotA)||JSON.stringify(semanticSnapshot(b))!==JSON.stringify(r.snapshotB)?'STALE_EVIDENCE':null;
  if(!code&&(a.relatedMemoryIds?.includes(b.id)||b.relatedMemoryIds?.includes(a.id)))code='DUPLICATE_RELATION';
  if(!code&&[a,b].some(m=>new Set((m.semanticAssociations||[]).map(e=>e.memoryId)).size>=CONNECTION_LIMITS.links))code='DEGREE_LIMIT';
  if(code){outcomes.push({code});continue;}
  for(const [self,other]of [[a,b],[b,a]]){self.relatedMemoryIds=[...new Set([...(self.relatedMemoryIds||[]),other.id])];self.semanticAssociations||=[];self.semanticAssociations.push({version:1,memoryId:other.id,rule:'model-assessed-relation',entity:r.type,analysisVersion:VERSION,type:r.type,direction:r.direction,from:r.memoryA,to:r.memoryB,trust:'model-assessed-not-independently-verified',evidenceCoordinateSpace:'provenance-stripped-canonical-passage',evidenceA:r.evidenceA,evidenceB:r.evidenceB,sourceHashA:r.snapshotA.sourceHash,sourceHashB:r.snapshotB.sourceHash,...(r.snapshotA.provenance?{provenanceA:r.snapshotA.provenance}:{}),...(r.snapshotB.provenance?{provenanceB:r.snapshotB.provenance}:{})});}
  outcomes.push({code:'RELATIONSHIP_PERSISTED'});
  }return outcomes;
+}
+
+function areaContext(mind,context){
+ const selected=new Set(context.pairs.flatMap(p=>[p.a.id,p.b.id]));
+ const areas=graphData(mind).areas.map(({id,label,memoryIds})=>({id,label,memoryIds:memoryIds.filter(id=>selected.has(id))})).filter(a=>a.label!=='Uncategorized'&&a.label.length<=160&&a.id.length<=300);
+ areas.sort((a,b)=>Number(b.memoryIds.length>0)-Number(a.memoryIds.length>0)||(a.id<b.id?-1:1));
+ return areas.length?{...context,areas:areas.slice(0,32)}:context;
 }

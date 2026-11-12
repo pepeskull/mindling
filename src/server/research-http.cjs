@@ -35,6 +35,9 @@ function snapshot(trace,code,detail){
   if(trace.toolAccounting)result.toolAccounting=trace.toolAccounting;
   if(trace.extraction)result.extraction=trace.extraction;
   if(trace.validation)result.validation=trace.validation;
+  if(trace.phase==='SOURCE_EVALUATION'||trace.candidateOutcome){
+    result.candidateOutcome=detail==='COMPLETION_JSON_INVALID'?'CANDIDATE_PARSE_FAILED':detail==='EVALUATION_FIELDS_INVALID'?'CANDIDATE_SCHEMA_FAILED':trace.candidateOutcome||'EVALUATION_INTERRUPTED';
+  }
   if(trace.limitationFailure)result.limitationFailure=trace.limitationFailure;
   return result;
 }
