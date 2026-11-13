@@ -1,3 +1,4 @@
+import {organizeAreas} from './organize-areas.js';
 import {graphData} from '../memory/graph-data.js';
 import {eligibleSemanticMemory,semanticSnapshot} from './model-contract.js';
 import {persistAreaRelations} from './area-relations.js';
@@ -7,6 +8,7 @@ import {persistAreaRelations} from './area-relations.js';
 const fold=s=>s.normalize('NFC').toLocaleLowerCase('en').trim();
 const proof=text=>/^([^.!?\n]+?) is (?:a|an) (?:type of |kind of )([^.!?\n]+)\.$/u.exec(text);
 export function reconcileAreaEvidence(next){
+ if(next?.mind)next.mind=organizeAreas(next.mind);
  const mind=next?.mind;if(!Array.isArray(mind?.memories)||!mind.memories.length)return next;
  // Incremental bounded scan during existing atomic state writes, never view or
  // pointer callbacks. Remember exact versions, including failed proof attempts.

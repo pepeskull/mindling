@@ -25,6 +25,8 @@ export class MemoryPlayback {
  }
  advance(delta=0){
   this.time+=Math.max(0,Number.isFinite(delta)?delta:0);
+  // Skip expired decorative history after long hidden periods; bounded catch-up.
+  if(this.time-this.next>35000)this.next=this.time-35000;
   const activated=[];
   while(this.next<=this.time){
    if(this.cursor>=this.records.length){this.records=this.pending;this.cursor=0;if(this.records.length)this.cycle++;}

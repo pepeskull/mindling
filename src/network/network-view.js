@@ -65,8 +65,7 @@ export class NetworkView {
   }
  sync(){if(this.frame!==null)cancelAnimationFrame(this.frame);
   this.frame=null;
-  if(!this.visible||document.hidden){this.playbackClock=null;return;}
-  if(this.reduced.matches)this.playbackClock=null;
+  if(!this.visible||document.hidden)return;
   this.draw();
   if(!this.reduced.matches&&this.hasRecentActivity())this.frame=requestAnimationFrame(this.animate);
   }
@@ -80,7 +79,7 @@ export class NetworkView {
   }
  draw(){const clock=this.clock();
   if(this.playbackClock==null)this.visualHistory.resume(clock);
-  const delta=this.playbackClock==null||this.reduced.matches?0:Math.min(250,Math.max(0,clock-this.playbackClock));
+  const delta=this.playbackClock==null||this.reduced.matches?0:Math.max(0,clock-this.playbackClock);
   this.playbackClock=clock;this.brain.playback.advance(delta);
   const model=this.model,now=this.clock(),values=model.sample(now),rows=(this.visualHistory.sample(now),this.visualHistory.history(now,this.history)),peaks=model.peaks(now),flashes=model.flashes(now);
   const scheduled=this.brain.playback.values();
@@ -109,41 +108,22 @@ export class NetworkView {
    c.fillText(i===2&&w<220?'DEEP':CHANNELS[i].replace('_',' '),x+bw/2,h-12);
   }}
 
- drawLines(rows,now){const c=this.lines.getContext('2d'),d=this.dpr||1,w=this.lines.width/d,h=this.lines.height/d;
-  c.setTransform(d,0,0,d,0,0);
-  c.clearRect(0,0,w,h);
-  const top=14,bottom=h-28,left=28,right=w-12;
-  c.font='10px monospace';
-  c.textAlign='left';
-  for(const value of[0,.5,1]){const y=bottom-value*(bottom-top);
-  c.strokeStyle='#ffffff08';
-  c.beginPath();
-  c.moveTo(left,y);
-  c.lineTo(right,y);
-  c.stroke();
-  c.fillStyle='#686e75';
-  c.fillText(String(value),4,y+3);
-  }for(let i=0;i<3;i++){const path=new Path2D();
-  let firstX=left,lastX=left;
-  rows.forEach((row,j)=>{const x=left+(1-(now-row.time)/(this.history*1000))*(right-left),y=bottom-row.values[i]*(bottom-top);if(j===0){path.moveTo(x,y);firstX=x;}else path.lineTo(x,y);lastX=x;});
-  const gradient=c.createLinearGradient(left,0,right,0);
-  gradient.addColorStop(0,(this.colors?.[i]||COLORS[i])+'08');
-  gradient.addColorStop(1,(this.colors?.[i]||COLORS[i])+'ed');
-  c.strokeStyle=gradient;
-  c.lineWidth=1.35;
-  c.stroke(path);
-  path.lineTo(lastX,bottom);
-  path.lineTo(firstX,bottom);
-  path.closePath();
-  c.globalAlpha=.13;
-  c.fillStyle=gradient;
-  c.fill(path);
-  c.globalAlpha=1;
-  }c.fillStyle='#787e86';
-  c.fillText(`−${this.history}s`,left,h-9);
-  c.textAlign='right';
-  c.fillText('now',right,h-9);
+ drawLines(rows,now){const c=this.lines.getContext('2d'),d=this.dpr||1,w=this.lines.width/d,h=this.lines.height/d,left=12,right=w-12,lane=(h-22)/3;
+  c.setTransform(d,0,0,d,0,0);c.clearRect(0,0,w,h);
+  for(let i=0;i<3;i++){
+   const center=(i+.5)*lane,color=this.colors?.[i]||COLORS[i];
+   c.strokeStyle=color+'35';c.lineWidth=.6;c.beginPath();c.moveTo(left,center);c.lineTo(right,center);c.stroke();
+   c.strokeStyle=color;c.lineWidth=1.25;c.beginPath();
+   rows.forEach((row,j)=>{const x=left+(1-(now-row.time)/(this.history*1000))*(right-left),t=row.time/1000;
+    // Carrier is decorative; amplitude remains tied to retained playback/events.
+    const carrier=(Math.sin(t*(7+i*1.3)+i)+.35*Math.sin(t*(17+i*2.1)))/1.35;
+    const y=center-carrier*Math.sqrt(row.values[i])*lane*.40;
+    if(j===0)c.moveTo(x,y);else c.lineTo(x,y);
+   });c.globalAlpha=.75;c.stroke();c.globalAlpha=1;
+   for(const e of this.model.events)if(e.channel===i&&e.time>=now-this.history*1000&&e.time<=now){const x=left+(1-(now-e.time)/(this.history*1000))*(right-left);c.fillStyle=color;c.beginPath();c.arc(x,center,2,0,Math.PI*2);c.fill();}
   }
+  c.font='9px system-ui';c.fillStyle=this.textColor||'#92959b';c.textAlign='left';c.fillText('Visual playback · dots mark real interactions',left,h-5);c.textAlign='right';c.fillText('30s',right,h-5);
+ }
  destroy(){this.visible=false;
   this.sync();
   this.abort.abort();

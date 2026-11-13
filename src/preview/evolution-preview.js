@@ -123,7 +123,7 @@ export class EvolutionPreview {
   primaryViewChanged = view => {
     this.primaryView = view;this.external?.refresh();
     if(view!=='dashboard'){this.inputFeedback?.clear();this.talkAbort.abort();this.talkAbort=new AbortController();}
-    if (view === 'development' || view === 'memories' || view === 'network' || view === 'onboarding') { cancelAnimationFrame(this.frame); this.frame = null; }
+    if (view === 'development' || view === 'memories' || view === 'network' || view === 'integration' || view === 'onboarding') { cancelAnimationFrame(this.frame); this.frame = null; }
     else { this.lastTime = null; this.schedule(); }
   };
   schedule() { if (!this.disposed && this.view && this.seed && !document.hidden && !['development','memories','network','onboarding'].includes(this.primaryView) && this.frame === null) this.frame = requestAnimationFrame(this.render); }
