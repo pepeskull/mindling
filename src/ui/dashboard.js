@@ -1,3 +1,4 @@
+import {IntegrationView} from '../integration/integration-view.js';
 import {NetworkView} from '../network/network-view.js';
 import {ClarificationNotifications} from './clarification-notifications.js';
 import {ResearchAccess} from './research-access.js';
@@ -55,6 +56,7 @@ export class Dashboard {
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask,onMemoryView,onMergeAreas});
     this.#development = new DevelopmentView(document.querySelector("#development-view"));
     this.#network = new NetworkView(document.querySelector("#network-view"));
+    this.integration=new IntegrationView(document.querySelector('#integration-view'));
     this.#onViewChange = onViewChange;
     this.#readOnly = readOnly;
     this.#events = events;
@@ -76,7 +78,7 @@ export class Dashboard {
       if(identity!==this.#state?.mindlingId||this.#listeners.signal.aborted)return;
       if(result?.needsClarification){this.showClarification(result.talkResponse);document.querySelector('[data-talk-content] button')?.focus();}
     }:null});
-    if(!readOnly&&onResearchAccess)this.researchAccess=new ResearchAccess(this.notifications.panel,{getState:()=>this.#state,onSave:enabled=>this.#onResearchAccess(enabled),canAct:()=>!this.locked});
+    if(!readOnly&&onResearchAccess)this.researchAccess=new ResearchAccess(document.querySelector('.footer-links'),{getState:()=>this.#state,onSave:enabled=>this.#onResearchAccess(enabled),canAct:()=>!this.locked});
     this.#form = document.querySelector("#interaction-form");
     this.#handleSubmit = (event) => this.#submitInteraction(event);
     if (!readOnly) {
@@ -89,13 +91,14 @@ export class Dashboard {
     this.#listen(document.querySelector("[data-view='development']"), "click", () => this.#setPrimaryView("development"));
     this.#listen(document.querySelector("[data-view='memories']"), "click", () => this.#setPrimaryView("memories"));
     this.#listen(document.querySelector("[data-view='dashboard']"), "click", event => { event.preventDefault(); this.#setPrimaryView("dashboard"); });
+    this.#listen(document.querySelector("[data-view=integration]"), "click", () => this.#setPrimaryView("integration"));
     this.#listen(document.querySelector("[data-view=network]"), "click", () => this.#setPrimaryView("network"));
     document.querySelectorAll("[data-mobile-view]").forEach(button => this.#listen(button, "click", () => this.#openMobileView(button.dataset.mobileView)));
     this.#listen(document.querySelector("[data-download-profile]"), "click", () => { if (this.#state) downloadMindlingProfile(this.#state, this.#life); });
     this.#listen(document.querySelector('[data-dismiss-talk]'),'click',()=>{this.#onCancelClarification?.();this.talkDismissed=true;document.querySelector('[data-talk-response]').hidden=true;if(this.talkOpenedPanel)document.querySelector('.right-panel').classList.remove('mobile-open');this.talkOpenedPanel=false;});
     this.#listen(document.querySelector("#mindling-input"), "focus", () => document.documentElement.classList.add("input-active"));
     this.#listen(document.querySelector("#mindling-input"), "blur", () => document.documentElement.classList.remove("input-active"));
-    const restore=()=>{const view=location.hash.slice(1)||'dashboard';if(['dashboard','development','memories','network'].includes(view))this.#setPrimaryView(view,false);};
+    const restore=()=>{const view=location.hash.slice(1)||'dashboard';if(['dashboard','development','memories','network','integration'].includes(view))this.#setPrimaryView(view,false);};
     this.#listen(window,'hashchange',restore);this.#listen(window,'popstate',restore);restore();
   }
 
@@ -169,12 +172,12 @@ export class Dashboard {
   #renderMemoryDevelopment() {
     this.#memoryMap.update(this.#state);
     this.#development.update(this.#state, this.#life);
-    this.#network.update(this.#state);
+    this.#network.update(this.#state);this.integration.update(this.#state);
   }
 
   #setPrimaryView(view,record=true) {
     if(record&&location.hash!==`#${view}`)history.pushState(null,'',`#${view}`);
-    this.primaryView=view;
+    this.primaryView=view;this.integration.setVisible(view==='integration');document.querySelector('#app').classList.toggle('integration-mode',view==='integration');
     document.querySelector('#network-view').hidden=view!=='network';this.#network.setVisible(view==='network');document.querySelector('#app').classList.toggle('network-mode',view==='network');
     this.stageChip.setActive(view==='dashboard');
     const memory = view === "memories", development = view === "development";
@@ -341,7 +344,7 @@ export class Dashboard {
     this.#setPrimaryView("dashboard",false);
     this.#memoryMap.destroy();
     this.#development.destroy();
-    this.#network.destroy();
+    this.#network.destroy();this.integration.destroy();
     this.stageChip.destroy();
     this.#unsubscribe?.();
     this.#eventUnsubscribes.forEach(unsubscribe => unsubscribe());

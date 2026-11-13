@@ -26,6 +26,13 @@ export function semanticWireSchemaFor(context){
  validateSemanticContext(context);const schema=structuredClone(semanticWireSchema);
  schema.properties.relationships.maxItems=context.pairs.length;
  schema.properties.relationships.items.properties.pair.maximum=Math.max(0,context.pairs.length-1);
- if(context.areas){schema.required.push('areaRelationships');schema.properties.areaRelationships=structuredClone(areaSchema);schema.properties.areaRelationships.maxItems=context.pairs.length;schema.properties.areaRelationships.items.properties.from.enum=context.areas.map(a=>a.id);schema.properties.areaRelationships.items.properties.to.enum=context.areas.map(a=>a.id);}
+ if(context.areas?.length){schema.required.push('areaRelationships');schema.properties.areaRelationships=structuredClone(areaSchema);schema.properties.areaRelationships.maxItems=4;schema.properties.areaRelationships.items.properties.from.enum=context.areas.map(a=>a.id);schema.properties.areaRelationships.items.properties.to.enum=context.areas.map(a=>a.id);}
  return schema;
+}
+
+// Provider-compatible structural grammar. Local validators retain all numeric,
+// length, evidence and bounded-array checks; no permissive JSON fallback.
+export function semanticTransportSchema(context){
+ const visit=v=>Array.isArray(v)?v.map(visit):v&&typeof v==='object'?Object.fromEntries(Object.entries(v).filter(([k])=>!['minimum','maximum','minLength','maxLength','minItems','maxItems','pattern'].includes(k)).map(([k,item])=>[k,visit(item)])):v;
+ return visit(semanticWireSchemaFor(context));
 }

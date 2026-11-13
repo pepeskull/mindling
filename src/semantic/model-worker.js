@@ -42,7 +42,7 @@ export async function runSemantic(engine,task){
   engine.abort.signal.addEventListener('abort',abort,{once:true});globalThis.document?.addEventListener('visibilitychange',hidden);const timer=setTimeout(abort,45000);
   let result;try{
    if(engine.abort.signal.aborted)throw error('REQUEST_INTERRUPTED');
-   await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(JSON.stringify(semanticCandidates({...next.mind,learningTasks:next.mind.learningTasks||[current]},current.knowledgeIds,{limit:batchLimit(current),includeAreaReconsideration:true}))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='DISPATCHED';attempt.dispatchedAt=now();attempt.pairs=context.pairs.map(semanticPairReceipt);}},{researchGrant:grant});
+   await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(JSON.stringify(semanticCandidates({...next.mind,learningTasks:next.mind.learningTasks||[current]},current.knowledgeIds,{limit:batchLimit(current),includeAreaReconsideration:true}))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.trigger='AUTHORIZED_TASK_CONTINUATION';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='DISPATCHED';attempt.dispatchedAt=now();attempt.pairs=context.pairs.map(semanticPairReceipt);}},{researchGrant:grant});
    dispatched=true;
    const response=await fetch('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:fingerprint,mode:'semantic',context})});
    const text=await response.text();if(text.length>100000)throw error('INVALID_SCHEMA');
@@ -55,7 +55,7 @@ export async function runSemantic(engine,task){
   await engine.patch(task.id,null,(current,next)=>{
    if(next.mind.id!==identity||current.semanticAnalysis?.fingerprint!==fingerprint||current.semanticAnalysis.status!=='RESERVED')throw error('STALE_EVIDENCE');
    const areaOutcomes=persistAreaRelations(next.mind,verdict.areas.accepted,graphData(next.mind).areas);
-   current.semanticAreaAnalysis={status:result.result.areaRelationships===undefined?'NOT_RETURNED':'COMPLETED',proposed:result.result.areaRelationships?.length||0,persisted:areaOutcomes.filter(c=>c==='AREA_PERSISTED').length,rejections:verdict.areas.rejections,outcomes:areaOutcomes};
+   current.semanticAreaAnalysis={trigger:'AUTHORIZED_TASK_CONTINUATION',status:result.result.areaRelationships===undefined?'NOT_RETURNED':'COMPLETED',proposed:result.result.areaRelationships?.length||0,persisted:areaOutcomes.filter(c=>c==='AREA_PERSISTED').length,rejections:verdict.areas.rejections,outcomes:areaOutcomes};
    const outcomes=persistSemantic(next.mind,verdict.accepted),persisted=outcomes.filter(o=>o.code==='RELATIONSHIP_PERSISTED').length;
    if(current.semanticWork?.fingerprint!==fingerprint||current.semanticWork.state!=='DISPATCHED')throw error('STALE_EVIDENCE');
    current.semanticWork.state='COMPLETED';current.semanticWork.updatedAt=now();

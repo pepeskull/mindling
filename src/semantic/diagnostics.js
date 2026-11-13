@@ -1,7 +1,7 @@
 // Allowlisted metadata only. Never retain upstream error text or model content.
 export function semanticDiagnostic(value){
  if(!value||typeof value!=='object')return null;
- const details=['COMPLETED','COMPLETION_INCOMPLETE','COMPLETION_INVALID','COMPLETION_JSON_INVALID','CONTENT_TYPE_INVALID','BODY_LIMIT','BODY_MISSING','JSON_INVALID','RESPONSE_BODY_FAILED','HTTP_REJECTED','FETCH_FAILED','MODEL_ID_MISMATCH','RESULT_ENVELOPE_INVALID','RESULT_VALIDATION_FAILED'];
+ const details=['SCHEMA_REJECTED','RESPONSE_FORMAT_REJECTED','PARAMETER_UNSUPPORTED','AREA_CONTEXT_INVALID','AREA_ENVELOPE_INVALID','COMPLETED','COMPLETION_INCOMPLETE','COMPLETION_INVALID','COMPLETION_JSON_INVALID','CONTENT_TYPE_INVALID','BODY_LIMIT','BODY_MISSING','JSON_INVALID','RESPONSE_BODY_FAILED','HTTP_REJECTED','FETCH_FAILED','MODEL_ID_MISMATCH','RESULT_ENVELOPE_INVALID','RESULT_VALIDATION_FAILED'];
  const number=v=>Number.isSafeInteger(v)&&v>=0&&v<=100000000?v:null;
  const accounting=value.usage?{promptTokens:number(value.usage.prompt_tokens),completionTokens:number(value.usage.completion_tokens),reasoningTokens:number(value.usage.completion_tokens_details?.reasoning_tokens)}:value.accounting?{promptTokens:number(value.accounting.promptTokens),completionTokens:number(value.accounting.completionTokens),reasoningTokens:number(value.accounting.reasoningTokens)}:null;
  const generation=value.finishReason!==undefined||value.completionLimit!==undefined?{finishReason:['stop','length','content_filter','tool_calls','function_call'].includes(value.finishReason)?value.finishReason:null,completionLimit:number(value.completionLimit),accounting}:{};
