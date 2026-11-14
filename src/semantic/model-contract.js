@@ -94,7 +94,7 @@ export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,inc
  for(let i=0;i<eligible.length;i++)for(let j=i+1;j<eligible.length;j++){
   const [a,b]=[eligible[i],eligible[j]].sort((a,b)=>a.id<b.id?-1:1),pair={a:snapshots.get(a.id),b:snapshots.get(b.id)};
   const areaA=areaByMemory.get(a.id),areaB=areaByMemory.get(b.id),receipt=semanticPairReceipt(pair);
-  const areaNeeded=includeAreaReconsideration&&areaA!==areaB&&!areaAttempted.has(receipt)&&!areaGraph.areaRelations.some(r=>[r.from,r.to].includes(areaA)&&[r.from,r.to].includes(areaB));
+  const areaNeeded=includeAreaReconsideration&&areaA!==areaB&&!areaAttempted.has(receipt);
   let reason=!selected.has(a.id)&&!selected.has(b.id)?'OUTSIDE_TASK':unresolved.has(receipt)?'OUTCOME_UNRESOLVED':
    !areaNeeded&&(a.relatedMemoryIds?.includes(b.id)||b.relatedMemoryIds?.includes(a.id))?'EXISTING_LINK':
    !areaNeeded&&[a,b].some(m=>new Set((m.semanticAssociations||[]).map(e=>e.memoryId)).size>=CONNECTION_LIMITS.links)?'DEGREE_LIMIT':!areaNeeded&&completed.has(receipt)?'ALREADY_ANALYZED':null;
@@ -104,7 +104,16 @@ export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,inc
  // Give new-to-existing comparisons precedence over within-task pairs. This
  // is delivery priority only, never evidence that a relation exists. Retain the
  // previous order for legacy four-pair reservations confirmed not dispatched.
- if(limit<=SEMANTIC_BATCH_PAIRS)pairs.sort((p,q)=>Number(selected.has(p.a.id)===selected.has(p.b.id))-Number(selected.has(q.a.id)===selected.has(q.b.id)));
+ if(limit<=SEMANTIC_BATCH_PAIRS){
+  const crossArea=p=>areaByMemory.has(p.a.id)&&areaByMemory.has(p.b.id)&&areaByMemory.get(p.a.id)!==areaByMemory.get(p.b.id);
+  pairs.sort((p,q)=>Number(crossArea(q))-Number(crossArea(p))||Number(selected.has(p.a.id)===selected.has(p.b.id))-Number(selected.has(q.a.id)===selected.has(q.b.id)));
+  // Spend the existing small batch on distinct area pairs before repeat
+  // examples of the same pair. This delivers evidence, never decides meaning.
+  if(includeAreaReconsideration){const seen=new Set(),first=[],rest=[];
+   for(const pair of pairs){const key=JSON.stringify([areaByMemory.get(pair.a.id),areaByMemory.get(pair.b.id)].sort());(seen.has(key)?rest:first).push(pair);seen.add(key);}
+   pairs.splice(0,pairs.length,...first,...rest);
+  }
+ }
  const chosen=new Set(pairs.slice(0,limit).map(p=>pairKey(p.a.id,p.b.id)));
  for(const decision of decisions)if(['SELECTED','BATCH_LIMIT'].includes(decision.reason))decision.reason=chosen.has(pairKey(...decision.ids))?'SELECTED':'BATCH_LIMIT';
  const current=list.filter(m=>m&&counts.get(m.id)===1&&!m.supersededBy&&m.intelligence?.current!==false&&(m.intelligence?.kind||m.kind)!=='historical');

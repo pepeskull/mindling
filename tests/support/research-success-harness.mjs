@@ -7,7 +7,7 @@ import {defaultPermissions,assertResearchGrant} from '../../src/autonomous/resea
 import {understandInput} from '../../src/learning/input-understanding.js';
 const require=createRequire(import.meta.url),{handler}=require('../../src/server/mindling-reasoning.cjs'),fixture=require('./research-success-fixture.cjs');
 let sequence=0;
-export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,mutate=null}={}){
+export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,mutate=null,evaluate=fixture.evaluation}={}){
  const originals={fetch:globalThis.fetch,warn:console.warn,now:Date.now,timer:globalThis.setTimeout,document:Object.getOwnPropertyDescriptor(globalThis,'document'),window:Object.getOwnPropertyDescriptor(globalThis,'window'),navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),key:process.env.SERVICE_API,model:process.env.SERVICE_MODEL,web:process.env.MINDLING_WEB_SEARCH};
  const control={kind,fault,afterBody,mutate,calls:[],logs:[],server:null,elapsed:0};Date.now=()=>originals.now()+control.elapsed;
  for(const [name,value] of [['window',new EventTarget()],['document',Object.assign(new EventTarget(),{hidden:false})],['navigator',{onLine:true}]])Object.defineProperty(globalThis,name,{configurable:true,value});
@@ -51,7 +51,7 @@ export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='s
   if(url.endsWith('/responses')){control.elapsed+=23087;return Response.json(fixture.searchPayload());}
   if(url!=='https://api.openai.com/v1/chat/completions')throw Error('External target forbidden');
   const request=JSON.parse(options.body),data=JSON.parse(request.messages[1].content);
-  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(request.response_format.json_schema.name==='mindling_planning'?{plan:['Find supported Gaming rules'],clarification:null,queries:['Gaming game rules'],sourceCategory:'web'}:relevantFixture(fixture.evaluation(data.sources)))}}]});
+  return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(request.response_format.json_schema.name==='mindling_planning'?{plan:['Find supported Gaming rules'],clarification:null,queries:['Gaming game rules'],sourceCategory:'web'}:relevantFixture(evaluate(data.sources)))}}]});
  };
  try{
   await engine.loadPermissions();await engine.setAccess(true);
