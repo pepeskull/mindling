@@ -1,3 +1,4 @@
+import {hypothesisStage} from './research-hypotheses.js';
 import {canRetryResearch} from './service-diagnostics.js';
 import { currentMemoryVersion, editableMemoryText } from '../learning/correction-content.js';
 import { rejectionExplanation } from './research-evidence.js';
@@ -7,9 +8,20 @@ import { memoryButton } from '../memory/memory-label.js';
 import { learningSummary } from './learning-summary.js';
 import { matchingEvaluationFailure } from './service-diagnostics.js';
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
+function renderHypotheses(host,task){
+ const stage=hypothesisStage(task);if(stage)host.append(el('p',stage));
+ if(!task.hypotheses?.length)return;
+ const details=el('details'),summary=el('summary','Proposed hypotheses · not evidence');details.append(summary);
+ for(const h of task.hypotheses){
+  const review=task.hypothesisReview?.find(r=>r.id===h.id);
+  const status=review?.status==='supported'?'Source-supported (not independently verified)':review?.status==='contradicted'?'Rejected — evaluator reports conflicting evidence':review?.status==='rejected'?'Rejected — evidence validation':review?.status==='insufficient'?'Deferred — insufficient evidence':'Unverified proposal';
+  details.append(el('p',h.claim),el('small',status));if(review?.reason)details.append(el('p',review.reason));
+  if(h.relationship)details.append(el('small',h.relationship.from+' → '+h.relationship.to+' · '+h.relationship.type+' · unverified relationship proposal'));
+ }host.append(details);
+}
 export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},memories=[]}={}){
   const task=node.task,legacy=task.engineVersion!==4,active=!['COMPLETED','CANCELLED','FAILED'].includes(task.status),status=el('p',undefined,'learning-task-feedback');status.setAttribute('role','status');
-  status.dataset.learningTask=task.id;
+  status.dataset.learningTask=task.id;renderHypotheses(host,task);
   const actionButton=(label,action)=>{const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{await onAction(action,task.id);refresh();}catch(error){status.textContent=error.message||'Research unavailable.';}finally{button.disabled=false;}});host.append(button);};
   host.append(el('span',`${task.mode.replaceAll('_',' ')} · ${taskStatusLabel(task)}`,'memory-status-chip research-status'),el('p',task.objective,'inspector-memory-text'));
   const progress=el('progress');progress.max=1;progress.value=taskProgress(task);progress.setAttribute('aria-label','Task work completed, not knowledge mastery');
@@ -56,7 +68,7 @@ export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},me
 
 // The normal neural surface deliberately projects only user-relevant progress.
 export function renderTaskInspector(host,node,{onAction=null,memories=[]}={}){
-  const task=node.task,summary=learningSummary(task,memories);
+  const task=node.task,summary=learningSummary(task,memories);renderHypotheses(host,task);
   host.append(el('h4',summary.subject),el('p',`${task.mode.replaceAll('_',' ')} · ${summary.status}`,'memory-status-chip'));
   const progress=el('progress');progress.max=100;progress.value=summary.progress;progress.setAttribute('aria-label','Learning progress');host.append(progress,el('p',`Progress: ${summary.progress}%`),el('p',`${summary.retained} new memories · ${summary.sources} sources`),el('p',summary.message));if(task.status==='BLOCKED'&&summary.diagnosticCode)host.append(el('p',`Pause reason: ${summary.diagnosticCode}`));
   for(const id of task.knowledgeIds){const memory=memories.find(item=>item.recordId===id);if(memory)host.append(memoryButton(memory));}

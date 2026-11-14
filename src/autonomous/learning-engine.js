@@ -179,15 +179,15 @@ export class AutonomousLearningEngine {
       let current=await this.patch(task.id,null,item=>{if(terminal(item))throw Error('Task finished.');item.run=run;item.session=this.session;item.attempts=Math.max(1,item.attempts);});
       let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
       if(!current.sourcePlan&&!current.pendingEvidence?.length){
-        current=await this.patch(task.id,run,item=>{const planned=item.planningCalls??(item.plannedAt?Math.min(item.attempts,2):0),used=item.modelCalls??planned;if(planned>=2||used>=LIMITS.inferenceCalls)throw Error('BUDGET_EXHAUSTED');item.planningCalls=planned+1;item.modelCalls=used+1;item.status='QUEUED';item.code='PLANNING';item.message='Mindling is planning what information to look for.';});
+        current=await this.patch(task.id,run,item=>{const planned=item.planningCalls??(item.plannedAt?Math.min(item.attempts,2):0),used=item.modelCalls??planned;if(planned>=2||used>=LIMITS.inferenceCalls)throw Error('BUDGET_EXHAUSTED');item.planningCalls=planned+1;item.modelCalls=used+1;item.status='QUEUED';item.code='PLANNING';item.message='Understanding the request and preparing unverified hypotheses.';});
         const context=this.context(task,topic),id=await digest(JSON.stringify([task.id,run,'plan',context]));
         const result=await requestResearchPlanning({id,context,signal:controller.signal});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
         current=await this.patch(task.id,run,item=>{
-          item.plan=result.planning.plan;item.plannedAt=Date.now();item.completedWork=[...new Set([...item.completedWork,'plan'])];item.status='BLOCKED';
+          item.hypotheses=result.planning.hypotheses||[];item.plan=result.planning.plan;item.plannedAt=Date.now();item.completedWork=[...new Set([...item.completedWork,'plan'])];item.status='BLOCKED';
           const question=result.planning.clarification;
           if(question&&question.options.length>=2&&!(item.clarificationRounds>=1)&&item.modelCalls<LIMITS.inferenceCalls){item.coordinatorClarification={version:1,kind:'model-scope',field:'detail',question:question.question,options:question.options,freeText:false};item.code='MODEL_CLARIFICATION';item.message=question.question;}
           else if(question){item.code='CLARIFICATION_UNAVAILABLE';item.message='Research paused — The subject could not be resolved safely with the available choices.';}
-          else{item.sourcePlan={request:context,queries:result.planning.queries,sourceCategory:result.planning.sourceCategory,available:result.information?.available===true};item.code='QUEUED';item.message='Mindling has prepared a bounded source search.';}
+          else{item.sourcePlan={request:context,queries:result.planning.queries,sourceCategory:result.planning.sourceCategory,available:result.information?.available===true};item.code='QUEUED';item.message='Hypotheses prepared — awaiting source verification.';}
         },{researchGrant:this.grant(prefs)});
         if(current.code==='MODEL_CLARIFICATION'){if(!current.autonomous&&this.app.dashboard?.canContinueResearch(this.requestId(current)))this.app.dashboard.showClarification(this.clarification(current).talkResponse);return;}
       }
@@ -271,13 +271,13 @@ export class AutonomousLearningEngine {
       authorizedAt=saved.authorizedAt;observedAt=saved.receivedAt;
       result={service:'mindling-reasoning-service',kind:'research-acquisition',acquisition:{...checkpoint.evidence,evaluation:saved.evaluation},execution:task.serviceDiagnostic,sourceCheckpoint:checkpoint};
       const mode=task.researchExecution.operation,id=task.researchExecution.correlationId;
-      const context=mode==='research-acquire'?{request:task.sourcePlan.request,plan:task.plan}:{checkpoint};
+      const context=mode==='research-acquire'?{request:task.sourcePlan.request,plan:task.plan,...(task.hypotheses?.length?{hypotheses:task.hypotheses}:{})}:{checkpoint};
       validateResearchReceipt(result,{id,mode,context});
     }else{
       const checkpoint=task.pendingSourceEvidence,remainingCalls=2-(task.sourceRequests||0);
       if(!checkpoint&&remainingCalls<1)throw Error('BUDGET_EXHAUSTED');
       const learning=researchLearningContext(task.sourcePlan.request.topic,this.app.state.mind,task.plan);
-      const context=checkpoint?{checkpoint,learning}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan,learning};
+      const context=checkpoint?{checkpoint,learning}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan,learning,...(task.hypotheses?.length?{hypotheses:task.hypotheses}:{})};
       const id=await digest(JSON.stringify([task.id,run,checkpoint?'source-evaluation':'web-search',context]));
       current=await this.patch(task.id,run,item=>{
         const calls=checkpoint?1:2;if((item.modelCalls||0)+calls>LIMITS.inferenceCalls||(item.evaluationCalls||0)>=2)throw Error('BUDGET_EXHAUSTED');
@@ -309,7 +309,7 @@ export class AutonomousLearningEngine {
       if(result.execution){item.serviceDiagnostic=result.execution;this.recordExecution(item,result.execution);}
       if(candidateOutcome!=='NO_MODEL_CANDIDATES')delete item.pendingSourceEvidence;delete item.pendingSourceEvaluation;
       item.evidenceDiagnostics={version:1,candidateOutcome,candidates:validation?.candidates??acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
-      item.totalBytes=(item.totalBytes||0)+acquired.bytes;item.status='EVALUATING';item.code='EVALUATING';item.message='Checking tool-cited research against canonical memory.';item.limitations=acquired.evaluation.limitations;item.nextQuestion=acquired.evaluation.nextQuestion;item.responseId=acquired.responseId;item.completedToolCalls=acquired.requests;
+      item.totalBytes=(item.totalBytes||0)+acquired.bytes;item.status='EVALUATING';item.code='EVALUATING';item.message='Checking tool-cited research against canonical memory.';item.hypothesisReview=acquired.evaluation.hypothesisReview||[];item.limitations=acquired.evaluation.limitations;item.nextQuestion=acquired.evaluation.nextQuestion;item.responseId=acquired.responseId;item.completedToolCalls=acquired.requests;
       if(pending.length)item.pendingEvidence=pending;else delete item.pendingEvidence;
       for(const source of acquired.sources){const metadata={url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,...(source.passages?{passages:source.passages}:{excerpt:source.text}),authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId};const existing=item.sourceReferences.find(ref=>ref.url===source.url);if(existing)Object.assign(existing,metadata);else item.sourceReferences.push(metadata);}
       if(acquired.requests)item.completedWork=[...new Set([...item.completedWork,'retrieval'])];

@@ -1,3 +1,4 @@
+import {validateHypotheses,validateHypothesisReview} from './research-hypotheses.js';
 import { validateServiceDiagnostic } from './service-diagnostics.js';
 import { validatePlanningContext, validQuery, validateResearchCheckpoint, validateSourceEvaluation } from './research-contract.js';
 import { validateClientDiagnostic } from './client-diagnostics.js';
@@ -11,6 +12,8 @@ export const terminal=task=>['COMPLETED','CANCELLED','FAILED'].includes(task.sta
 export const taskProgress=task=>Math.min(1,new Set(task.completedWork||[]).size/WORK.length);
 export function validTask(task,mindId){
   try {
+  if(task?.hypotheses!==undefined)validateHypotheses(task.hypotheses);
+  if(task?.hypothesisReview?.length)validateHypothesisReview(task.hypothesisReview,[0,1,2].map(()=>({})),(task.hypotheses||[]).map(h=>h.id));
   if(task?.pendingSourceEvidence)validateResearchCheckpoint(task.pendingSourceEvidence);
   if(task?.serviceDiagnostic)validateServiceDiagnostic(task.serviceDiagnostic);
   if(task?.clientDiagnostic)validateClientDiagnostic(task.clientDiagnostic);

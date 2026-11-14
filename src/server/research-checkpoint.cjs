@@ -2,8 +2,8 @@
 const {createHmac,timingSafeEqual}=require('node:crypto');
 const {fail}=require('./research-http.cjs');
 const mac=(value,key)=>createHmac('sha256',key).update(JSON.stringify(value)).digest('hex');
-function seal(evidence,request,originalId,key,plan=[]){
-  const data={version:1,expiresAt:Date.now()+600000,originalId,request,plan,evidence};
+function seal(evidence,request,originalId,key,plan=[],hypotheses){
+  const data={version:1,expiresAt:Date.now()+600000,originalId,request,plan,...(hypotheses===undefined?{}:{hypotheses}),evidence};
   return {...data,signature:mac(data,key)};
 }
 async function verify(checkpoint,key){

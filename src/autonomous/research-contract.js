@@ -1,3 +1,4 @@
+import {hypothesesSchema,validateHypotheses,reviewSchema,validateHypothesisReview} from './research-hypotheses.js';
 import {researchSubject,subjectMatches} from './research-subject.js';
 import {validateResearchLearningContext} from '../learning/research-learning-context.js';
 import { passageIssue } from '../memory/passage-integrity.js';
@@ -21,7 +22,7 @@ const cleanPattern = "^[^\\s\\p{Cc}\\p{Cf}](?:[^\\p{Cc}\\p{Cf}]*[^\\s\\p{Cc}\\p{
 export const QUERY_PATTERN = "^[\\p{L}\\p{N}](?:[\\p{L}\\p{M}\\p{N} '\\-]*[\\p{L}\\p{M}\\p{N}'\\-])?$";
 const boundedText = max => ({type:'string',minLength:1,maxLength:max,pattern:cleanPattern});
 const option={type:'object',additionalProperties:false,required:['id','label','value'],properties:{id:{type:'string',pattern:'^[a-z][a-z_-]{0,31}$',minLength:1,maxLength:32},label:boundedText(80),value:boundedText(160)}};
-export const planningSchema={type:'object',additionalProperties:false,required:['plan','clarification','queries','sourceCategory'],properties:{
+export const planningSchema={type:'object',additionalProperties:false,required:['plan','clarification','queries','sourceCategory','hypotheses'],properties:{hypotheses:hypothesesSchema,
   queries:{type:'array',items:{type:'string',minLength:1,maxLength:120,pattern:QUERY_PATTERN},minItems:0,maxItems:2},
   sourceCategory:{type:'string',enum:['web','unsupported']},
   plan:{type:'array',items:boundedText(160),minItems:1,maxItems:3},
@@ -37,7 +38,8 @@ export function planningTransportSchema(){
 export const PLANNING_OUTPUT_RULES = 'Exact output limits: plan has 1–3 trimmed single-line objectives, each 1–160 characters; queries has 0–2 trimmed strings, each 1–120 characters. Queries must start with a Unicode letter or digit and contain only letters, combining marks, digits, ordinary spaces, straight apostrophes and ASCII hyphens. No commas, colons, slashes, ampersands, question marks, URLs, field operators or private identifiers in queries. A web plan without clarification requires at least one query. Clarification question is 1–400 characters; options has 0–4 items with unique lowercase ASCII IDs matching [a-z][a-z_-]{0,31}, labels 1–80 characters and values 1–160 characters. All strings are trimmed, single-line and free of control/format characters. Do not return extra fields. These are output formatting requirements, not restrictions on which public subjects can be researched.';
 const planningFailure=rule=>{throw Object.assign(Error('Mindling could not validate the research plan. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail:rule});};
 export function validatePlanningResult(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='clarification,plan,queries,sourceCategory')planningFailure('PLAN_FIELDS_INVALID');
+  if(!object(value)||!['clarification,plan,queries,sourceCategory','clarification,hypotheses,plan,queries,sourceCategory'].includes(Object.keys(value).sort().join(',')))planningFailure('PLAN_FIELDS_INVALID');
+  if(value.hypotheses!==undefined)validateHypotheses(value.hypotheses);
   if(!Array.isArray(value.plan)||!value.plan.length||value.plan.length>3)planningFailure('PLAN_ITEMS_INVALID');
   if(!value.plan.every(item=>text(item,160)))planningFailure('PLAN_TEXT_INVALID');
   if(!['web','unsupported'].includes(value.sourceCategory))planningFailure('PLAN_SOURCE_CATEGORY_INVALID');
@@ -77,7 +79,8 @@ export const validQuery=value=>text(value,120)&&new RegExp(QUERY_PATTERN,'u').te
 // Search receives only public fields. Optional learning context is for the
 // tool-free source evaluation, and must never be forwarded to hosted search.
 export function validateRetrievalContext(value){
-  if(!object(value)||!['queries,remainingCalls,request','plan,queries,remainingCalls,request','learning,queries,remainingCalls,request','learning,plan,queries,remainingCalls,request'].includes(Object.keys(value).sort().join(',')))fail();
+  if(!object(value)||!['queries,remainingCalls,request','plan,queries,remainingCalls,request','learning,queries,remainingCalls,request','learning,plan,queries,remainingCalls,request'].includes(Object.keys(Object.fromEntries(Object.entries(value).filter(([key])=>key!=='hypotheses'))).sort().join(',')))fail();
+  if(value.hypotheses!==undefined)validateHypotheses(value.hypotheses);
   validatePlanningContext(value.request);if(value.learning!==undefined)validateResearchLearningContext(value.learning);
   if(value.plan!==undefined&&(!Array.isArray(value.plan)||value.plan.length>3||!value.plan.every(item=>text(item,160))))fail();
   if(!Array.isArray(value.queries)||!value.queries.length||value.queries.length>2||!value.queries.every(validQuery)||!Number.isSafeInteger(value.remainingCalls)||value.remainingCalls<1||value.remainingCalls>2)fail();return value;
@@ -89,15 +92,16 @@ export function publicSourceURL(value){
 }
 const claimSchema={type:'object',additionalProperties:false,required:['sourceId','quote','category','topic','reason','validAt'],properties:{sourceId:{type:'string'},quote:{type:'string',minLength:40,maxLength:700},category:{type:'string',minLength:1,maxLength:80},topic:{type:'string',minLength:1,maxLength:100},reason:{type:'string',minLength:1,maxLength:240},validAt:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'}}};
 export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:limitationSchema,maxItems:3},nextQuestion:{type:['string','null'],minLength:1,maxLength:120}}};
-export function sourceEvaluationSchemaFor(sources,{subjectCheck=false}={}){
+export function sourceEvaluationSchemaFor(sources,{subjectCheck=false,hypotheses=[]}={}){
   const schema=structuredClone(sourceEvaluationSchema);
+  if(hypotheses.length){schema.required.push('hypothesisReview');schema.properties.hypothesisReview=reviewSchema(hypotheses);}
   schema.properties.claims.items.properties.sourceId.enum=sources.map(source=>source.id);
   if(subjectCheck){const claim=schema.properties.claims.items;claim.required.push('relevance');claim.properties.relevance={type:'string',enum:['direct','background','off_topic','uncertain']};}
   return schema;
 }
 // The schema constrains shape/length/IDs; exact attribution and calendar support
 // remain application checks. Quotes are never trimmed, paraphrased or repaired.
-export const SOURCE_EVALUATION_RULES=Object.freeze(['SUBJECT_RELEVANCE_MISSING','SUBJECT_RELEVANCE_INVALID','SUBJECT_MISMATCH','CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_INCOMPLETE','QUOTE_BOUNDARY_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
+export const SOURCE_EVALUATION_RULES=Object.freeze(['HYPOTHESIS_SUPPORT_MISSING','SUBJECT_RELEVANCE_MISSING','SUBJECT_RELEVANCE_INVALID','SUBJECT_MISMATCH','CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_INCOMPLETE','QUOTE_BOUNDARY_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
 const evaluationFailure=(detail,metadata={})=>{throw Object.assign(Error('Mindling could not validate the source evaluation. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail,...metadata});};
 function validateLimitations(values){
   for(const [index,value] of values.entries()){
@@ -106,7 +110,7 @@ function validateLimitations(values){
   }
 }
 function evaluationShape(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='claims,limitations,nextQuestion'||!Array.isArray(value.claims)||value.claims.length>3||!Array.isArray(value.limitations)||value.limitations.length>3)evaluationFailure('EVALUATION_FIELDS_INVALID');
+  if(!object(value)||!['claims,limitations,nextQuestion','claims,hypothesisReview,limitations,nextQuestion'].includes(Object.keys(value).sort().join(','))||!Array.isArray(value.claims)||value.claims.length>3||!Array.isArray(value.limitations)||value.limitations.length>3)evaluationFailure('EVALUATION_FIELDS_INVALID');
 }
 function claimRejection(claim,sources){
   if(!object(claim)||Object.keys(claim).sort().join(',')!=='category,quote,reason,sourceId,topic,validAt')return 'CLAIM_FIELDS_INVALID';
@@ -134,17 +138,20 @@ export function validateSourceEvaluation(value,sources){
   evaluationShape(value);
   validateLimitations(value.limitations);
   if(!(value.nextQuestion===null||validQuery(value.nextQuestion)))evaluationFailure('FOLLOWUP_INVALID');
+  if(value.hypothesisReview!==undefined)validateHypothesisReview(value.hypothesisReview,value.claims);
   for(const claim of value.claims){const rule=claimRejection(claim,sources);if(rule)evaluationFailure(rule);}
   return value;
 }
 // At the model boundary only, reject individual proposals independently. Return
 // fixed rule/index diagnostics; never disclose or rewrite the rejected content.
-export function selectSourceEvaluation(value,sources,{allowFollowup=true,subjectCheck=false}={}){
+export function selectSourceEvaluation(value,sources,{allowFollowup=true,subjectCheck=false,hypotheses=[]}={}){
   evaluationShape(value);
   // Limitations may qualify the whole assessment. Never silently erase them.
   validateLimitations(value.limitations);
   const validation={version:1,candidates:value.claims.length,accepted:0,rejections:[],metadataRejections:[]};
-  const claims=[];
+  if(!hypotheses.length&&value.hypothesisReview!==undefined)evaluationFailure('HYPOTHESIS_CONTRACT_INVALID');
+  if(hypotheses.length)validateHypothesisReview(value.hypothesisReview,value.claims,hypotheses.map(h=>h.id));
+  const claims=[],acceptedIndices=[];
   value.claims.forEach((proposal,index)=>{
     let claim=proposal,rule=null;
     if(subjectCheck){
@@ -153,12 +160,14 @@ export function selectSourceEvaluation(value,sources,{allowFollowup=true,subject
       else if(proposal.relevance!=='direct')rule='SUBJECT_MISMATCH';
       if(object(proposal)){const {relevance,...supported}=proposal;claim=supported;}
     }
+    if(hypotheses.length&&!value.hypothesisReview.some(r=>r.status==='supported'&&r.claimIndex===index))rule=rule||'HYPOTHESIS_SUPPORT_MISSING';
     rule=rule||claimRejection(claim,sources);
-    if(rule)validation.rejections.push({index,rule});else claims.push(claim);
+    if(rule)validation.rejections.push({index,rule});else{claims.push(claim);acceptedIndices.push(index);}
   });
   const validFollowup=value.nextQuestion===null||allowFollowup&&validQuery(value.nextQuestion);
   if(!validFollowup)validation.metadataRejections.push({field:'nextQuestion',rule:'FOLLOWUP_INVALID'});
   const evaluation={claims,limitations:value.limitations,nextQuestion:validFollowup?value.nextQuestion:null};
+  if(hypotheses.length)evaluation.hypothesisReview=value.hypothesisReview.map(r=>r.status!=='supported'?r:acceptedIndices.includes(r.claimIndex)?{...r,claimIndex:acceptedIndices.indexOf(r.claimIndex)}:{id:r.id,status:'rejected',claimIndex:null,reason:'The proposed supporting claim failed evidence validation.'});
   validateSourceEvaluation(evaluation,sources);validation.accepted=claims.length;
   return {evaluation,validation};
 }
@@ -191,7 +200,8 @@ export function validateAcquisition(value){
 // Public, signed source evidence only; never credentials or a private conversation.
 // The browser validates shape; only the server can verify the HMAC proof.
 export function validateResearchCheckpoint(value){
-  if(!object(value)||Object.keys(value).sort().join(',')!=='evidence,expiresAt,originalId,plan,request,signature,version'||value.version!==1||!Number.isSafeInteger(value.expiresAt)||!/^[a-f0-9]{64}$/.test(value.originalId)||!/^[a-f0-9]{64}$/.test(value.signature))acquisitionFailure('CHECKPOINT_FIELDS_INVALID');
+  if(!object(value)||!['evidence,expiresAt,originalId,plan,request,signature,version','evidence,expiresAt,hypotheses,originalId,plan,request,signature,version'].includes(Object.keys(value).sort().join(','))||value.version!==1||!Number.isSafeInteger(value.expiresAt)||!/^[a-f0-9]{64}$/.test(value.originalId)||!/^[a-f0-9]{64}$/.test(value.signature))acquisitionFailure('CHECKPOINT_FIELDS_INVALID');
+  if(value.hypotheses!==undefined)validateHypotheses(value.hypotheses);
   try{validatePlanningContext(value.request);}catch{acquisitionFailure('CHECKPOINT_REQUEST_INVALID');}
   validateAcquisition(value.evidence);
   if(!Array.isArray(value.plan)||value.plan.length>3||!value.plan.every(item=>text(item,160)))acquisitionFailure('CHECKPOINT_PLAN_INVALID');
