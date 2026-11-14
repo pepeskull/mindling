@@ -11,13 +11,18 @@ export function hierarchyLinks(hierarchy,areas){
  }return links;
 }
 export function mergeProposal(graph,hierarchy,first,second){
- const fail=reason=>({valid:false,reason});
+ const fail=(reason,code='HIERARCHY_INVALID')=>({valid:false,reason,code});
  if(hierarchy&&(hierarchy.version!==1||!Number.isSafeInteger(hierarchy.revision)||hierarchy.revision<0||!Array.isArray(hierarchy.links)||hierarchyLinks(hierarchy,graph.areas).length!==hierarchy.links.length))return fail('Existing hierarchy requires review before merging.');
  const a=graph.areas.find(a=>a.id===first),b=graph.areas.find(a=>a.id===second);if(!a||!b||a===b)return fail('Choose two existing knowledge areas.');
  const ta=specializationFor(a.label),tb=specializationFor(b.label);
  const resolved=areaDirections(graph.areaRelations||[],a.id,b.id),directions=new Map(resolved.directions.map(d=>[d.parentId,d]));
  if(ta&&tb&&ta.family===tb.family&&ta.specific!==tb.specific){const parentId=ta.specific?b.id:a.id;directions.set(parentId,{parentId,childId:ta.specific?a.id:b.id,basis:{taxonomy:'specialization-taxonomy',parent:ta.specific?tb.id:ta.id,child:ta.specific?ta.id:tb.id}});}
- if(directions.size!==1||resolved.equivalent)return fail('No unambiguous supported parent–child relationship.');
+ if(resolved.equivalent)return fail('Equivalent labels do not establish a parent–child relationship.','EQUIVALENT_LABEL');
+ if(directions.size>1)return fail('Conflicting parent directions require review.','CONFLICTING_DIRECTIONS');
+ if(!directions.size){
+  const association=(graph.areaRelations||[]).some(r=>['related-to','part-of','instance-of'].includes(r.type)&&[r.from,r.to].includes(a.id)&&[r.from,r.to].includes(b.id));
+  return fail(association?'A supported association already connects these areas; it does not establish containment. Select an area to inspect the connection.':'No current validated containment decision is available for these areas.',(association?'ASSOCIATION_ONLY':'MISSING_CONTAINMENT'));
+ }
  const decision=[...directions.values()][0],parent=graph.areas.find(a=>a.id===decision.parentId),child=graph.areas.find(a=>a.id===decision.childId);
  const links=hierarchyLinks(hierarchy,graph.areas),parents=new Map(links.map(l=>[l.childId,l.parentId]));
  if(parents.has(child.id))return fail('This area already belongs to a parent.');
