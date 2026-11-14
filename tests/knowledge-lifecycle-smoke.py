@@ -10,7 +10,7 @@ with sync_playwright() as p:
   page.evaluate("""async()=>{
    const {NeuralMemoryView}=await import('/src/memory/neural-memory-view.js');
    const host=document.createElement('div');host.style.cssText='position:fixed;inset:0;background:black';document.body.append(host);
-   let resolve;const saved=new Promise(r=>resolve=r);window.v=new NeuralMemoryView(host,{onMemoryView:()=>saved,onMergeAreas:async()=>{throw Error('Unsupported connect must not commit');}});
+   let resolve;const saved=new Promise(r=>resolve=r);window.v=new NeuralMemoryView(host,{onMemoryView:()=>saved,onMergeAreas:async()=>{}});
    v.stage.style.cssText='width:800px;height:450px';v.setVisible(true);await new Promise(r=>setTimeout(r,30));
    if(v.graph)throw Error('Built before state');
    v.update({id:'fixture',memories:[{id:'m',content:'A complete fixture claim.',category:'Science',categoryId:'science'},{id:'n',content:'Another complete fixture.',category:'History',categoryId:'history'}]});
@@ -19,8 +19,7 @@ with sync_playwright() as p:
    resolve({version:1,revision:0,positions:{},zoom:.8,pan:{x:20,y:30},autoFit:false});await new Promise(r=>setTimeout(r,40));
    if(!(v.positions instanceof Map)||!v.layout)throw Error('Hydration corrupted node map');
    v.draw();v.select(v.graph.areas[0].id);
-   const connect=[...host.querySelectorAll('button')].find(b=>b.textContent==='Connect');connect.click();
-   if(!host.textContent.includes('No validated association'))throw Error('Unsupported Connect not explained');
+   if([...host.querySelectorAll('button')].some(b=>b.textContent==='Connect')||host.querySelector('[aria-label="Connect to knowledge area"]'))throw Error('Manual Connect remains');
    v.setVisible(false);v.setVisible(true);v.rebuild();v.draw();
    if(v.zoom!==.8||v.pan.x!==20)throw Error('Navigation reset transform');
    v.destroy();await new Promise(r=>setTimeout(r,20));if(v.frame!==null)throw Error('Frame survived teardown');host.remove();
@@ -32,7 +31,7 @@ with sync_playwright() as p:
    page.set_viewport_size({'width':width,'height':950})
    page.evaluate("""()=>{iv.layoutPaths();for(const selector of ['[data-flow=notion]','[data-capability=Development]']){
     const path=integrationHost.querySelector(selector),style=getComputedStyle(path),start=path.getPointAtLength(0),end=path.getPointAtLength(path.getTotalLength());
-    if(start.x>=end.x||style.stroke.includes('url(')||style.strokeDasharray!=='none')throw Error('Missing directional preview');
+    if(start.x>=end.x||style.animationName!=='none')throw Error('Missing directional preview');
     const map=integrationHost.querySelector('.integration-map').getBoundingClientRect(),hub=integrationHost.querySelector('.integration-hub').getBoundingClientRect();
     const expected=(selector.includes('notion')?hub.left:hub.right)-map.left,actual=(selector.includes('notion')?end.x:start.x)*map.width/1000;
     if(Math.abs(expected-actual)>1)throw Error('Detached hub endpoint');
@@ -44,14 +43,14 @@ with sync_playwright() as p:
     integrationHost.querySelector('[data-platform="'+platform+'"]').click();
     for(const path of integrationHost.querySelectorAll('path')){
      const selected=path.dataset.flow===platform||path.dataset.capability===capability;
-     if(getComputedStyle(path).stroke.includes('url(')!==selected)throw Error('Incorrect selected flow');
+     if(selected?getComputedStyle(path).animationPlayState!=='running'||getComputedStyle(path).animationName!=='integration-flow':getComputedStyle(path).animationName!=='none')throw Error('Incorrect selected flow');
     }
-    iv.setVisible(false);if(!integrationHost.querySelector('svg').animationsPaused())throw Error('Hidden animation');iv.setVisible(true);if(integrationHost.querySelector('svg').animationsPaused())throw Error('Visible animation paused');
+    iv.setVisible(false);if(integrationHost.classList.contains('is-active'))throw Error('Hidden animation');iv.setVisible(true);if(!integrationHost.classList.contains('is-active'))throw Error('Visible animation paused');
    }
   }""")
   page.emulate_media(reduced_motion='reduce')
-  page.wait_for_function("document.querySelector('.integration-map svg').animationsPaused()")
-  assert page.locator('[data-capability=Development]').evaluate("(n)=>getComputedStyle(n).strokeDasharray")=='none'
+  page.wait_for_function("!document.querySelector('.integration-view').classList.contains('is-active')")
+  assert page.locator('[data-capability=Development]').evaluate("(n)=>getComputedStyle(n).animationName")=='none'
   page.evaluate('iv.destroy()')
   assert not errors,errors
   print('Preview' if preview else 'Normal','lifecycle and integration passed')

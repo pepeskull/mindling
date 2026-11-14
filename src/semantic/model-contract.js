@@ -82,7 +82,7 @@ export function validateSemanticResult(value,context){
 // Receipts identify the exact evidence version, never inferred semantic truth.
 // Bounded by four pairs per attempt and the existing four attempts per task.
 export const semanticPairReceipt=pair=>JSON.stringify([VERSION,...[pair.a,pair.b].sort((a,b)=>a.id<b.id?-1:1).map(m=>[m.id,m.sourceHash,m.quoteHash,m.sourceURL,m.observedAt,...(m.provenance?[m.provenance,m.text]:[])])]);
-export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,includeAreaReconsideration=false}={}){
+export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,includeAreaReconsideration=false,includeHistoricalAreas=false}={}){
  if(!Number.isSafeInteger(limit)||limit<1||limit>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
  const list=mind.memories||[],counts=new Map();for(const m of list)counts.set(m?.id,(counts.get(m?.id)||0)+1);
  const selected=new Set(ids.map(id=>currentMemoryVersion(list,id)?.id||id)),completed=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.pairs||[])));
@@ -90,14 +90,15 @@ export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,inc
  const areaGraph=includeAreaReconsideration?graphData(mind):null,areaByMemory=new Map((areaGraph?.memories||[]).map(n=>[n.recordId,n.areaId]));
  const areaAttempted=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.areaPairs||[])));
  const ordered=list.filter(m=>counts.get(m?.id)===1&&eligibleSemanticMemory(m)).sort((a,b)=>Number(selected.has(b.id))-Number(selected.has(a.id))||(a.id<b.id?-1:a.id>b.id?1:0));
- const eligible=ordered.slice(0,CONNECTION_LIMITS.records),snapshots=new Map(eligible.map(m=>[m.id,semanticSnapshot(m)])),pairs=[],decisions=[];
+ const eligible=ordered.slice(0,CONNECTION_LIMITS.records),snapshots=new Map(eligible.map(m=>[m.id,semanticSnapshot(m)])),pairs=[],decisions=[];let historicalCandidates=0;
  for(let i=0;i<eligible.length;i++)for(let j=i+1;j<eligible.length;j++){
   const [a,b]=[eligible[i],eligible[j]].sort((a,b)=>a.id<b.id?-1:1),pair={a:snapshots.get(a.id),b:snapshots.get(b.id)};
   const areaA=areaByMemory.get(a.id),areaB=areaByMemory.get(b.id),receipt=semanticPairReceipt(pair);
   const areaNeeded=includeAreaReconsideration&&areaA!==areaB&&!areaAttempted.has(receipt);
-  let reason=!selected.has(a.id)&&!selected.has(b.id)?'OUTSIDE_TASK':unresolved.has(receipt)?'OUTCOME_UNRESOLVED':
+  let reason=!selected.has(a.id)&&!selected.has(b.id)&&!(includeHistoricalAreas&&areaNeeded)?'OUTSIDE_TASK':unresolved.has(receipt)?'OUTCOME_UNRESOLVED':
    !areaNeeded&&(a.relatedMemoryIds?.includes(b.id)||b.relatedMemoryIds?.includes(a.id))?'EXISTING_LINK':
    !areaNeeded&&[a,b].some(m=>new Set((m.semanticAssociations||[]).map(e=>e.memoryId)).size>=CONNECTION_LIMITS.links)?'DEGREE_LIMIT':!areaNeeded&&completed.has(receipt)?'ALREADY_ANALYZED':null;
+  if(!reason&&!selected.has(a.id)&&!selected.has(b.id)&&historicalCandidates++>=64)reason='HISTORICAL_BATCH_LIMIT';
   if(!reason){pairs.push(pair);reason=pairs.length<=limit?'SELECTED':'BATCH_LIMIT';}
   decisions.push({ids:[a.id,b.id],reason});
  }
@@ -111,7 +112,13 @@ export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,inc
   // examples of the same pair. This delivers evidence, never decides meaning.
   if(includeAreaReconsideration){const seen=new Set(),first=[],rest=[];
    for(const pair of pairs){const key=JSON.stringify([areaByMemory.get(pair.a.id),areaByMemory.get(pair.b.id)].sort());(seen.has(key)?rest:first).push(pair);seen.add(key);}
-   pairs.splice(0,pairs.length,...first,...rest);
+   pairs.length=0;for(const pair of first)pairs.push(pair);for(const pair of rest)pairs.push(pair);
+   // Reserve one existing batch slot for untouched historical area evidence.
+   // Completed/unknown pair receipts above remain authoritative across reloads.
+   if(includeHistoricalAreas&&limit>1){
+    const index=pairs.findIndex(p=>!selected.has(p.a.id)&&!selected.has(p.b.id));
+    if(index>=limit){const [historical]=pairs.splice(index,1);pairs.splice(limit-1,0,historical);}
+   }
   }
  }
  const chosen=new Set(pairs.slice(0,limit).map(p=>pairKey(p.a.id,p.b.id)));

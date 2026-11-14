@@ -1,4 +1,3 @@
-import {connectionProposal} from './area-connection.js';
 import {mergeProposal,commitHierarchy} from './knowledge-hierarchy.js';
 import {cleanView} from './view-state.js';
 import {clusterPositions,ElasticCluster} from './cluster-drag.js';
@@ -144,19 +143,6 @@ export class NeuralMemoryView {
     if(!node){title.textContent='Follow a thought.';host.append(el('p','Select a memory to see what it holds, how it has grown, and where it connects.'));return;}
     if(node.kind==='research'){title.textContent=node.root?'Learning task':node.label;renderTaskInspector(host,node,{onAction:this.onLearningTask,refresh:()=>this.renderInspector(),memories:this.graph.memories});return;}
     if(node.kind!=='memory'){title.textContent=node.displayLabel||node.label;host.append(el('p',`${(node.descendantMemoryIds||node.memoryIds).length} canonical memories · ${node.kind==='area'?'Knowledge area':'Topic'}`));const candidates=this.filtered.memories.filter(memory=>(node.kind==='area'||node.hierarchyArea)?(memory.areaId===node.id||memory.ancestorAreaIds?.includes(node.id)):memory.topicId===node.id);for(const memory of candidates.slice(0,8)){host.append(memoryButton(memory));}
-      if(node.kind==='area'&&this.onMergeAreas){
-       const label=el('label','Connect to '),select=el('select'),button=el('button','Connect'),status=el('p');button.type='button';status.setAttribute('role','status');select.setAttribute('aria-label','Connect to knowledge area');
-       for(const area of this.graph.areas.filter(a=>a.id!==node.id)){const option=el('option',area.label);option.value=area.id;select.append(option);}
-       button.disabled=!select.options.length;
-       button.addEventListener('click',async()=>{
-        const proposal=connectionProposal(this.graph,node.id,select.value);
-        if(!proposal.valid){status.textContent=proposal.reason;return;}
-        const identity=this.viewIdentity;button.disabled=true;
-        try{await this.onMergeAreas(proposal,identity);if(this.abort.signal.aborted||identity!==this.viewIdentity)return;this.dirty=true;this.queueBuild();this.focus(select.value);}
-        catch{status.textContent='The association changed or could not be saved. No new connection was created.';}
-        finally{button.disabled=false;}
-       },{signal:this.abort.signal});label.append(select);host.append(label,button,status,el('p','Connect uses a saved, evidence-supported association. Dragging organizes a supported parent and child.'));
-      }
       const relations=this.graph.edges.filter(e=>e.origin==='semantic-area'&&(e.from===node.id||e.to===node.id));
       if(relations.length){host.append(el('h4','Supported area connections'));for(const edge of relations){const target=this.graph.areas.find(a=>a.id===(edge.from===node.id?edge.to:edge.from));if(!target)continue;const button=el('button',target.label+' · '+edge.basis.rule);button.type='button';button.dataset.selectMemory=target.id;host.append(button);const relation=this.graph.areaRelations.find(r=>r.type==='related-to'&&[r.from,r.to].includes(node.id)&&[r.from,r.to].includes(target.id));if(relation){const details=el('details'),summary=el('summary','Supporting evidence · model assessed');details.append(summary,el('p',relation.reason));for(const evidence of relation.evidence)details.append(el('blockquote',evidence.span.quote));details.append(el('small','Stored claims and cited summaries are not independently verified.'));host.append(details);}}}
       return;}
