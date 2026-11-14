@@ -56,3 +56,18 @@ test('explicit empty-result retry reuses signed sources within four inference ca
   assert.equal(task.modelCalls,4);assert.equal(task.evaluationCalls,2);assert.equal(c.app.state.mind.memories.length,3);
  },{evaluate:sources=>++evaluations===1?{claims:[],limitations:['No selected claim.'],nextQuestion:null}:fixture.evaluation(sources)});
 });
+test('authorized historical area backlog advances through durable receipts, without graph-triggered inference',()=>{
+ const m={memories:[memory('a','Current'),memory('b','Ice hockey'),memory('c','Sport'),memory('d','Psychology')]};
+ const options={includeAreaReconsideration:true,includeHistoricalAreas:true},before=JSON.stringify(m.memories);
+ const ordinary=semanticCandidates(m,['a'],{includeAreaReconsideration:true});
+ assert(ordinary.pairs.every(p=>[p.a.id,p.b.id].includes('a')));
+ const batch=semanticCandidates(m,['a'],options);
+ assert.equal(batch.pairs.length,2);
+ const historical=batch.pairs.find(p=>![p.a.id,p.b.id].includes('a'));assert(historical);
+ m.learningTasks=[{semanticAttempts:[{state:'COMPLETED',pairs:batch.pairs.map(semanticPairReceipt),areaPairs:batch.pairs.map(semanticPairReceipt)}]}];
+ const reloaded=JSON.parse(JSON.stringify(m)),next=semanticCandidates(reloaded,['a'],options);
+ assert(next.pairs.length);assert(next.pairs.every(p=>!batch.pairs.some(old=>semanticPairReceipt(old)===semanticPairReceipt(p))));
+ reloaded.learningTasks[0].semanticAttempts.push({state:'OUTCOME_UNKNOWN',pairs:next.pairs.map(semanticPairReceipt)});
+ assert(semanticCandidates(reloaded,['a'],options).pairs.every(p=>!next.pairs.some(old=>semanticPairReceipt(old)===semanticPairReceipt(p))));
+ assert.equal(JSON.stringify(m.memories),before);
+});

@@ -21,7 +21,7 @@ export async function runSemantic(engine,task){
   if(globalThis.navigator?.onLine===false){await defer('WAITING_CONNECTIVITY');return;}
   if(engine.disposed||engine.app.disposed||globalThis.document?.hidden)return;
   engine.assertLive(identity);
-  const currentMind=engine.app.state.mind;const context=semanticCandidates({...currentMind,learningTasks:currentMind.learningTasks||[task]},task.knowledgeIds,{limit:batchLimit(task),includeAreaReconsideration:true});if(!context.pairs.length){await defer('NO_CANDIDATES');return;}
+  const currentMind=engine.app.state.mind;const context=semanticCandidates({...currentMind,learningTasks:currentMind.learningTasks||[task]},task.knowledgeIds,{limit:batchLimit(task),includeAreaReconsideration:true,includeHistoricalAreas:true});if(!context.pairs.length){await defer('NO_CANDIDATES');return;}
   for(const pair of context.pairs)for(const memory of [pair.a,pair.b])if(!memory.provenance&&await digest(memory.text)!==memory.quoteHash)throw error('STALE_EVIDENCE');
   fingerprint=await digest(JSON.stringify(context));
   const topicFingerprint=await digest(String(task.topic||task.objective||task.id).normalize('NFC').toLowerCase());
@@ -42,7 +42,7 @@ export async function runSemantic(engine,task){
   engine.abort.signal.addEventListener('abort',abort,{once:true});globalThis.document?.addEventListener('visibilitychange',hidden);const timer=setTimeout(abort,45000);
   let result;try{
    if(engine.abort.signal.aborted)throw error('REQUEST_INTERRUPTED');
-   await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(JSON.stringify(semanticCandidates({...next.mind,learningTasks:next.mind.learningTasks||[current]},current.knowledgeIds,{limit:batchLimit(current),includeAreaReconsideration:true}))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.trigger='AUTHORIZED_TASK_CONTINUATION';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='DISPATCHED';attempt.dispatchedAt=now();attempt.pairs=context.pairs.map(semanticPairReceipt);}},{researchGrant:grant});
+   await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(JSON.stringify(semanticCandidates({...next.mind,learningTasks:next.mind.learningTasks||[current]},current.knowledgeIds,{limit:batchLimit(current),includeAreaReconsideration:true,includeHistoricalAreas:true}))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.trigger='AUTHORIZED_TASK_CONTINUATION';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='DISPATCHED';attempt.dispatchedAt=now();attempt.pairs=context.pairs.map(semanticPairReceipt);}},{researchGrant:grant});
    dispatched=true;
    const response=await fetch('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:fingerprint,mode:'semantic',context})});
    const text=await response.text();if(text.length>100000)throw error('INVALID_SCHEMA');
