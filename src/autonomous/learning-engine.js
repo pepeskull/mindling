@@ -307,7 +307,7 @@ export class AutonomousLearningEngine {
     try{current=await this.patch(task.id,run,item=>{
       if(terminal(item)||item.researchExecution?.correlationId!==result.execution.correlationId)throw clientFailure('STALE_RESEARCH_RESPONSE','EVIDENCE_PERSISTENCE');
       if(result.execution){item.serviceDiagnostic=result.execution;this.recordExecution(item,result.execution);}
-      delete item.pendingSourceEvidence;delete item.pendingSourceEvaluation;
+      if(candidateOutcome!=='NO_MODEL_CANDIDATES')delete item.pendingSourceEvidence;delete item.pendingSourceEvaluation;
       item.evidenceDiagnostics={version:1,candidateOutcome,candidates:validation?.candidates??acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
       item.totalBytes=(item.totalBytes||0)+acquired.bytes;item.status='EVALUATING';item.code='EVALUATING';item.message='Checking tool-cited research against canonical memory.';item.limitations=acquired.evaluation.limitations;item.nextQuestion=acquired.evaluation.nextQuestion;item.responseId=acquired.responseId;item.completedToolCalls=acquired.requests;
       if(pending.length)item.pendingEvidence=pending;else delete item.pendingEvidence;

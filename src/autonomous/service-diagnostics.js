@@ -45,13 +45,13 @@ export function researchFailureMessage(diagnostic,hasCheckpoint=false){
   return SERVICE_MESSAGES[diagnostic?.errorCategory]||'Research paused. The task details preserve the service failure.';
 }
 const invalidReceipt=task=>['EVALUATION_IN_PROGRESS','TOOL_BUDGET_VIOLATION','TOOL_LIFECYCLE_INCOMPLETE','INVALID_TOOL_ACCOUNTING','RECEIPT_VALIDATION_FAILED','CHECKPOINT_VALIDATION_FAILED','EVIDENCE_VALIDATION_FAILED','STALE_RESEARCH_RESPONSE'].includes(task.code);
-export const retryableServiceFailure=task=>!invalidReceipt(task)&&(!!task.pendingSourceEvaluation||!!task.pendingEvidence?.length||task.code==='RESPONSE_PARSE_ERROR'&&!!task.pendingSourceEvidence||['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE','UPSTREAM_NETWORK_ERROR','UPSTREAM_TIMEOUT','REQUEST_INTERRUPTED','UPSTREAM_HTTP_ERROR','RESPONSE_SERIALIZATION_ERROR'].includes(task.code));
+export const retryableServiceFailure=task=>task.code!=='NO_MODEL_CANDIDATES'&&!invalidReceipt(task)&&(!!task.pendingSourceEvaluation||!!task.pendingEvidence?.length||task.code==='RESPONSE_PARSE_ERROR'&&!!task.pendingSourceEvidence||['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE','UPSTREAM_NETWORK_ERROR','UPSTREAM_TIMEOUT','REQUEST_INTERRUPTED','UPSTREAM_HTTP_ERROR','RESPONSE_SERIALIZATION_ERROR'].includes(task.code));
 // A saved source plan must never trigger another search when its ceiling was reserved.
 export function canRetryResearch(task){
   if(invalidReceipt(task))return false;
   if(task.pendingEvidence?.length||task.pendingSourceEvaluation)return true;
   if(task.attempts>2||task.attempts===2&&task.code!=='QUEUED')return false;
-  if(task.pendingSourceEvidence)return (task.modelCalls||0)<4;
+  if(task.pendingSourceEvidence)return (task.modelCalls||0)<4&&(task.evaluationCalls||0)<2;
   if(task.sourcePlan)return (task.sourceRequests||0)<2&&(task.modelCalls||0)+2<=4;
   return (task.planningCalls||0)<2&&(task.modelCalls||0)<4;
 }

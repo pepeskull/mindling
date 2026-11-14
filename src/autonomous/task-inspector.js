@@ -1,3 +1,4 @@
+import {canRetryResearch} from './service-diagnostics.js';
 import { currentMemoryVersion, editableMemoryText } from '../learning/correction-content.js';
 import { rejectionExplanation } from './research-evidence.js';
 import { taskProgress, taskStatusLabel } from './tasks.js';
@@ -61,7 +62,7 @@ export function renderTaskInspector(host,node,{onAction=null,memories=[]}={}){
   for(const id of task.knowledgeIds){const memory=memories.find(item=>item.recordId===id);if(memory)host.append(memoryButton(memory));}
   if(onAction&&!['COMPLETED','CANCELLED','FAILED'].includes(task.status)){
     const status=el('p');status.setAttribute('role','status');
-    for(const [action,label] of [...(['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code)?[['clarify','Clarify request']]:[]),['cancel','Cancel learning']]){
+    for(const [action,label] of [...(task.code==='NO_MODEL_CANDIDATES'&&task.pendingSourceEvidence&&canRetryResearch(task)?[['retry','Re-evaluate saved sources (API cost may apply)']]:[]),...(['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code)?[['clarify','Clarify request']]:[]),['cancel','Cancel learning']]){
       const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{await onAction(action,task.id);}catch{status.textContent='Unable to update learning. Please try again.';}finally{button.disabled=false;}});host.append(button);
     }host.append(status);
   }
