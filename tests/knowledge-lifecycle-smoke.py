@@ -29,11 +29,23 @@ with sync_playwright() as p:
    page.set_viewport_size({'width':width,'height':950})
    page.evaluate("""()=>{iv.layoutPaths();for(const selector of ['[data-flow=notion]','[data-capability=Development]']){
     const path=integrationHost.querySelector(selector),style=getComputedStyle(path),start=path.getPointAtLength(0),end=path.getPointAtLength(path.getTotalLength());
-    if(start.x>=end.x||style.animationName!=='integration-flow'||style.animationPlayState!=='running')throw Error('Missing directional preview');
+    if(start.x>=end.x||style.animationName!=='integration-flow'||style.animationPlayState!=='paused')throw Error('Missing directional preview');
     const map=integrationHost.querySelector('.integration-map').getBoundingClientRect(),hub=integrationHost.querySelector('.integration-hub').getBoundingClientRect();
     const expected=(selector.includes('notion')?hub.left:hub.right)-map.left,actual=(selector.includes('notion')?end.x:start.x)*map.width/1000;
     if(Math.abs(expected-actual)>1)throw Error('Detached hub endpoint');
    }}""")
+  page.evaluate("""()=>{
+   const gradient=integrationHost.querySelector('linearGradient');
+   if(gradient.getAttribute('gradientUnits')!=='userSpaceOnUse')throw Error('Horizontal path paint collapses');
+   for(const [platform,capability] of [['notion','Knowledge'],['github','Development']]){
+    integrationHost.querySelector('[data-platform="'+platform+'"]').click();
+    for(const path of integrationHost.querySelectorAll('path')){
+     const selected=path.dataset.flow===platform||path.dataset.capability===capability;
+     if(getComputedStyle(path).animationPlayState!==(selected?'running':'paused'))throw Error('Incorrect selected flow');
+    }
+    iv.setVisible(false);iv.setVisible(true);
+   }
+  }""")
   page.emulate_media(reduced_motion='reduce')
   assert page.locator('[data-flow=notion]').evaluate("(n)=>getComputedStyle(n).animationName")=='none'
   assert page.locator('[data-capability=Development]').evaluate("(n)=>getComputedStyle(n).animationName")=='none'

@@ -91,7 +91,7 @@ export class AutonomousLearningEngine {
     this.schedule();
   }
   startIfAuthorized(task){
-    if(!task||terminal(task)||task.engineVersion!==4||!canRetryResearch(task)||['CLARIFICATION','MODEL_CLARIFICATION','SOURCE_UNSUPPORTED','SUBJECT_MISMATCH','CLARIFICATION_UNAVAILABLE','QUERY_REVIEW','BUDGET_EXHAUSTED','NO_EVIDENCE','INFORMATION_UNCONFIGURED','INFORMATION_UNSUPPORTED','INFORMATION_UNAUTHORIZED'].includes(task.code)||this.disposed)return;
+    if(!task||terminal(task)||task.engineVersion!==4||!canRetryResearch(task)||['CLARIFICATION','MODEL_CLARIFICATION','SOURCE_UNSUPPORTED','SUBJECT_MISMATCH','CLARIFICATION_UNAVAILABLE','QUERY_REVIEW','BUDGET_EXHAUSTED','NO_EVIDENCE','NO_MODEL_CANDIDATES','INFORMATION_UNCONFIGURED','INFORMATION_UNSUPPORTED','INFORMATION_UNAUTHORIZED'].includes(task.code)||this.disposed)return;
     this.queue.add(task.id);this.drain();
   }
   async drain(){
@@ -303,19 +303,19 @@ export class AutonomousLearningEngine {
       const validAt=claim.validAt===null?null:Date.parse(claim.validAt+'T00:00:00Z');
       pending.push({quote:claim.quote,quoteHash:await digest(claim.quote),sourceURL:source.url,sourceHash:source.hash,observedAt,validAt,category:claim.category,topic:claim.topic});
     }
-    if(!acquired.evaluation.claims.length&&!rejections.length)rejections.push({code:acquired.sources.length?'NO_MODEL_CANDIDATES':'NO_CITED_PASSAGES'});
+    const candidateOutcome=!acquired.evaluation.claims.length&&!rejections.length?(acquired.sources.length?'NO_MODEL_CANDIDATES':'NO_CITED_PASSAGES'):null;
     try{current=await this.patch(task.id,run,item=>{
       if(terminal(item)||item.researchExecution?.correlationId!==result.execution.correlationId)throw clientFailure('STALE_RESEARCH_RESPONSE','EVIDENCE_PERSISTENCE');
       if(result.execution){item.serviceDiagnostic=result.execution;this.recordExecution(item,result.execution);}
       delete item.pendingSourceEvidence;delete item.pendingSourceEvaluation;
-      item.evidenceDiagnostics={version:1,candidates:validation?.candidates??acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
+      item.evidenceDiagnostics={version:1,candidateOutcome,candidates:validation?.candidates??acquired.evaluation.claims.length,accepted:pending.length,rejections,extraction:acquired.diagnostics||null};
       item.totalBytes=(item.totalBytes||0)+acquired.bytes;item.status='EVALUATING';item.code='EVALUATING';item.message='Checking tool-cited research against canonical memory.';item.limitations=acquired.evaluation.limitations;item.nextQuestion=acquired.evaluation.nextQuestion;item.responseId=acquired.responseId;item.completedToolCalls=acquired.requests;
       if(pending.length)item.pendingEvidence=pending;else delete item.pendingEvidence;
       for(const source of acquired.sources){const metadata={url:source.url,title:source.title,provider:source.provider,domain:source.domain,publishedAt:null,type:source.type,status:source.status,hash:source.hash,...(source.passages?{passages:source.passages}:{excerpt:source.text}),authorizedAt,observedAt,serverRetrievedAt:source.observedAt,responseId:acquired.responseId};const existing=item.sourceReferences.find(ref=>ref.url===source.url);if(existing)Object.assign(existing,metadata);else item.sourceReferences.push(metadata);}
       if(acquired.requests)item.completedWork=[...new Set([...item.completedWork,'retrieval'])];
       if(acquired.sources.length)item.completedWork=[...new Set([...item.completedWork,'source','evidence'])];
     },{researchGrant:this.grant(prefs)});}catch(error){if(error.clientDiagnostic)throw error;throw clientFailure('EVIDENCE_PERSISTENCE_FAILED','EVIDENCE_PERSISTENCE');}
-    if(!pending.length)return block('NO_EVIDENCE',`Research paused — Insufficient evidence. ${rejectionExplanation(rejections[0]?.code)} No research knowledge was saved.`);
+    if(!pending.length)return block(candidateOutcome==='NO_MODEL_CANDIDATES'?'NO_MODEL_CANDIDATES':'NO_EVIDENCE',`Research paused — Insufficient evidence. ${rejectionExplanation(candidateOutcome||rejections[0]?.code)} No research knowledge was saved.`);
     try{return await this.integrate(current,run,controller,prefs);}catch(error){if(error.clientDiagnostic)throw error;throw clientFailure(controller.signal.aborted||document.hidden?'INTEGRATION_PAUSED':'INTEGRATION_FAILED','INTEGRATION');}
   }
   recordExecution(task,diagnostic){
@@ -380,7 +380,7 @@ export class AutonomousLearningEngine {
     const quotes=memories.map(memory=>{const position=memory.content.indexOf(': ',memory.content.indexOf(' from '));return position>=0?memory.content.slice(position+2):memory.content;});
     const found=task.sourceReferences.some(source=>source.hash),unsupported=task.code==='SOURCE_UNSUPPORTED',active=['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status);
     const paused=task.code==='TOOL_LIFECYCLE_INCOMPLETE'?(sv?'Jag kan inte bekräfta hur sökningen avslutades. Uppgiften är pausad och budgeten förblir reserverad. Jag startar ingen ny sökning automatiskt.':'I can’t confirm how the search finished. The task is paused and its budget stays reserved. I won’t automatically repeat the search.'):task.code==='CLARIFICATION_UNAVAILABLE'?(sv?'Jag kan inte säkert avgränsa frågan med de tillgängliga alternativen. Ingen ytterligare sökning har startats.':'I can’t safely resolve the remaining ambiguity with the available choices. No further search was started.'):task.code==='SUBJECT_MISMATCH'?(sv?'Det sparade sökämnet stämmer inte med din ursprungliga fråga. Jag har pausat uppgiften utan att ändra dina minnen.':'The saved search subject does not match your original request. I paused the task without changing your memories.'):unsupported?(sv?'Jag kan inte verifiera den här frågan med de tillgängliga källorna.':'I can’t verify this question with the available sources.'):found?(sv?'Jag hittade källor, men kunde inte säkert behålla ytterligare kunskap från dem. Dina befintliga minnen är oförändrade.':'I found sources, but couldn’t safely retain additional knowledge from them. Your existing memories are unchanged.'):active?(sv?'Jag undersöker vilket underlag som finns för din fråga.':'I’m checking the available evidence for your request.'):(sv?'Jag förstår vad du vill lära dig, men kan inte hämta tillräckligt tillförlitliga källor just nu. Forskningsuppgiften är pausad.':'I understand what you want to learn, but I can’t retrieve reliable supporting sources right now. The research task is paused.');
-    const answer=completed?(sv?'Här är vad jag kunde behålla från de källstödda sökresultaten:':'Here is what I could retain from the source-supported search report:')+'\n\n'+quotes.join('\n\n'):task.code==='NO_EVIDENCE'?paused+' '+(sv?'Källornas underlag eller aktualitet räckte inte för att spara ett nytt påstående.':'The source evidence or its date did not establish a supported new claim. See the learning task for details.'):paused;
+    const answer=completed?(sv?'Här är vad jag kunde behålla från de källstödda sökresultaten:':'Here is what I could retain from the source-supported search report:')+'\n\n'+quotes.join('\n\n'):['NO_EVIDENCE','NO_MODEL_CANDIDATES'].includes(task.code)?paused+' '+(sv?'Källornas underlag eller aktualitet räckte inte för att spara ett nytt påstående.':'The source evidence or its date did not establish a supported new claim. See the learning task for details.'):paused;
     return {answer,memoryIds:memories.map(memory=>memory.id),sources,uncertainty:completed?'medium':'high',insufficientInformation:!completed||!memories.length,researchTaskId:task.id};
   }
   follow(task,requestId){this.followers.set(task.id,requestId);if(this.followers.size>LIMITS.tasks)this.followers.delete(this.followers.keys().next().value);}

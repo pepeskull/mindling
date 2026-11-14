@@ -2,6 +2,7 @@ import { validateExtractionDiagnostics } from './extraction-diagnostics.js';
 import { validateLimitationFailure } from './research-limitations.js';
 import { validateSourceEvaluationDiagnostics } from './research-contract.js';
 export const SERVICE_MESSAGES=Object.freeze({
+  EVALUATION_IN_PROGRESS:'This exact request is already running. Its reserved budget remains protected; no automatic repeat will be sent.',
   TOOL_BUDGET_VIOLATION:'The provider reported more completed or failed tool invocations than authorized. No knowledge was accepted; the request will not be repeated.',
   TOOL_LIFECYCLE_INCOMPLETE:'The provider reported an unfinished tool invocation. Its dispatch or completion is uncertain. No knowledge was accepted; the reserved budget is protected.',
   INVALID_TOOL_ACCOUNTING:'The provider returned conflicting or ambiguous tool identities. No knowledge was accepted; the reserved budget is protected.',
@@ -43,7 +44,7 @@ export function researchFailureMessage(diagnostic,hasCheckpoint=false){
   if(diagnostic?.detail==='LIMITATION_INVALID')return `Research paused — An evidence limitation could not be represented safely. ${hasCheckpoint?'Retrieved sources are saved for a bounded evaluation-only retry.':'No research knowledge was saved.'}`;
   return SERVICE_MESSAGES[diagnostic?.errorCategory]||'Research paused. The task details preserve the service failure.';
 }
-const invalidReceipt=task=>['TOOL_BUDGET_VIOLATION','TOOL_LIFECYCLE_INCOMPLETE','INVALID_TOOL_ACCOUNTING','RECEIPT_VALIDATION_FAILED','CHECKPOINT_VALIDATION_FAILED','EVIDENCE_VALIDATION_FAILED','STALE_RESEARCH_RESPONSE'].includes(task.code);
+const invalidReceipt=task=>['EVALUATION_IN_PROGRESS','TOOL_BUDGET_VIOLATION','TOOL_LIFECYCLE_INCOMPLETE','INVALID_TOOL_ACCOUNTING','RECEIPT_VALIDATION_FAILED','CHECKPOINT_VALIDATION_FAILED','EVIDENCE_VALIDATION_FAILED','STALE_RESEARCH_RESPONSE'].includes(task.code);
 export const retryableServiceFailure=task=>!invalidReceipt(task)&&(!!task.pendingSourceEvaluation||!!task.pendingEvidence?.length||task.code==='RESPONSE_PARSE_ERROR'&&!!task.pendingSourceEvidence||['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE','UPSTREAM_NETWORK_ERROR','UPSTREAM_TIMEOUT','REQUEST_INTERRUPTED','UPSTREAM_HTTP_ERROR','RESPONSE_SERIALIZATION_ERROR'].includes(task.code));
 // A saved source plan must never trigger another search when its ceiling was reserved.
 export function canRetryResearch(task){
