@@ -61,3 +61,15 @@ test('legacy memory associations do not veto bounded area reconsideration; unkno
  m.learningTasks=[{semanticAttempts:[{state:'OUTCOME_UNKNOWN',pairs:[semanticPairReceipt(pair)]}]}];assert(!semanticCandidates(m,['hockey'],{includeAreaReconsideration:true}).pairs.some(p=>semanticPairReceipt(p)===semanticPairReceipt(pair)));
  m.learningTasks[0].semanticAttempts[0]={state:'COMPLETED',pairs:[semanticPairReceipt(pair)],areaPairs:[semanticPairReceipt(pair)]};assert(!semanticCandidates(m,['hockey'],{includeAreaReconsideration:true}).pairs.some(p=>semanticPairReceipt(p)===semanticPairReceipt(pair)));
 });
+test('Connect reuses persisted related-to evidence, survives hydration and rejects missing or stale proposals',async()=>{
+ const {connectionProposal,commitConnection}=await import('../src/memory/area-connection.js');
+ const mind=fixture(),original=JSON.stringify(mind.memories),areas=graphData(mind).areas;
+ const {verdict}=model(mind,'related-to');persistAreaRelations(mind,verdict.areas.accepted,areas);
+ const hydrated=JSON.parse(JSON.stringify(mind)),g=graphData(hydrated),a=id(g,'Ice hockey'),b=id(g,'Sport'),proposal=connectionProposal(g,a,b);
+ assert(proposal.valid);const before=JSON.stringify(hydrated.semanticAreaRelations);
+ commitConnection(hydrated,g,proposal);commitConnection(hydrated,graphData(hydrated),proposal);
+ assert.equal(JSON.stringify(hydrated.semanticAreaRelations),before);assert.equal(JSON.stringify(hydrated.memories),original);
+ assert(graphData(hydrated).edges.some(e=>e.origin==='semantic-area'));assert.equal(mergeProposal(g,null,a,b).valid,false);
+ assert.equal(connectionProposal(g,a,id(g,'National Hockey League')).valid,false);
+ hydrated.memories[0].content+=' Changed evidence.';assert.throws(()=>commitConnection(hydrated,graphData(hydrated),proposal));
+});
