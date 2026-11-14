@@ -90,3 +90,31 @@ test('two completed hosted calls plus one unfinished ID returns explicit account
  assert.equal(res.code,409);assert.equal(res.body.error.code,'TOOL_LIFECYCLE_INCOMPLETE');const d=validateServiceDiagnostic(res.body.error.diagnostic);assert.equal(d.detail,'TOOL_LIMIT_OUTCOME_UNKNOWN');assert.equal(d.completed,2);assert.equal(d.sourceCount,0);assert.equal(d.toolAccounting.dispatchUnknown,1);assert.equal(d.outcomeUnknown,true);assert.equal(res.body.acquisition,undefined);assert.equal(res.body.sourceCheckpoint,undefined);assert.equal(res.calls.filter(url=>url.endsWith('/responses')).length,1);
  assert.equal(canRetryResearch({code:res.body.error.code,sourceRequests:2,modelCalls:2,attempts:1,sourcePlan:{}}),false);
 });
+
+for(const mode of ['FOUNDATION','DEEP'])test(mode+' ice-hockey request preserves two-call ceiling and rejects the exact three-ID incomplete provider response',async()=>{
+ const topic='Learn about ice hockey as a sport, including its classification and relationship to other sports.';
+ const input={...context,request:{...request,topic,mode,autonomous:false},queries:['ice hockey classification relationship other sports']};
+ const res=await call('research-acquire',input,async(url,options)=>{
+  if(url.includes('/models/'))return okay(url);
+  assert(url.endsWith('/responses'),'No evidence-evaluation request after unknown tool outcome');
+  const body=JSON.parse(options.body);
+  assert.equal(body.max_tool_calls,2);assert.equal(body.max_output_tokens,2400);assert.equal(body.store,false);
+  assert.equal(body.stream,undefined);assert.equal(body.background,undefined);assert.equal(body.previous_response_id,undefined);
+  assert.equal(body.tool_choice,'auto');assert.equal(body.tools.length,1);assert.equal(body.tools[0].type,'web_search');
+  assert.equal(JSON.parse(body.input).request.topic,topic);assert.equal(JSON.parse(body.input).request.mode,mode);
+  const payload=searchPayload(),base=payload.output[0];
+  payload.max_tool_calls=2;payload.output=[{...base,id:'one'},{...base,id:'two'},{id:'three',type:'web_search_call',status:'searching'},payload.output[1]];
+  return Response.json(payload,{headers:{'x-request-id':'req_offline_lifecycle'}});
+ });
+ assert.equal(res.code,409);
+ const diagnostic=validateServiceDiagnostic(res.body.error.diagnostic);
+ assert.equal(diagnostic.upstreamStatus,200);assert.equal(diagnostic.upstreamRequestId,'req_offline_lifecycle');
+ assert.equal(diagnostic.detail,'TOOL_LIMIT_OUTCOME_UNKNOWN');assert.equal(diagnostic.toolAccounting.requestedLimit,2);
+ assert.equal(diagnostic.toolAccounting.distinctIds,3);assert.equal(diagnostic.toolAccounting.terminalCalls,2);
+ assert.equal(diagnostic.toolAccounting.incomplete,1);assert.equal(diagnostic.toolAccounting.dispatchUnknown,1);
+ assert.equal(diagnostic.toolAccounting.responseCompleted,true);assert.equal(diagnostic.sourceCount,0);
+ assert.equal(res.body.sourceCheckpoint,undefined);assert.equal(res.body.acquisition,undefined);
+ assert.equal(res.calls.filter(url=>url.endsWith('/responses')).length,1);
+ const reserved={code:res.body.error.code,sourceRequests:2,modelCalls:3,attempts:1,sourcePlan:{}},before=JSON.stringify(reserved);
+ assert.equal(canRetryResearch(JSON.parse(before)),false);assert.equal(JSON.stringify(reserved),before);
+});

@@ -39,3 +39,30 @@ test('uncertain over-limit HTTP200 never extracts sources or retries fetch',asyn
  globalThis.fetch=async()=>{count++;const payload=fixture.searchPayload();payload.output=payload.output.filter(t=>t.type!=='web_search_call');payload.output.unshift(tool('a'),tool('b'),tool('c','in_progress'));return Response.json(payload);};
  try{const trace={sourceCount:0};await assert.rejects(search({request:{topic:'public computing',mode:'FOUNDATION',freshness:false,scope:{criterion:null,geography:[],geographyMode:null,period:null,quantity:null}},queries:['public computing'],remainingCalls:2},'synthetic-only','opaque',new AbortController().signal,trace),e=>e.code==='TOOL_LIFECYCLE_INCOMPLETE');assert.equal(trace.sourceCount,0);assert.equal(count,1);assert.equal(trace.completed,2);}finally{globalThis.fetch=original;if(enabled===undefined)delete process.env.MINDLING_WEB_SEARCH;else process.env.MINDLING_WEB_SEARCH=enabled;}
 });
+
+test('distinct pending IDs stay unknown for every provider pending status and output order',()=>{
+ for(const status of ['queued','in_progress','searching','incomplete']){
+  const items=[tool('one'),tool('two'),{id:'three',type:'web_search_call',status}];
+  for(const output of [items,[items[2],items[0],items[1]],items.toReversed()]){
+   const trace={};
+   assert.throws(()=>accountTools({status:'completed',max_tool_calls:2,output},2,trace),e=>e.code==='TOOL_LIFECYCLE_INCOMPLETE'&&e.detail==='TOOL_LIMIT_OUTCOME_UNKNOWN');
+   assert.equal(trace.toolAccounting.distinctIds,3);assert.equal(trace.toolAccounting.duplicateObservations,0);
+   assert.equal(trace.toolAccounting.terminalCalls,2);assert.equal(trace.toolAccounting.dispatchUnknown,1);
+   assert.equal(trace.completed,2);assert.equal(trace.outcomeUnknown,true);
+  }
+ }
+});
+test('same-ID announcements reconcile independently of order; distinct IDs are not deduplicated by identical action',()=>{
+ for(const output of [
+  [tool('one','searching'),tool('one'),tool('two')],
+  [tool('two'),tool('one'),tool('one','searching')]
+ ]){
+  const trace={};assert.equal(accountTools({status:'completed',output},2,trace).length,2);
+  assert.equal(trace.toolAccounting.distinctIds,2);assert.equal(trace.toolAccounting.duplicateObservations,1);assert.equal(trace.outcomeUnknown,false);
+ }
+ // Identical queries/actions cannot prove one invocation when IDs differ.
+ const trace={};assert.throws(()=>accountTools({status:'completed',output:[tool('one'),tool('two'),tool('three','searching')]},2,trace),e=>e.detail==='TOOL_LIMIT_OUTCOME_UNKNOWN');
+ assert.equal(trace.toolAccounting.distinctIds,3);
+ const mixed={};assert.throws(()=>accountTools({status:'completed',output:[tool('one'),tool('two','failed'),tool('three','searching')]},2,mixed),e=>e.detail==='TOOL_LIMIT_OUTCOME_UNKNOWN');
+ assert.equal(mixed.completed,1);assert.equal(mixed.failed,1);assert.equal(mixed.toolAccounting.terminalCalls,2);
+});
