@@ -57,7 +57,7 @@ export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},me
 export function renderTaskInspector(host,node,{onAction=null,memories=[]}={}){
   const task=node.task,summary=learningSummary(task,memories);
   host.append(el('h4',summary.subject),el('p',`${task.mode.replaceAll('_',' ')} · ${summary.status}`,'memory-status-chip'));
-  const progress=el('progress');progress.max=100;progress.value=summary.progress;progress.setAttribute('aria-label','Learning progress');host.append(progress,el('p',`Progress: ${summary.progress}%`),el('p',`${summary.retained} new memories · ${summary.sources} sources`),el('p',summary.message));
+  const progress=el('progress');progress.max=100;progress.value=summary.progress;progress.setAttribute('aria-label','Learning progress');host.append(progress,el('p',`Progress: ${summary.progress}%`),el('p',`${summary.retained} new memories · ${summary.sources} sources`),el('p',summary.message));if(task.status==='BLOCKED'&&summary.diagnosticCode)host.append(el('p',`Pause reason: ${summary.diagnosticCode}`));
   for(const id of task.knowledgeIds){const memory=memories.find(item=>item.recordId===id);if(memory)host.append(memoryButton(memory));}
   if(onAction&&!['COMPLETED','CANCELLED','FAILED'].includes(task.status)){
     const status=el('p');status.setAttribute('role','status');
