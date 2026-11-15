@@ -66,3 +66,28 @@ test('same-ID announcements reconcile independently of order; distinct IDs are n
  const mixed={};assert.throws(()=>accountTools({status:'completed',output:[tool('one'),tool('two','failed'),tool('three','searching')]},2,mixed),e=>e.detail==='TOOL_LIMIT_OUTCOME_UNKNOWN');
  assert.equal(mixed.completed,1);assert.equal(mixed.failed,1);assert.equal(mixed.toolAccounting.terminalCalls,2);
 });
+test('ordered provider diagnostics retain reference presence without leaking content or certifying incomplete evidence',()=>{
+ const secret='private-query-source-key';
+ const a=tool(secret),b=tool('second'),c=tool('third','searching');
+ a.action.sources=[{url:secret,title:secret}];c.action.sources=[{url:secret}];
+ const trace={};
+ assert.throws(()=>accountTools({status:'completed',incomplete_details:{reason:secret},output:[a,b,c,{type:'message',id:secret,status:'completed',content:[{type:'output_text',text:secret,annotations:[{type:'url_citation',url:secret}]}]}]},2,trace),e=>e.detail==='TOOL_LIMIT_OUTCOME_UNKNOWN');
+ const d=trace.providerOutput;
+ assert.equal(d.requestedMaxToolCalls,2);assert.equal(d.responseStatus,'completed');
+ assert.deepEqual(d.items.map(i=>i.identity),[1,2,3,1]);
+ assert.deepEqual(d.items.map(i=>i.status),['completed','completed','searching','completed']);
+ assert.equal(d.items[0].sourceReferences,1);assert.equal(d.items[2].sourceReferences,1);
+ assert.equal(d.items[3].citationReferences,1);assert.equal(d.items[3].textPresent,true);
+ assert.equal(d.incompleteDetailsPresent,true);assert.equal(d.incompleteReason,'other');
+ assert.equal(JSON.stringify(d).includes(secret),false);
+ const diagnostic={correlationId:'a'.repeat(64),operation:'research-acquire',phase:'INFORMATION',endpoint:'responses',upstreamStatus:200,errorCategory:'TOOL_LIFECYCLE_INCOMPLETE',detail:'TOOL_LIMIT_OUTCOME_UNKNOWN',durationMs:1,searchRequested:true,searchDispatched:true,searchCompleted:true,completed:2,failed:0,outcomeUnknown:true,sourceCount:0,fallbackReason:'none',modelConfirmed:true,providerOutput:d};
+ assert.deepEqual(validateServiceDiagnostic(JSON.parse(JSON.stringify(diagnostic))),diagnostic);
+ assert.throws(()=>validateServiceDiagnostic({...diagnostic,providerOutput:{...d,raw:secret}}));
+ assert.equal(canRetryResearch({code:diagnostic.errorCategory,pendingSourceEvidence:{},sourceRequests:2,modelCalls:3}),false);
+});
+test('provider diagnostics bound output and preserve repeated observation identity',()=>{
+ const trace={};accountTools({status:'completed',output:[tool('same'),tool('same'),...Array.from({length:65},()=>({type:'private',status:'private'}))]},2,trace);
+ assert.equal(trace.providerOutput.items.length,64);assert.equal(trace.providerOutput.omittedItems,3);
+ assert.deepEqual(trace.providerOutput.items.slice(0,2).map(i=>i.identity),[1,1]);
+ assert.equal(trace.providerOutput.items[2].type,'other');
+});

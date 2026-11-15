@@ -33,6 +33,7 @@ function snapshot(trace,code,detail){
   if(trace.upstreamRequestId)result.upstreamRequestId=trace.upstreamRequestId;
   if(trace.observedToolEvents!==undefined)result.observedToolEvents=trace.observedToolEvents;
   if(trace.toolAccounting)result.toolAccounting=trace.toolAccounting;
+  if(trace.providerOutput)result.providerOutput=trace.providerOutput;
   if(trace.extraction)result.extraction=trace.extraction;
   if(trace.validation)result.validation=trace.validation;
   if(trace.phase==='SOURCE_EVALUATION'||trace.candidateOutcome){
