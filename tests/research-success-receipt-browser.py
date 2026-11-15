@@ -4,7 +4,7 @@ The first normal-store success uses an actual 23.087-second hosted-tool fixture 
 import os
 from playwright.sync_api import sync_playwright
 BASE=os.environ.get('MINDLING_TEST_URL','http://127.0.0.1:8765')
-CASES=['success','abort_after_body','hidden_after_body','offline_after_body','missing','body_abort','parse','stale','checkpoint','receipt_store','evidence_store','integration','cancel','changed_run','revoked','storage_unavailable','navigation']
+CASES=os.environ.get('MINDLING_RECEIPT_CASES','').split(',') if os.environ.get('MINDLING_RECEIPT_CASES') else ['success','hidden_inflight','visibility_cycles','abort_after_body','hidden_after_body','offline_after_body','missing','body_abort','parse','stale','checkpoint','receipt_store','evidence_store','integration','cancel','changed_run','revoked','storage_unavailable','navigation']
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
     for preview in [False,True]:
@@ -44,7 +44,13 @@ with sync_playwright() as p:
           globalThis.fetch=async(url,options)=>{
             networkCalls++;const request=url==='/api/mindling/reason'?JSON.parse(options.body):null;
             if(request?.mode==='research-acquire')calls++;
-            const response=await originalFetch(url,options);
+            const pendingResponse=originalFetch(url,options);
+            if(request?.mode==='research-acquire'&&['hidden_inflight','visibility_cycles'].includes(kind)){
+              Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));
+              if(kind==='visibility_cycles')for(let i=0;i<3;i++){Object.defineProperty(document,'hidden',{value:false,configurable:true});document.dispatchEvent(new Event('visibilitychange'));Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));}
+              check(!options.signal.aborted,'visibility discarded in-flight request');
+            }
+            const response=await pendingResponse;
             if(request?.mode!=='research-acquire')return response;
             const raw=await response.text();bodyRead=true;window.__bodyRead=true;
             const result=JSON.parse(raw);window.__serverResult=result;
@@ -76,7 +82,7 @@ with sync_playwright() as p:
           if(kind==='success'){
             check(value.status==='COMPLETED'&&app.state.mind.memories.length===3,'valid receipt not integrated');
             if(delayed)check(elapsed>=23000&&window.__serverResult.execution.durationMs>=23000,'actual 23-second delay missing');
-          }else if(['abort_after_body','hidden_after_body','offline_after_body','evidence_store','integration'].includes(kind)){
+          }else if(['abort_after_body','hidden_after_body','hidden_inflight','visibility_cycles','offline_after_body','evidence_store','integration'].includes(kind)){
             const expected=kind==='evidence_store'?'EVIDENCE_PERSISTENCE_FAILED':kind==='integration'?'INTEGRATION_FAILED':'INTEGRATION_PAUSED';
             check(value.code===expected&&!value.researchExecution.outcomeUnknown&&value.sourceReferences.length===3,'received success became unknown: '+value.code);
             check(value.pendingSourceEvaluation||value.pendingEvidence?.length,'received evidence was not durable');
