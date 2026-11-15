@@ -1,3 +1,4 @@
+import {PARENT_DISCOVERY_ENABLED,discoveryContext,persistParents} from './parent-discovery.js';
 import {persistAreaRelations} from './area-relations.js';
 import {graphData} from '../memory/graph-data.js';
 import {semanticDiagnostic} from './diagnostics.js';
@@ -7,6 +8,7 @@ import {VERSION,SEMANTIC_BATCH_PAIRS,semanticCandidates,semanticPairReceipt,vali
 const active=new WeakSet(),queued=new WeakMap();
 const error=code=>Object.assign(Error(code),{code});
 // A confirmed not-dispatched legacy reservation may retain its original size.
+const candidateContext=(mind,ids,options)=>{const context=semanticCandidates(mind,ids,{...options,includeParentDiscovery:PARENT_DISCOVERY_ENABLED});return PARENT_DISCOVERY_ENABLED?discoveryContext(mind,context):context;};
 const batchLimit=task=>task.semanticWork?.state==='RESERVED'&&task.semanticAnalysis?.submitted>SEMANTIC_BATCH_PAIRS?Math.min(4,task.semanticAnalysis.submitted):SEMANTIC_BATCH_PAIRS;
 // Bounded lifecycle queue, never polling. Acquisition retains priority and its
 // full existing allowance; supplemental semantic calls require an explicit grant.
@@ -21,7 +23,7 @@ export async function runSemantic(engine,task){
   if(globalThis.navigator?.onLine===false){await defer('WAITING_CONNECTIVITY');return;}
   if(engine.disposed||engine.app.disposed||globalThis.document?.hidden)return;
   engine.assertLive(identity);
-  const currentMind=engine.app.state.mind;const context=semanticCandidates({...currentMind,learningTasks:currentMind.learningTasks||[task]},task.knowledgeIds,{limit:batchLimit(task),includeAreaReconsideration:true,includeHistoricalAreas:true});if(!context.pairs.length){await defer('NO_CANDIDATES');return;}
+  const currentMind=engine.app.state.mind;const context=candidateContext({...currentMind,learningTasks:currentMind.learningTasks||[task]},task.knowledgeIds,{limit:batchLimit(task),includeAreaReconsideration:true,includeHistoricalAreas:true});if(!context.pairs.length){await defer('NO_CANDIDATES');return;}
   for(const pair of context.pairs)for(const memory of [pair.a,pair.b])if(!memory.provenance&&await digest(memory.text)!==memory.quoteHash)throw error('STALE_EVIDENCE');
   fingerprint=await digest(JSON.stringify(context));
   const topicFingerprint=await digest(String(task.topic||task.objective||task.id).normalize('NFC').toLowerCase());
@@ -42,7 +44,7 @@ export async function runSemantic(engine,task){
   engine.abort.signal.addEventListener('abort',abort,{once:true});globalThis.document?.addEventListener('visibilitychange',hidden);const timer=setTimeout(abort,45000);
   let result;try{
    if(engine.abort.signal.aborted)throw error('REQUEST_INTERRUPTED');
-   await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(JSON.stringify(semanticCandidates({...next.mind,learningTasks:next.mind.learningTasks||[current]},current.knowledgeIds,{limit:batchLimit(current),includeAreaReconsideration:true,includeHistoricalAreas:true}))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.trigger='AUTHORIZED_TASK_CONTINUATION';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='DISPATCHED';attempt.dispatchedAt=now();attempt.pairs=context.pairs.map(semanticPairReceipt);}},{researchGrant:grant});
+   await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(JSON.stringify(candidateContext({...next.mind,learningTasks:next.mind.learningTasks||[current]},current.knowledgeIds,{limit:batchLimit(current),includeAreaReconsideration:true,includeHistoricalAreas:true}))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.trigger='AUTHORIZED_TASK_CONTINUATION';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='DISPATCHED';attempt.dispatchedAt=now();attempt.pairs=context.pairs.map(semanticPairReceipt);}},{researchGrant:grant});
    dispatched=true;
    const response=await fetch('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:fingerprint,mode:'semantic',context})});
    const text=await response.text();if(text.length>100000)throw error('INVALID_SCHEMA');
@@ -56,10 +58,11 @@ export async function runSemantic(engine,task){
    if(next.mind.id!==identity||current.semanticAnalysis?.fingerprint!==fingerprint||current.semanticAnalysis.status!=='RESERVED')throw error('STALE_EVIDENCE');
    const areaOutcomes=persistAreaRelations(next.mind,verdict.areas.accepted,graphData(next.mind).areas);
    current.semanticAreaAnalysis={trigger:'AUTHORIZED_TASK_CONTINUATION',status:result.result.areaRelationships===undefined?'NOT_RETURNED':'COMPLETED',proposed:result.result.areaRelationships?.length||0,persisted:areaOutcomes.filter(c=>c==='AREA_PERSISTED').length,rejections:verdict.areas.rejections,outcomes:areaOutcomes};
+   if(PARENT_DISCOVERY_ENABLED&&context.parentDiscovery)current.semanticParentAnalysis={rejections:verdict.parents.rejections,outcomes:persistParents(next.mind,verdict.parents.accepted,context)};
    const outcomes=persistSemantic(next.mind,verdict.accepted),persisted=outcomes.filter(o=>o.code==='RELATIONSHIP_PERSISTED').length;
    if(current.semanticWork?.fingerprint!==fingerprint||current.semanticWork.state!=='DISPATCHED')throw error('STALE_EVIDENCE');
    current.semanticWork.state='COMPLETED';current.semanticWork.updatedAt=now();
-   const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='COMPLETED';attempt.areaPairs=context.pairs.map(semanticPairReceipt);attempt.completedAt=now();attempt.result={proposed:result.result.relationships.length,accepted:verdict.accepted.length,persisted,rejections:[...verdict.rejections,...outcomes.filter(o=>o.code!=='RELATIONSHIP_PERSISTED')],pairs:context.pairs.map((pair,index)=>{
+   const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='COMPLETED';attempt.areaPairs=context.pairs.map(semanticPairReceipt);if(context.parentDiscovery)attempt.parentPairs=context.pairs.map(semanticPairReceipt);attempt.completedAt=now();attempt.result={proposed:result.result.relationships.length,accepted:verdict.accepted.length,persisted,rejections:[...verdict.rejections,...outcomes.filter(o=>o.code!=='RELATIONSHIP_PERSISTED')],pairs:context.pairs.map((pair,index)=>{
     const matches=r=>JSON.stringify([r?.memoryA,r?.memoryB].sort())===JSON.stringify([pair.a.id,pair.b.id].sort());
     const proposed=result.result.relationships.flatMap((r,i)=>matches(r)?[i]:[]),accepted=verdict.accepted.findIndex(matches);
     return {index,outcome:accepted>=0?outcomes[accepted].code:proposed.length?'REJECTED':'MODEL_ABSTAINED',rejections:verdict.rejections.filter(r=>proposed.includes(r.index)).map(r=>r.code)};

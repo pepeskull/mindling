@@ -23,7 +23,7 @@ export function graphData(state={}) {
   for(const [id,memory] of records){
     const categoryId=identity(memory.categoryId),label=categoryNames.get(categoryId)||string(memory.category)||string(memory.areaSuggestion)||'Uncategorized';
     const areaKey=key('area',categoryId?['id',categoryId]:['label',fold(label)]);
-    if(!categories.has(areaKey))categories.set(areaKey,{id:areaKey,kind:'area',label,memoryIds:[],topicIds:[]});
+    if(!categories.has(areaKey))categories.set(areaKey,{id:areaKey,categoryId,kind:'area',label,memoryIds:[],topicIds:[]});
     const area=categories.get(areaKey),topicLabel=string(memory.topic)||string(memory.concept)||'Unsorted memories';
     const topicKey=key('topic',[areaKey,fold(topicLabel)]);
     if(!topics.has(topicKey)){topics.set(topicKey,{id:topicKey,kind:'topic',label:topicLabel,areaId:areaKey,memoryIds:[]});area.topicIds.push(topicKey);}
@@ -54,6 +54,11 @@ export function graphData(state={}) {
     for(const target of list(memory.componentMemoryIds))add(id,target,'part-of');
     if(string(memory.supersededBy))add(id,memory.supersededBy,'history');
     for(const target of list(memory.supersededByIds))add(id,target,'history');
+  }
+  for(const category of list(state?.categories)){
+    if(category?.organization?.version!==1||!identity(category.id)||!string(category.name))continue;
+    const id=key('area',['id',category.id]);
+    if(!categories.has(id))categories.set(id,{id,categoryId:category.id,kind:'area',label:category.name.trim(),memoryIds:[],topicIds:[]});
   }
   const areas=[...categories.values()].sort((a,b)=>compare(a.label,b.label)||compare(a.id,b.id));
   for(const area of areas){const ts=area.topicIds.map(id=>topics.get(id));area.displayLabel=ts.length>1&&/^(definition|definitions)$/iu.test(area.label)?`Definitions · ${ts.length} topics`:contextualLabel(area.label,ts.length===1?ts[0].label:null)||area.label;for(const topic of ts){const first=nodes.find(n=>n.topicId===topic.id);topic.displayLabel=contextualLabel(topic.label,first&&memoryLabel(first).title)||topic.label;}}

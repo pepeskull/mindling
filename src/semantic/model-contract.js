@@ -1,3 +1,4 @@
+import {validateDiscoveryContext,validateParents} from './parent-discovery.js';
 import {graphData} from '../memory/graph-data.js';
 import {validateAreaContext,validateAreaResults} from './area-relations.js';
 import {materialize} from './evidence-spans.js';
@@ -37,13 +38,13 @@ export function semanticEligibilityIssue(m){
 export function eligibleSemanticMemory(m){return semanticEligibilityIssue(m)===null;}
 export const semanticSnapshot=m=>storedClaim(m)?{id:m.id,text:editableMemoryText(m),sourceHash:null,quoteHash:null,sourceURL:null,observedAt:null,provenance:{kind:'stored-claim',verification:'unverified-player-claim',correctsMemoryId:m.correctsMemoryId||null}}:{id:m.id,text:editableMemoryText(m),sourceHash:m.research.sourceHash,quoteHash:m.research.quoteHash,sourceURL:m.research.sourceURL,observedAt:m.research.observedAt};
 export function validateSemanticContext(value){
- if(!exact(value,value?.areas===undefined?['version','pairs']:['version','pairs','areas'])||value.version!==VERSION||!Array.isArray(value.pairs)||value.pairs.length>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
+ if(!exact(value,['version','pairs',...(value?.areas===undefined?[]:['areas']),...(value?.parentDiscovery===undefined?[]:['parentDiscovery'])])||value.version!==VERSION||!Array.isArray(value.pairs)||value.pairs.length>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
  const seen=new Set(),memories=new Map();for(const pair of value.pairs){if(!exact(pair,['a','b']))fail('INVALID_SCHEMA');for(const m of [pair.a,pair.b]){
   const claim=exact(m,['id','text','sourceHash','quoteHash','sourceURL','observedAt','provenance'])&&exact(m.provenance,['kind','verification','correctsMemoryId'])&&m.provenance.kind==='stored-claim'&&m.provenance.verification==='unverified-player-claim'&&(m.provenance.correctsMemoryId===null||text(m.provenance.correctsMemoryId,100))&&m.sourceHash===null&&m.quoteHash===null&&m.sourceURL===null&&m.observedAt===null;
   const research=exact(m,['id','text','sourceHash','quoteHash','sourceURL','observedAt'])&&hash(m.sourceHash)&&hash(m.quoteHash)&&text(m.sourceURL,500)&&Number.isSafeInteger(m.observedAt)&&m.observedAt>=0;
   if(!text(m.id,100)||!text(m.text,2000)||(!claim&&!research))fail('INVALID_SCHEMA');
   if(memories.has(m.id)&&memories.get(m.id)!==JSON.stringify(m))fail('STALE_EVIDENCE');memories.set(m.id,JSON.stringify(m));
- }const key=pairKey(pair.a.id,pair.b.id);if(pair.a.id===pair.b.id||seen.has(key))fail('DUPLICATE_RELATION');seen.add(key);}if(value.areas!==undefined)validateAreaContext(value.areas,value.pairs);return value;
+ }const key=pairKey(pair.a.id,pair.b.id);if(pair.a.id===pair.b.id||seen.has(key))fail('DUPLICATE_RELATION');seen.add(key);}if(value.areas!==undefined)validateAreaContext(value.areas,value.pairs);if(value.parentDiscovery!==undefined)validateDiscoveryContext(value.parentDiscovery);return value;
 }
 const string=maxLength=>({type:'string',minLength:1,maxLength});
 const spanSchema={type:'object',additionalProperties:false,required:['start','end','quote'],properties:{start:{type:'integer',minimum:0,maximum:2000},end:{type:'integer',minimum:1,maximum:2000},quote:string(2000)}};
@@ -59,7 +60,7 @@ function spanIssue(span,passage){
  return starts.has(span.start)&&ends.has(span.end)?null:'QUALIFICATION_MISMATCH';
 }
 export function validateSemanticResult(value,context){
- validateSemanticContext(context);if(!exact(value,value?.areaRelationships===undefined?['version','relationships']:['version','relationships','areaRelationships'])||value.version!==VERSION||!Array.isArray(value.relationships)||value.relationships.length>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA','RESULT_ENVELOPE_INVALID');
+ validateSemanticContext(context);if(!exact(value,['version','relationships',...(value?.areaRelationships===undefined?[]:['areaRelationships']),...(context.parentDiscovery?['parentCategories']:[])])||value.version!==VERSION||!Array.isArray(value.relationships)||value.relationships.length>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA','RESULT_ENVELOPE_INVALID');
  const accepted=[],rejections=[],seen=new Set();
  const reject=(index,code)=>rejections.push({index,code});
  for(const [index,r]of value.relationships.entries()){
@@ -77,24 +78,26 @@ export function validateSemanticResult(value,context){
   seen.add(key);accepted.push({...r,version:VERSION,snapshotA:pair.a,snapshotB:pair.b});
  }
  const areas=validateAreaResults(value.areaRelationships||[],context,materialize);
- return {accepted,rejected:rejections.length,rejections,abstained:value.relationships.length===0,areas};
+ return {accepted,rejected:rejections.length,rejections,abstained:value.relationships.length===0,areas,parents:validateParents(value.parentCategories,context)};
 }
 // Receipts identify the exact evidence version, never inferred semantic truth.
 // Bounded by four pairs per attempt and the existing four attempts per task.
 export const semanticPairReceipt=pair=>JSON.stringify([VERSION,...[pair.a,pair.b].sort((a,b)=>a.id<b.id?-1:1).map(m=>[m.id,m.sourceHash,m.quoteHash,m.sourceURL,m.observedAt,...(m.provenance?[m.provenance,m.text]:[])])]);
-export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,includeAreaReconsideration=false,includeHistoricalAreas=false}={}){
+export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,includeAreaReconsideration=false,includeHistoricalAreas=false,includeParentDiscovery=false}={}){
  if(!Number.isSafeInteger(limit)||limit<1||limit>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
  const list=mind.memories||[],counts=new Map();for(const m of list)counts.set(m?.id,(counts.get(m?.id)||0)+1);
  const selected=new Set(ids.map(id=>currentMemoryVersion(list,id)?.id||id)),completed=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.pairs||[])));
  const unresolved=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>['DISPATCHED','OUTCOME_UNKNOWN'].includes(a.state)).flatMap(a=>a.pairs||[])));
  const areaGraph=includeAreaReconsideration?graphData(mind):null,areaByMemory=new Map((areaGraph?.memories||[]).map(n=>[n.recordId,n.areaId]));
+ const parentAttempted=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.parentPairs||[])));
  const areaAttempted=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.areaPairs||[])));
  const ordered=list.filter(m=>counts.get(m?.id)===1&&eligibleSemanticMemory(m)).sort((a,b)=>Number(selected.has(b.id))-Number(selected.has(a.id))||(a.id<b.id?-1:a.id>b.id?1:0));
  const eligible=ordered.slice(0,CONNECTION_LIMITS.records),snapshots=new Map(eligible.map(m=>[m.id,semanticSnapshot(m)])),pairs=[],decisions=[];let historicalCandidates=0;
  for(let i=0;i<eligible.length;i++)for(let j=i+1;j<eligible.length;j++){
   const [a,b]=[eligible[i],eligible[j]].sort((a,b)=>a.id<b.id?-1:1),pair={a:snapshots.get(a.id),b:snapshots.get(b.id)};
   const areaA=areaByMemory.get(a.id),areaB=areaByMemory.get(b.id),receipt=semanticPairReceipt(pair);
-  const areaNeeded=includeAreaReconsideration&&areaA!==areaB&&!areaAttempted.has(receipt);
+  const parentNeeded=includeParentDiscovery&&areaA!==areaB&&!parentAttempted.has(receipt)&&[areaA,areaB].every(id=>areaGraph?.areas.some(a=>a.id===id&&!a.parentId));
+  const areaNeeded=includeAreaReconsideration&&areaA!==areaB&&(!areaAttempted.has(receipt)||parentNeeded);
   let reason=!selected.has(a.id)&&!selected.has(b.id)&&!(includeHistoricalAreas&&areaNeeded)?'OUTSIDE_TASK':unresolved.has(receipt)?'OUTCOME_UNRESOLVED':
    !areaNeeded&&(a.relatedMemoryIds?.includes(b.id)||b.relatedMemoryIds?.includes(a.id))?'EXISTING_LINK':
    !areaNeeded&&[a,b].some(m=>new Set((m.semanticAssociations||[]).map(e=>e.memoryId)).size>=CONNECTION_LIMITS.links)?'DEGREE_LIMIT':!areaNeeded&&completed.has(receipt)?'ALREADY_ANALYZED':null;
@@ -143,7 +146,7 @@ export function persistSemantic(mind,accepted){
 
 function areaContext(mind,context){
  const selected=new Set(context.pairs.flatMap(p=>[p.a.id,p.b.id]));
- const areas=graphData(mind).areas.map(({id,label,memoryIds})=>({id,label,memoryIds:memoryIds.filter(id=>selected.has(id))})).filter(a=>a.label!=='Uncategorized'&&a.label.length<=160&&a.id.length<=300);
+ const areas=graphData(mind).areas.map(({id,label,memoryIds,descendantMemoryIds})=>({id,label,memoryIds:(memoryIds.length?memoryIds:descendantMemoryIds||[]).filter(id=>selected.has(id))})).filter(a=>a.label!=='Uncategorized'&&a.label.length<=160&&a.id.length<=300);
  areas.sort((a,b)=>Number(b.memoryIds.length>0)-Number(a.memoryIds.length>0)||(a.id<b.id?-1:1));
  return areas.length?{...context,areas:areas.slice(0,32)}:context;
 }

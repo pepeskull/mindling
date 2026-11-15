@@ -8,11 +8,11 @@ import {semanticDiagnostic} from '../src/semantic/diagnostics.js';
 const require=createRequire(import.meta.url),{handler}=require('../src/server/mindling-reasoning.cjs');
 const memory=(id,content)=>({id,content,category:id,categoryId:id,source:'SERVICE',contentIntegrity:{version:1,status:'captured',length:content.length},analysis:{name:'mindling-learning-service',verification:'unverified-player-claim'},intelligence:{kind:'claim',current:true}});
 const context=semanticCandidates({memories:[memory('a','A is a type of B.'),memory('b','B includes A.')]},['a']);
-async function invoke(upstream){
+async function invoke(upstream,input=context){
  const oldFetch=globalThis.fetch,oldWarn=console.warn,key=process.env.SERVICE_API,model=process.env.SERVICE_MODEL,logs=[],requests=[];
  process.env.SERVICE_API='private-key';process.env.SERVICE_MODEL='unchanged-model';console.warn=s=>logs.push(JSON.parse(s));
- globalThis.fetch=async(url,options)=>{requests.push(url);if(url.includes('/models/'))return Response.json({id:'unchanged-model'});const body=JSON.parse(options.body);assert.equal(body.model,'unchanged-model');assert.equal(body.max_completion_tokens,2600);assert.deepEqual(body.response_format,{type:'json_schema',json_schema:{name:'mindling_semantic',strict:true,schema:semanticTransportSchema(context)}});return upstream(body);};
- const req=Object.assign(new EventEmitter(),{method:'POST',headers:{host:'localhost','x-forwarded-for':'offline-semantic'},body:{id:'b'.repeat(64),mode:'semantic',context}});
+ globalThis.fetch=async(url,options)=>{requests.push(url);if(url.includes('/models/'))return Response.json({id:'unchanged-model'});const body=JSON.parse(options.body);assert.equal(body.model,'unchanged-model');assert.equal(body.max_completion_tokens,2600);assert.deepEqual(body.response_format,{type:'json_schema',json_schema:{name:'mindling_semantic',strict:true,schema:semanticTransportSchema(input)}});return upstream(body);};
+ const req=Object.assign(new EventEmitter(),{method:'POST',headers:{host:'localhost','x-forwarded-for':'offline-semantic'},body:{id:'b'.repeat(64),mode:'semantic',context:input}});
  const res=Object.assign(new EventEmitter(),{status(code){this.code=code;return this;},json(body){this.body=body;this.writableEnded=true;return this;}});
  try{await handler(req,res);return {res,logs,requests};}finally{globalThis.fetch=oldFetch;console.warn=oldWarn;for(const [k,v] of [['SERVICE_API',key],['SERVICE_MODEL',model]])if(v===undefined)delete process.env[k];else process.env[k]=v;}
 }
@@ -31,4 +31,15 @@ test('unknown rejection wording and malformed model output do not become valid r
  const first=await invoke(()=>Response.json({error:{code:'PRIVATE',param:'PRIVATE',message:'PRIVATE'}},{status:400}));
  assert.deepEqual(first.res.body.error.diagnostic.requestRejection,{code:'other',parameter:'other',constraintHint:'UNCLASSIFIED'});
  const second=await invoke(()=>Response.json({choices:[{finish_reason:'stop',message:{content:'{broken'}}]}));assert.equal(second.res.code,502);assert.equal(second.res.body.error.code,'INVALID_SCHEMA');
+});
+test('parent proposals require explicit server opt-in and retain the same semantic endpoint and token budget',async()=>{
+ const {discoveryContext}=await import('../src/semantic/parent-discovery.js');
+ const input=discoveryContext({categories:[]},context),before=process.env.MINDLING_PARENT_DISCOVERY;
+ try{
+  delete process.env.MINDLING_PARENT_DISCOVERY;
+  const blocked=await invoke(()=>{assert.fail('disabled feature dispatched inference');},input);assert.equal(blocked.res.code,502);
+  process.env.MINDLING_PARENT_DISCOVERY='enabled';
+  const enabled=await invoke(()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({version:1,relationships:[],areaRelationships:[],parentCategories:[]})}}]}),input);
+  assert.equal(enabled.res.code,200);assert.deepEqual(enabled.res.body.result.parentCategories,[]);
+ }finally{if(before===undefined)delete process.env.MINDLING_PARENT_DISCOVERY;else process.env.MINDLING_PARENT_DISCOVERY=before;}
 });

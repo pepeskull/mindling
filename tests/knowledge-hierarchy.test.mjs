@@ -5,7 +5,9 @@ import {clusterPositions} from '../src/memory/cluster-drag.js';
 import {cleanView} from '../src/memory/view-state.js';
 import {understandInput} from '../src/learning/input-understanding.js';
 import {learningSummary} from '../src/autonomous/learning-summary.js';
-const mind=()=>({id:'fixture',memories:[{id:'a',content:'A broad sport observation.',categoryId:'sport',category:'Sport',relatedMemoryIds:['b']},{id:'b',content:'A football observation.',categoryId:'football',category:'Association football',relatedMemoryIds:['a'],research:{sourceURL:'https://example.org/evidence',quoteHash:'preserved'}},{id:'c',content:'A scientific observation.',categoryId:'science',category:'Science'}]});
+const rawMind=()=>({id:'fixture',memories:[{id:'a',content:'A broad sport observation.',categoryId:'sport',category:'Sport',relatedMemoryIds:['b']},{id:'b',content:'Association football is a type of Sport.',categoryId:'football',category:'Association football',relatedMemoryIds:['a'],research:{sourceURL:'https://example.org/evidence',quoteHash:'preserved'}},{id:'c',content:'A scientific observation.',categoryId:'science',category:'Science'}]});
+import {reconcileAreaEvidence} from '../src/semantic/reconcile-area-evidence.js';
+const mind=()=>{const m=rawMind();for(const r of m.memories){r.source='SERVICE';r.analysis={name:'mindling-learning-service',verification:'unverified-player-claim'};r.intelligence={kind:'claim',current:true};r.contentIntegrity={version:1,status:'captured',length:r.content.length};}return reconcileAreaEvidence({mind:m}).mind;};
 const area=(g,label)=>g.areas.find(a=>a.label===label).id;
 test('canonical hierarchy is direction-independent, retains claims and child identity; root distribution has no double count',()=>{
  const m=mind(),before=structuredClone(m),g=graphData(m),a=area(g,'Sport'),b=area(g,'Association football');
@@ -19,7 +21,7 @@ test('canonical hierarchy is direction-independent, retains claims and child ide
 test('unrelated, siblings, substring-only, unknown, dangling and cyclic proposals fail closed',()=>{
  const m=mind(),g=graphData(m);assert.equal(mergeProposal(g,null,area(g,'Sport'),area(g,'Science')).valid,false);
  const taxonomy={memories:['Biology','Genetics','Cell biology','Unknown biology'].map((category,i)=>({id:String(i),content:'Fixture '+i,category}))},t=graphData(taxonomy);
- assert(mergeProposal(t,null,area(t,'Biology'),area(t,'Genetics')).valid);assert(!mergeProposal(t,null,area(t,'Genetics'),area(t,'Cell biology')).valid);assert(!mergeProposal(t,null,area(t,'Biology'),area(t,'Unknown biology')).valid);
+ assert(!mergeProposal(t,null,area(t,'Biology'),area(t,'Genetics')).valid);assert(!mergeProposal(t,null,area(t,'Genetics'),area(t,'Cell biology')).valid);assert(!mergeProposal(t,null,area(t,'Biology'),area(t,'Unknown biology')).valid);
  const a=area(t,'Biology'),b=area(t,'Genetics');assert(!mergeProposal(t,{version:1,links:[{parentId:b,childId:a}]},a,b).valid);
  assert.equal(hierarchyLinks({version:1,links:[{parentId:a,childId:b},{parentId:b,childId:a},{parentId:a,childId:'absent'}]},t.areas).length,1);
 });
