@@ -7,7 +7,7 @@ import {defaultPermissions,assertResearchGrant} from '../../src/autonomous/resea
 import {understandInput} from '../../src/learning/input-understanding.js';
 const require=createRequire(import.meta.url),{handler}=require('../../src/server/mindling-reasoning.cjs'),fixture=require('./research-success-fixture.cjs');
 let sequence=0;
-export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,mutate=null,evaluate=fixture.evaluation,hypotheses=[]}={}){
+export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,beforeAcquisition=null,mutate=null,evaluate=fixture.evaluation,hypotheses=[]}={}){
  const originals={fetch:globalThis.fetch,warn:console.warn,now:Date.now,timer:globalThis.setTimeout,document:Object.getOwnPropertyDescriptor(globalThis,'document'),window:Object.getOwnPropertyDescriptor(globalThis,'window'),navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),key:process.env.SERVICE_API,model:process.env.SERVICE_MODEL,web:process.env.MINDLING_WEB_SEARCH};
  const control={kind,fault,afterBody,mutate,calls:[],logs:[],server:null,elapsed:0};Date.now=()=>originals.now()+control.elapsed;
  for(const [name,value] of [['window',new EventTarget()],['document',Object.assign(new EventTarget(),{hidden:false})],['navigator',{onLine:true}]])Object.defineProperty(globalThis,name,{configurable:true,value});
@@ -31,6 +31,7 @@ export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='s
   if(url==='/api/mindling/reason'){
    const body=JSON.parse(options.body),req=Object.assign(new EventEmitter(),{method:'POST',headers:{host:'localhost','x-forwarded-for':`received-${++sequence}`},body});
    const res=Object.assign(new EventEmitter(),{status(code){this.code=code;return this;},json(value){if(kind==='serialization'&&this.code===200&&body.mode==='research-acquire')throw Error('Private serialization failure');this.body=value;this.writableEnded=true;return this;}});
+   if(body.mode==='research-acquire'&&beforeAcquisition){await beforeAcquisition(control,options.signal);if(options.signal.aborted)throw new DOMException('Request aborted','AbortError');}
    await handler(req,res);control.server=res;
    res.body=JSON.parse(JSON.stringify(res.body));
    if(body.mode==='research-acquire'){

@@ -38,7 +38,11 @@ const activityFor=mode=>mode===LEARNING_MODES.DEEP?'DEEP_TRAINING':mode===LEARNI
 export class AutonomousLearningEngine {
   constructor(app){
     this.app=app;this.abort=new AbortController();this.session=crypto.randomUUID();this.followers=new Map();this.queue=new Set();
-    document.addEventListener('visibilitychange',()=>{if(document.hidden)this.active?.controller.abort('HIDDEN');else this.recover();},{signal:this.abort.signal});
+    // Hiding a tab must not discard paid in-flight work. Receipt validation and
+    // persistence may finish hidden; sources() defers integration until visible.
+    // Scheduling still refuses new work while hidden. Real teardown/revocation
+    // continues to abort, preserving unknown-outcome reservations.
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)this.recover();},{signal:this.abort.signal});
     window.addEventListener('pagehide',()=>this.active?.controller.abort('PAGEHIDE'),{signal:this.abort.signal});
     window.addEventListener('offline',()=>this.active?.controller.abort('OFFLINE'),{signal:this.abort.signal});
     window.addEventListener('online',()=>this.recover(),{signal:this.abort.signal});
