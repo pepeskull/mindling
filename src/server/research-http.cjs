@@ -20,6 +20,7 @@ async function requestJSON(url,options,trace,limit=65536){
   if(!response.ok){
     let body;try{body=(await readJSON(response,8192)).payload;}catch{/* An HTML/error body is never logged. */}
     if(target==='responses'&&[400,401,403,404,422,429].includes(response.status))trace.outcomeUnknown=false;
+    if(trace.phase==='SEMANTIC')trace.requestRejection=require('./semantic-request-rejection.cjs').semanticRequestRejection(body?.error);
     const code=body?.error?.code,param=body?.error?.param;
     const category=target==='models'&&response.status===404||code==='model_not_found'||param==='model'?'MODEL_UNAVAILABLE':code==='unsupported_tool'||code==='tool_not_supported'||response.status===400&&typeof param==='string'&&/^(?:tools|tool_choice)(?:\b|\[|\.)/.test(param)?'TOOL_UNSUPPORTED':response.status===400?'INVALID_REQUEST':response.status===429?'RATE_LIMITED':'UPSTREAM_HTTP_ERROR';
     // Classify only allowlisted metadata, never provider messages or arbitrary params.
