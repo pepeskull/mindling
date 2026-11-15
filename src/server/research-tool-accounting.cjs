@@ -1,5 +1,6 @@
 'use strict';
 const {fail}=require('./research-http.cjs');
+const {outputDiagnostics}=require('./research-output-diagnostics.cjs');
 // Only identical provider IDs establish one invocation. Never deduplicate by
 // query, URL, action text or position: a repeat search can consume another call.
 const terminal=status=>['completed','failed'].includes(status);
@@ -26,6 +27,7 @@ function mergeEvent(a,b){
 // Reservations limit dispatch. Observed counters describe provider output and
 // may exceed that reservation on a rejected response; they are not billing data.
 function accountTools(payload,ceiling,trace){
+  trace.providerOutput=outputDiagnostics(payload,ceiling);
   const output=Array.isArray(payload?.output)?payload.output:[],raw=output.filter(item=>item?.type==='web_search_call'),seen=new Map(),calls=[];
   trace.observedToolEvents=raw.length;
   const conflicts=new Set();
