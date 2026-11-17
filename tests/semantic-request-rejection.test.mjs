@@ -23,13 +23,13 @@ test('actual semantic request retains model, strict format and evidence schema; 
 test('provider response-format rejection retains allowlisted cause without retry or private text',async()=>{
  const {res,logs,requests}=await invoke(()=>Response.json({error:{code:'invalid_request_error',param:'response_format.json_schema.schema.properties.private-memory',message:'additionalProperties must be false; private-key PRIVATE-MEMORY'}},{status:400}));
  assert.equal(res.code,502);const d=res.body.error.diagnostic;assert.equal(d.detail,'RESPONSE_FORMAT_REJECTED');assert.equal(d.upstreamStatus,400);
- assert.deepEqual(d.requestRejection,{code:'invalid_request_error',parameter:'schema_nested',constraintHint:'ADDITIONAL_PROPERTIES'});
+ assert.deepEqual(d.requestRejection,{code:'invalid_request_error',parameter:'schema_nested',providerType:'other',codePresent:true,messagePresent:true,constraintHint:'ADDITIONAL_PROPERTIES'});
  assert.equal(requests.length,2);assert.doesNotMatch(JSON.stringify({logs,body:res.body}),/private-key|PRIVATE-MEMORY|private-memory|A is a type/);
  assert.deepEqual(semanticDiagnostic(d).requestRejection,d.requestRejection);
 });
 test('unknown rejection wording and malformed model output do not become valid relationships',async()=>{
  const first=await invoke(()=>Response.json({error:{code:'PRIVATE',param:'PRIVATE',message:'PRIVATE'}},{status:400}));
- assert.deepEqual(first.res.body.error.diagnostic.requestRejection,{code:'other',parameter:'other',constraintHint:'UNCLASSIFIED'});
+ assert.deepEqual(first.res.body.error.diagnostic.requestRejection,{code:'other',parameter:'other',providerType:'other',codePresent:true,messagePresent:true,constraintHint:'UNCLASSIFIED'});
  const second=await invoke(()=>Response.json({choices:[{finish_reason:'stop',message:{content:'{broken'}}]}));assert.equal(second.res.code,502);assert.equal(second.res.body.error.code,'INVALID_SCHEMA');
 });
 test('parent proposals require explicit server opt-in and retain the same semantic endpoint and token budget',async()=>{
@@ -42,4 +42,14 @@ test('parent proposals require explicit server opt-in and retain the same semant
   const enabled=await invoke(()=>Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify({version:1,relationships:[],areaRelationships:[],parentCategories:[]})}}]}),input);
   assert.equal(enabled.res.code,200);assert.deepEqual(enabled.res.body.result.parentCategories,[]);
  }finally{if(before===undefined)delete process.env.MINDLING_PARENT_DISCOVERY;else process.env.MINDLING_PARENT_DISCOVERY=before;}
+});
+
+test('expanded rejection hints survive sanitization without disclosing provider text',()=>{
+ const {semanticRequestRejection}=require('../src/server/semantic-request-rejection.cjs');
+ for(const [message,hint] of [['Failed to compile grammar','SCHEMA_COMPILATION'],['Schema too large','SCHEMA_SIZE'],['Duplicate values','DUPLICATE_VALUES'],['Unsupported type','UNSUPPORTED_TYPE'],['Invalid $ref reference','REFERENCE_CONSTRAINT']]){
+  const rejection=semanticRequestRejection({code:null,type:'invalid_request_error',param:'response_format',message:message+' SECRET memory text'});
+  assert.equal(rejection.constraintHint,hint);assert.equal(rejection.codePresent,false);
+  assert.deepEqual(semanticDiagnostic({requestRejection:rejection}).requestRejection,rejection);
+  assert.doesNotMatch(JSON.stringify(rejection),/SECRET|memory text/);
+ }
 });
