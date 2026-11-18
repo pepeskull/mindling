@@ -43,7 +43,7 @@ export class Dashboard {
   #onResearchAccess;
   #onCancelClarification;
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onMemoryView=null, onMergeAreas=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, onSemanticAllowance=null, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onMemoryView=null, onMergeAreas=null, onConnectMemories=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, onSemanticAllowance=null, readOnly = false } = {}) {
     for(const node of document.querySelectorAll('[data-activity-mode], [data-input-mode]')){
       const mode=node.dataset.activityMode||node.dataset.inputMode,policy=LIFE_RULES.activity[mode];if(!policy)continue;
       const reward=activityReward(mode),label=`${policy.label}: ${policy.energyCost} Energy · +${reward} XP`;
@@ -53,7 +53,7 @@ export class Dashboard {
     this.#onResearchAccess=onResearchAccess;this.onLearningTask=onLearningTask;this.#onClarification=onClarification;this.#onCancelClarification=onCancelClarification;
     this.stageChip=new StageChip(document.querySelector('[data-life-stage]'));
     this.primaryView='dashboard';
-    this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask,onMemoryView,onMergeAreas});
+    this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask,onMemoryView,onMergeAreas,onConnectMemories});
     this.#development = new DevelopmentView(document.querySelector("#development-view"));
     this.#network = new NetworkView(document.querySelector("#network-view"));
     this.integration=new IntegrationView(document.querySelector('#integration-view'));

@@ -86,8 +86,8 @@ export const semanticPairReceipt=pair=>JSON.stringify([VERSION,...[pair.a,pair.b
 export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,includeAreaReconsideration=false,includeHistoricalAreas=false,includeParentDiscovery=false}={}){
  if(!Number.isSafeInteger(limit)||limit<1||limit>CONNECTION_LIMITS.links)fail('INVALID_SCHEMA');
  const list=mind.memories||[],counts=new Map();for(const m of list)counts.set(m?.id,(counts.get(m?.id)||0)+1);
- const selected=new Set(ids.map(id=>currentMemoryVersion(list,id)?.id||id)),completed=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.pairs||[])));
- const unresolved=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>['DISPATCHED','OUTCOME_UNKNOWN'].includes(a.state)).flatMap(a=>a.pairs||[])));
+ const selected=new Set(ids.map(id=>currentMemoryVersion(list,id)?.id||id)),completed=new Set([...(mind.learningTasks||[]).flatMap(t=>t.semanticAttempts||[]),...(mind.manualSemanticAttempts||[])].filter(a=>a.state==='COMPLETED').flatMap(a=>a.pairs||[]));
+ const unresolved=new Set([...(mind.learningTasks||[]).flatMap(t=>t.semanticAttempts||[]),...(mind.manualSemanticAttempts||[])].filter(a=>['DISPATCHED','OUTCOME_UNKNOWN'].includes(a.state)).flatMap(a=>a.pairs||[]));
  const areaGraph=includeAreaReconsideration?graphData(mind):null,areaByMemory=new Map((areaGraph?.memories||[]).map(n=>[n.recordId,n.areaId]));
  const parentAttempted=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.parentPairs||[])));
  const areaAttempted=new Set((mind.learningTasks||[]).flatMap(t=>(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').flatMap(a=>a.areaPairs||[])));
