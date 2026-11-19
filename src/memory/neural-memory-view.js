@@ -1,3 +1,4 @@
+import {AREA_PAIR_MESSAGES} from '../semantic/area-pair-worker.js';
 import {CONNECTION_MESSAGES} from '../semantic/manual-connection.js';
 import {mergeProposal,commitHierarchy} from './knowledge-hierarchy.js';
 import {cleanView} from './view-state.js';
@@ -17,8 +18,8 @@ const PAGE_SIZE=6;
 
 
 export class NeuralMemoryView {
-  constructor(root,{onLearningTask=null,onMergeAreas=null,onConnectMemories=null,onMemoryView=null}={}){
-    this.onConnectMemories=onConnectMemories;this.connectionBusy=false;this.onLearningTask=onLearningTask;this.onMergeAreas=onMergeAreas;this.onMemoryView=onMemoryView;this.taskQuery='';this.taskFilter='all';this.taskPage=0;this.savedPositions={};this.viewRevision=0;this.saveChain=Promise.resolve();
+  constructor(root,{onLearningTask=null,onMergeAreas=null,onConnectMemories=null,onConnectAreas=null,onMemoryView=null}={}){
+    this.onConnectAreas=onConnectAreas;this.onConnectMemories=onConnectMemories;this.connectionBusy=false;this.onLearningTask=onLearningTask;this.onMergeAreas=onMergeAreas;this.onMemoryView=onMemoryView;this.taskQuery='';this.taskFilter='all';this.taskPage=0;this.savedPositions={};this.viewRevision=0;this.saveChain=Promise.resolve();
     this.state=null;this.positions=new Map();this.colors=new Map();this.taskNodes=new Map();this.root=root;this.visible=false;this.autoFit=true;this.dirty=true;this.frame=null;this.selected=null;this.hover=null;this.area='all';this.query='';this.page=0;this.zoom=1;this.pan={x:0,y:0};this.abort=new AbortController();this.generation=0;
     root.innerHTML=`<div class="memory-stat-strip" aria-label="Memory statistics"></div>
       <div class="neural-memory-grid"><section class="knowledge-graph-panel" aria-labelledby="knowledge-areas-title"><div class="graph-panel-heading"><div><p class="memory-eyebrow">01 / EXPLORE</p><h3 id="knowledge-areas-title">Knowledge network</h3></div><span class="local-memory-tag"><i></i> LOCAL MEMORY</span></div>
@@ -52,7 +53,7 @@ export class NeuralMemoryView {
       if(hit){this.tooltip.textContent=hit.kind==='memory'?memoryLabel(hit).title:(hit.displayLabel||hit.label);this.tooltip.hidden=false;this.tooltip.style.left=`${Math.min(x+14,Math.max(10,box.width-250))}px`;this.tooltip.style.top=`${Math.max(10,y-38)}px`;}else this.hideTooltip();this.drawSoon();
     });
     this.on(this.canvas,'pointerup',event=>{if(!this.drag||event.pointerId!==this.drag.id)return;const drag=this.drag,moved=drag.moved,preview=this.mergePreview;this.drag=null;
-      if(drag.memory&&moved){if(drag.target)void this.connectMemoryPair(drag.memory.recordId,drag.target.recordId);else this.root.querySelector('.graph-message').textContent='No connection requested. Drop onto another current memory.';}else if(preview&&moved){for(const p of drag.cluster.points){p.node.x=p.x;p.node.y=p.y;}this.elastic=null;if(preview.proposal.valid&&performance.now()-preview.since>=600)this.commitMerge(preview.proposal,preview.targetId);else this.root.querySelector('.graph-message').textContent=preview.proposal.valid?'Hold over the target briefly before releasing to merge.':preview.proposal.reason;}
+      if(drag.memory&&moved){if(drag.target)void this.connectMemoryPair(drag.memory.recordId,drag.target.recordId);else this.root.querySelector('.graph-message').textContent='No connection requested. Drop onto another current memory.';}else if(preview&&moved){for(const p of drag.cluster.points){p.node.x=p.x;p.node.y=p.y;}this.elastic=null;if(preview.proposal.valid&&performance.now()-preview.since>=600)this.commitMerge(preview.proposal,preview.targetId);else if(!preview.proposal.valid&&preview.proposal.code==='MISSING_CONTAINMENT'&&this.onConnectAreas)void this.connectAreaPair(drag.cluster.root.node.id,preview.targetId);else this.root.querySelector('.graph-message').textContent=preview.proposal.valid?'Hold over the target briefly before releasing to merge.':preview.proposal.reason;}
       else{drag.cluster?.release();this.scheduleSave();}
       this.mergePreview=null;if(this.canvas.hasPointerCapture(event.pointerId))this.canvas.releasePointerCapture(event.pointerId);this.drawSoon();
       if(!moved){const box=this.canvas.getBoundingClientRect(),hit=this.hit(event.clientX-box.left,event.clientY-box.top);if(hit)this.select(hit.id);}});
@@ -145,7 +146,7 @@ export class NeuralMemoryView {
     if(node.kind==='research'){title.textContent=node.root?'Learning task':node.label;renderTaskInspector(host,node,{onAction:this.onLearningTask,refresh:()=>this.renderInspector(),memories:this.graph.memories});return;}
     if(node.kind!=='memory'){title.textContent=node.displayLabel||node.label;host.append(el('p',`${(node.descendantMemoryIds||node.memoryIds).length} canonical memories · ${node.kind==='area'?'Knowledge area':'Topic'}`));const candidates=this.filtered.memories.filter(memory=>(node.kind==='area'||node.hierarchyArea)?(memory.areaId===node.id||memory.ancestorAreaIds?.includes(node.id)):memory.topicId===node.id);for(const memory of candidates.slice(0,8)){host.append(memoryButton(memory));}
       const relations=this.graph.edges.filter(e=>e.origin==='semantic-area'&&(e.from===node.id||e.to===node.id));
-      if(relations.length){host.append(el('h4','Supported area connections'));for(const edge of relations){const target=this.graph.areas.find(a=>a.id===(edge.from===node.id?edge.to:edge.from));if(!target)continue;const button=el('button',target.label+' · '+edge.basis.rule);button.type='button';button.dataset.selectMemory=target.id;host.append(button);const relation=this.graph.areaRelations.find(r=>r.type==='related-to'&&[r.from,r.to].includes(node.id)&&[r.from,r.to].includes(target.id));if(relation){const details=el('details'),summary=el('summary','Supporting evidence · model assessed');details.append(summary,el('p',relation.reason));for(const evidence of relation.evidence)details.append(el('blockquote',evidence.span.quote));details.append(el('small','Stored claims and cited summaries are not independently verified.'));host.append(details);}}}
+      if(relations.length){host.append(el('h4','Supported area connections'));for(const edge of relations){const target=this.graph.areas.find(a=>a.id===(edge.from===node.id?edge.to:edge.from));if(!target)continue;const button=el('button',target.label+' · '+edge.basis.rule);button.type='button';button.dataset.selectMemory=target.id;host.append(button);const relation=this.graph.areaRelations.find(r=>['related-to','overlaps','part-of','instance-of'].includes(r.type)&&[r.from,r.to].includes(node.id)&&[r.from,r.to].includes(target.id));if(relation){const details=el('details'),summary=el('summary','Supporting evidence · model assessed');details.append(summary,el('p',relation.reason));for(const evidence of relation.evidence)details.append(el('blockquote',evidence.span.quote));details.append(el('small','Stored claims and cited summaries are not independently verified.'));host.append(details);}}}
       return;}
     const memory=node.raw,byId=new Map(this.graph.nodes.map(item=>[item.id,item])),label=memoryLabel(node);title.textContent=label.title;
     host.append(el('span',node.historical?'Historical memory':'Current memory',`memory-status-chip ${node.historical?'historical':''}`));
@@ -173,6 +174,15 @@ export class NeuralMemoryView {
     catch{if(!this.abort.signal.aborted&&this.viewIdentity===identity)message.textContent=CONNECTION_MESSAGES.PERSISTENCE_FAILED;}
     finally{this.connectionBusy=false;}
   }
+  async connectAreaPair(a,b){
+    if(this.connectionBusy||!this.onConnectAreas)return;
+    this.connectionBusy=true;const identity=this.viewIdentity;
+    let message=this.root.querySelector('.memory-connection-status');if(!message){message=el('p',undefined,'memory-connection-status');message.setAttribute('role','status');this.root.querySelector('.graph-message').after(message);}message.textContent='Preparing complete area evidence…';
+    try{const result=await this.onConnectAreas([a,b],identity,progress=>{if(!this.abort.signal.aborted&&this.viewIdentity===identity)message.textContent=`Analyzing both areas · ${progress.memories} eligible memories · step ${progress.stage}/${progress.total}${progress.excluded?` · ${progress.excluded} ineligible records excluded`:''}`;});
+      if(!this.abort.signal.aborted&&this.viewIdentity===identity){message.textContent=(AREA_PAIR_MESSAGES[result?.code]||'Area analysis could not complete.')+(result?.reason?' '+result.reason:'')+(result?.total?` Completed steps: ${result.completed}/${result.total}. Drop again to continue only if no request outcome is unknown.`:'');this.dirty=true;this.queueBuild();}}
+    catch{if(!this.abort.signal.aborted&&this.viewIdentity===identity)message.textContent=AREA_PAIR_MESSAGES.PERSISTENCE_FAILED;}
+    finally{this.connectionBusy=false;}
+  }
   previewMerge(x,y){
     if(!this.onMergeAreas||!this.drag?.cluster)return;
     const root=this.drag.cluster.root.node,excluded=new Set(this.drag.cluster.points.map(p=>p.node.id)),wx=(x-this.pan.x)/this.zoom,wy=(y-this.pan.y)/this.zoom;
@@ -182,7 +192,7 @@ export class NeuralMemoryView {
     const involved=new Set([...clusterPositions(this.layout,root.id),...clusterPositions(this.layout,target.id)].map(p=>p.node.id));let layout=null,radius=target.r;
     if(proposal.valid){const mind=commitHierarchy(this.state,this.graph,proposal),g=graphData(mind);layout=layoutGraph(filterGraph(g,{area:proposal.parentId}));const parent=layout.nodes.find(n=>n.id===proposal.parentId);radius=parent.r;const dx=target.x-parent.x,dy=target.y-parent.y;layout.nodes.forEach(n=>{n.x+=dx;n.y+=dy;involved.add(n.id);});}
     this.mergePreview={targetId:target.id,proposal,radius,layout,involved,since:performance.now()};
-    this.root.querySelector('.graph-message').textContent=proposal.valid?'Hold, then release to retain the specific area inside its broader parent.':proposal.reason;
+    this.root.querySelector('.graph-message').textContent=proposal.valid?'Hold, then release to retain the specific area inside its broader parent.':this.onConnectAreas&&proposal.code==='MISSING_CONTAINMENT'?'Release to ask Mindling to assess all eligible memories in both areas.':proposal.reason;
   }
   async commitMerge(proposal,targetId){
     const target=this.positions.get(targetId),anchor=target?{x:target.x,y:target.y}:null;this.mergeBusy=true;clearTimeout(this.saveTimer);const identity=this.viewIdentity;
