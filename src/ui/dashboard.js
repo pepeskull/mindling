@@ -43,7 +43,7 @@ export class Dashboard {
   #onResearchAccess;
   #onCancelClarification;
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onMemoryView=null, onMergeAreas=null, onConnectMemories=null, onConnectAreas=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, onSemanticAllowance=null, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onMemoryView=null, onMergeAreas=null, onConnectMemories=null, onConnectAreas=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, readOnly = false } = {}) {
     for(const node of document.querySelectorAll('[data-activity-mode], [data-input-mode]')){
       const mode=node.dataset.activityMode||node.dataset.inputMode,policy=LIFE_RULES.activity[mode];if(!policy)continue;
       const reward=activityReward(mode),label=`${policy.label}: ${policy.energyCost} Energy · +${reward} XP`;
@@ -116,6 +116,7 @@ export class Dashboard {
     document.querySelector('[data-life-status-title]').textContent = 'Mindling — Life Status';
     document.querySelector('.mindling-id').textContent = '';
     this.#renderPathways();
+    this.stageChip.setName(null);
     this.stageChip.setStage('—',{enabled:false});
     this.#memoryMap.update({memories:[]});
     this.#development.update({});
@@ -135,6 +136,7 @@ export class Dashboard {
   render(state) {
     if(this.#state?.mindlingId!==state.mindlingId){this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
     this.#state = state;
+    this.stageChip.setName(state.name);
     this.researchAccess?.refresh();this.notifications?.update(state);
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
@@ -315,7 +317,7 @@ export class Dashboard {
     this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply:{researchAccess:{taskId:task.id,requestId:id,topic},memoryIds:[]}});
   }
   #renderResearchAccess(content,status,access){
-    status.textContent='Mindling could not safely confirm a public research subject.';
+    status.textContent=(this.#state?.name||'Your agent')+' could not safely confirm a public research subject.';
     const copy=document.createElement('p');copy.textContent='The original request is preserved. Private or ambiguous information will not be sent automatically.';content.append(copy);
     if(access.topic){const button=document.createElement('button');button.type='button';button.textContent=`Confirm public subject: ${access.topic}`;content.append(button);button.addEventListener('click',async()=>{if(this.#pending)return;button.disabled=true;try{const result=await this.onLearningTask('review-topic',access.taskId,{choice:'confirm-subject'});status.textContent=result.message;content.replaceChildren();}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});}
   }

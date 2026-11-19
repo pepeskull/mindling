@@ -44,6 +44,7 @@ export class PreviewDashboardPresentation {
         if (current) row.setAttribute('aria-current', 'step'); else row.removeAttribute('aria-current');
         row.querySelector('small').textContent = current ? 'Current' : index + 1 < this.stage ? 'Completed' : 'Locked';
       });
+      this.stageChip.setName(state.name);
       this.stageChip.setStage(state.stage.name,{enabled:state.life.lifeState!=='DECEASED'});
       for (const key of ['neurons', 'synapses', 'memories']) q(`[data-stat="${key}"]`).textContent = state[key];
       for (const [name, value] of Object.entries(state.life.attributes)) {

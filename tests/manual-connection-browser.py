@@ -17,7 +17,7 @@ with sync_playwright() as p:
    await write(()=>newMindling(createSandbox(Date.now()),{confirmed:true,id:'drop-'+preview}));
    await write(s=>{s.mind.memories=['Gravity affects orbital motion.','Sideways motion affects an orbit.'].map((content,i)=>({id:'m'+i,content,category:'Orbital mechanics',categoryId:'orbit',topic:'Motion',source:'SERVICE',contentIntegrity:{version:1,status:'captured',length:content.length},analysis:{name:'mindling-learning-service',verification:'unverified-player-claim'},intelligence:{kind:'claim',current:true},relatedMemoryIds:[]}));return s;});
    window.app={state:await read(),store:db,async change(fn,opts){this.state=await write(fn,opts);window.view?.update(this.state.mind);}};
-   await db.saveResearchPermissions(app.state.mind.id,{enabled:true,semanticCallsPerDay:3});
+   await db.saveResearchPermissions(app.state.mind.id,{enabled:true});
    window.calls=0;const gate=new Promise(resolve=>window.releaseResponse=resolve);const originalFetch=window.fetch;
    window.fetch=async(url,opts)=>{if(url!=='/api/mindling/reason')return originalFetch(url,opts);calls++;await gate;const body=JSON.parse(opts.body);if(body.context.areas||body.context.parentDiscovery)throw Error('Not memory-only');return Response.json({id:body.id,service:'mindling-reasoning-service',result:decodeSemanticWire({version:1,relationships:[{pair:0,reverse:false,type:'complements',evidenceA:{first:0,last:0},evidenceB:{first:0,last:0},assessment:{support:'supported',reason:'Synthetic orbital claims complement each other.',qualifications:[],polarityPreserved:true,modalityPreserved:true,scopePreserved:true,noEquivalence:true,evidenceSufficient:true}}]},body.context)});};
    document.querySelectorAll('.installation').forEach(e=>e.remove());document.querySelector('#app').hidden=false;document.querySelector('.dashboard-chrome').classList.remove('is-hidden');document.querySelector('#memory-view').hidden=false;document.querySelector('#app').classList.add('memory-mode');
@@ -29,9 +29,10 @@ with sync_playwright() as p:
   a=page.evaluate("point('m0')");b=page.evaluate("point('m1')")
   page.mouse.move(a['x'],a['y']);page.mouse.down();page.mouse.move(b['x'],b['y'],steps=10);page.mouse.up()
   page.wait_for_function('calls===1')
-  assert page.evaluate("!app.state.mind.memories.some(m=>m.relatedMemoryIds.length) && !view.graph.edges.some(e=>e.persisted&&e.kind==='association')")
+  assert page.evaluate("view.connectionVisual?.state==='pending' && !app.state.mind.memories.some(m=>m.relatedMemoryIds.length) && !view.graph.edges.some(e=>e.persisted&&e.kind==='association')")
   page.evaluate('releaseResponse()')
-  page.wait_for_function("view.root.querySelector('.memory-connection-status')?.textContent==='Semantic connection saved.'")
+  page.wait_for_function("view.connectionVisual?.state==='valid'")
+  assert page.locator('.memory-connection-status').count()==0
   assert page.evaluate("calls===1 && app.state.mind.memories.every(m=>m.relatedMemoryIds.length===1) && original===JSON.stringify(app.state.mind.memories.map(m=>[m.content,m.category,m.analysis]))")
   assert page.evaluate("view.graph.edges.some(e=>e.persisted&&e.kind==='association')")
   # Duplicate request after the pointer drop cannot bill again.

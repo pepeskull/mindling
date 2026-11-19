@@ -1,3 +1,6 @@
+import {researchEnergyReady} from './energy-readiness.js';
+import {areaProfileCandidates} from '../semantic/area-profiles.js';
+import {connectAreas} from '../semantic/area-pair-worker.js';
 import {taskClarification} from './clarification-tasks.js';
 import {researchSubject,subjectMatches} from './research-subject.js';
 import {recordTaskActivity} from '../app/activity-journal.js';
@@ -66,16 +69,9 @@ export class AutonomousLearningEngine {
     if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');this.preferences=validatePermissions(prefs,id);this.permissionIdentity=id;this.app.renderState();
     if(enabled){this.recover();void this.tick().catch(()=>this.schedule());}return prefs;
   }
-  async setSemanticAllowance(semanticCallsPerDay){
-    const prefs=await this.loadPermissions(true),id=this.app.state.mind?.id;this.assertLive(id);
-    const next=await (this.app.db||this.app.store).saveResearchPermissions(id,{enabled:prefs.enabled,semanticCallsPerDay});
-    if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');
-    this.preferences=validatePermissions(next,id);this.app.renderState();this.recover();return this.preferences;
-  }
   recover(){
     if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||!this.preferences?.enabled)return;
-    const semanticTasks=semanticQueue(this.app.state.mind,SEMANTIC_VERSION);
-    for(const task of semanticTasks)void runSemantic(this,task);
+    this.recoverSemantic();
     for(const task of tasksFor(this.app.state.mind)){const interrupted=task.session!==this.session&&['QUEUED','RESEARCHING','EVALUATING','COMMITTING'].includes(task.status),aborted=this.active?.id===task.id&&this.active.controller.signal.aborted;
       const known=interrupted&&matchingEvaluationFailure(task);
       if(task.engineVersion===4&&!terminal(task)&&known){
@@ -94,6 +90,18 @@ export class AutonomousLearningEngine {
       }if(task.engineVersion===4&&!terminal(task)&&(['PERMISSION_REQUIRED','ACCESS_DISABLED','ENERGY_LOW','INTERRUPTED','QUEUED','OFFLINE'].includes(task.code)||interrupted||aborted||task.pendingSourceEvaluation||task.pendingEvidence?.length))this.startIfAuthorized(task);}
     this.schedule();
   }
+  recoverSemantic(){
+    if(!this.preferences?.enabled||this.disposed||this.app.disposed||document.hidden||navigator.onLine===false)return;
+    const semanticTasks=semanticQueue(this.app.state.mind,SEMANTIC_VERSION);
+    if(!this.active && !this.areaAssessment && (this.nextMemoryAssessment||0)<=Date.now() && researchEnergyReady(this.app.state.mind)){
+      const task=semanticTasks[(this.memoryAssessmentCursor||0) % semanticTasks.length];
+      if(task){
+        this.memoryAssessmentCursor=(this.memoryAssessmentCursor||0)+1;
+        this.nextMemoryAssessment=Date.now()+AUTONOMY.cooldown;
+        void runSemantic(this,task);
+      }
+    }
+  }
   startIfAuthorized(task){
     if(!task||terminal(task)||task.engineVersion!==4||!canRetryResearch(task)||['CLARIFICATION','MODEL_CLARIFICATION','SOURCE_UNSUPPORTED','SUBJECT_MISMATCH','CLARIFICATION_UNAVAILABLE','QUERY_REVIEW','BUDGET_EXHAUSTED','NO_EVIDENCE','NO_MODEL_CANDIDATES','INFORMATION_UNCONFIGURED','INFORMATION_UNSUPPORTED','INFORMATION_UNAUTHORIZED'].includes(task.code)||this.disposed)return;
     this.queue.add(task.id);this.drain();
@@ -108,7 +116,7 @@ export class AutonomousLearningEngine {
         if(!prefs.enabled){
           const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ACCESS_DISABLED';item.message='Autonomous learning is disabled. You can enable it in Research access under Notifications.';});this.notify(blocked);continue;
         }
-        if(task.autonomous&&energyAt(this.app.state.mind.energy,Date.now()).remaining<2){await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ENERGY_LOW';item.message='Research paused — Insufficient energy.';});continue;}
+        if(!researchEnergyReady(this.app.state.mind)){await this.patch(id,null,item=>{item.status='BLOCKED';item.code='ENERGY_LOW';item.message='Research paused — Insufficient energy.';});continue;}
         if(task.sourcePlan&&!subjectMatches(task,task.sourcePlan.request.topic)){await this.patch(id,null,item=>{item.status='BLOCKED';item.code='SUBJECT_MISMATCH';item.message='Research paused — The saved search subject differs from the original request. Existing knowledge and reservations are preserved.';});continue;}
         const topic=savedPublicTopic(task)||publicResearchTopic(task);
         if(topic===null){const blocked=await this.patch(id,null,item=>{item.status='BLOCKED';item.code='QUERY_REVIEW';item.message='Mindling could not safely identify a public research subject. The original request is preserved and no planning call was sent.';});if(!task.autonomous&&this.app.dashboard?.canContinueResearch(this.requestId(task)))this.app.dashboard.showResearchAccess(blocked,this.requestId(task),null);continue;}
@@ -176,6 +184,9 @@ export class AutonomousLearningEngine {
   async requested(task,interpretation){
     if(task.engineVersion!==4)return this.patch(task.id,null,item=>{item.planningCalls=item.engineVersion===2?Math.min(item.attempts,2):0;item.modelCalls=item.planningCalls;item.engineVersion=4;item.code='PERMISSION_REQUIRED';item.originalText=interpretation.normalizedText;item.message='Preparing Mindling research under current authorization.';});return task;
   }
+  assertResearchEnergy(mind){
+    if(!researchEnergyReady(mind))throw Error('ENERGY_LOW');
+  }
   async run(task,topic){
     if(this.active)return;this.assertLive(task.mindlingId);
     const controller=new AbortController(),run=crypto.randomUUID();this.active={id:task.id,run,controller};const deadline=setTimeout(()=>controller.abort('RUN_DEADLINE'),120000);
@@ -183,7 +194,7 @@ export class AutonomousLearningEngine {
       let current=await this.patch(task.id,null,item=>{if(terminal(item))throw Error('Task finished.');item.run=run;item.session=this.session;item.attempts=Math.max(1,item.attempts);});
       let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
       if(!current.sourcePlan&&!current.pendingEvidence?.length){
-        current=await this.patch(task.id,run,item=>{const planned=item.planningCalls??(item.plannedAt?Math.min(item.attempts,2):0),used=item.modelCalls??planned;if(planned>=2||used>=LIMITS.inferenceCalls)throw Error('BUDGET_EXHAUSTED');item.planningCalls=planned+1;item.modelCalls=used+1;item.status='QUEUED';item.code='PLANNING';item.message='Understanding the request and preparing unverified hypotheses.';});
+        current=await this.patch(task.id,run,(item,next)=>{this.assertResearchEnergy(next.mind);const planned=item.planningCalls??(item.plannedAt?Math.min(item.attempts,2):0),used=item.modelCalls??planned;if(planned>=2||used>=LIMITS.inferenceCalls)throw Error('BUDGET_EXHAUSTED');item.planningCalls=planned+1;item.modelCalls=used+1;item.status='QUEUED';item.code='PLANNING';item.message='Understanding the request and preparing unverified hypotheses.';},{researchGrant:this.grant(prefs)});
         const context=this.context(task,topic),id=await digest(JSON.stringify([task.id,run,'plan',context]));
         const result=await requestResearchPlanning({id,context,signal:controller.signal});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
         current=await this.patch(task.id,run,item=>{
@@ -200,7 +211,7 @@ export class AutonomousLearningEngine {
     }catch(error){
       if(error.clientDiagnostic){this.clientFailure={taskId:task.id,run,diagnostic:error.clientDiagnostic};console.warn(JSON.stringify({event:'mindling.research.client',...error.clientDiagnostic}));}
       try{
-      const code=error.clientDiagnostic?.code||error.diagnostic?.errorCategory||(navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'REQUEST_INTERRUPTED':Object.hasOwn(SERVICE_MESSAGES,error.code||error.message)?error.code||error.message:/^INFORMATION_[A-Z_]+$/.test(error.code||'')?error.code:'PLANNING_UNAVAILABLE');
+      const code=error.message==='ENERGY_LOW'?'ENERGY_LOW':error.clientDiagnostic?.code||error.diagnostic?.errorCategory||(navigator.onLine===false?'OFFLINE':error.name==='AbortError'?'REQUEST_INTERRUPTED':Object.hasOwn(SERVICE_MESSAGES,error.code||error.message)?error.code||error.message:/^INFORMATION_[A-Z_]+$/.test(error.code||'')?error.code:'PLANNING_UNAVAILABLE');
       const blocked=await this.patch(task.id,run,item=>{
         if(terminal(item))return;
         // Keep the original failure instead of replacing it with a failed retry preflight.
@@ -217,7 +228,7 @@ export class AutonomousLearningEngine {
           for(const source of acquired.sources)if(!item.sourceReferences.some(ref=>ref.url===source.url))item.sourceReferences.push({url:source.url,title:source.title,provider:source.provider,type:source.type,hash:source.hash,status:'pending-analysis',authorizedAt:Date.now(),observedAt:Date.now()});
         }
         if(error.recoveryBlockedReason)item.retryBlockedReason=error.recoveryBlockedReason;
-        item.message=error.clientDiagnostic?CLIENT_RESEARCH_CODES[code]:error.diagnostic?researchFailureMessage(error.diagnostic,!!item.pendingSourceEvidence):code==='OFFLINE'?'Research paused — Offline.':SERVICE_MESSAGES[code]||'Research paused. The task details preserve the service failure.';
+        item.message=code==='ENERGY_LOW'?'Research is waiting for Energy.':error.clientDiagnostic?CLIENT_RESEARCH_CODES[code]:error.diagnostic?researchFailureMessage(error.diagnostic,!!item.pendingSourceEvidence):code==='OFFLINE'?'Research paused — Offline.':SERVICE_MESSAGES[code]||'Research paused. The task details preserve the service failure.';
       });this.notify(blocked);
     }catch{
       const receipt=error.execution||error.diagnostic;
@@ -262,6 +273,7 @@ export class AutonomousLearningEngine {
     const block=async(code,message)=>{const stopped=await this.patch(task.id,run,item=>{item.status='BLOCKED';item.code=code;item.message=message;});this.notify(stopped);return stopped;};
     if(!task.sourcePlan||!subjectMatches(task,task.sourcePlan.request.topic))return block('SUBJECT_MISMATCH','Research paused — The saved search does not match the original subject. No new knowledge was accepted.');
     if(!task.pendingEvidence?.length&&!task.pendingSourceEvaluation){
+      if(!researchEnergyReady(this.app.state.mind))return block('ENERGY_LOW','Research is waiting for Energy.');
       if(task.sourcePlan.sourceCategory!=='web')return block('SOURCE_UNSUPPORTED','Research paused — This request cannot be safely researched.');
       if(!task.sourcePlan.available){const id=await digest(JSON.stringify([task.id,run,'capabilities'])),result=await requestResearchCapabilities({id,context:{},signal:controller.signal});if(!result.information.available)return block('INFORMATION_UNCONFIGURED','Research paused — Web information access is not configured.');task=await this.patch(task.id,run,item=>{item.sourcePlan.available=true;});}
     }
@@ -283,13 +295,14 @@ export class AutonomousLearningEngine {
       const learning=researchLearningContext(task.sourcePlan.request.topic,this.app.state.mind,task.plan);
       const context=checkpoint?{checkpoint,learning}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan,learning,...(task.hypotheses?.length?{hypotheses:task.hypotheses}:{})};
       const id=await digest(JSON.stringify([task.id,run,checkpoint?'source-evaluation':'web-search',context]));
-      current=await this.patch(task.id,run,item=>{
+      current=await this.patch(task.id,run,(item,next)=>{
+        this.assertResearchEnergy(next.mind);
         const calls=checkpoint?1:2;if((item.modelCalls||0)+calls>LIMITS.inferenceCalls||(item.evaluationCalls||0)>=2)throw Error('BUDGET_EXHAUSTED');
         item.modelCalls=(item.modelCalls||0)+calls;item.evaluationCalls=(item.evaluationCalls||0)+1;
         if(!checkpoint){item.sourceRequests+=remainingCalls;item.researchExecution={version:1,reserved:remainingCalls,toolState:'RESERVED',clientDispatched:false,upstreamDispatched:null,completed:0,failed:0,outcomeUnknown:false};}
         item.researchExecution.correlationId=id;item.researchExecution.operation=checkpoint?'research-evaluate':'research-acquire';
         item.status=checkpoint?'EVALUATING':'RESEARCHING';item.code=checkpoint?'EVALUATING':'SEARCHING';item.message=checkpoint?'Evaluating the previously retrieved signed evidence; no new search.':'Researching public sources and comparing cited evidence.';
-      });
+      },{researchGrant:this.grant(prefs)});
       current=await this.patch(task.id,run,item=>{item.researchExecution.clientDispatched=true;if(!checkpoint)item.researchExecution.toolState='DISPATCHED';});
       result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal});
       current=await this.saveResearchReceipt(task,run,id,result,prefs,authorizedAt);
@@ -409,14 +422,30 @@ export class AutonomousLearningEngine {
     this.wakeTimer=setTimeout(()=>this.tick().catch(()=>this.schedule()),AUTONOMY.retryDelay);
   }
   async tick(){
-    if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||this.active||this.draining)return this.schedule();
+    if(this.disposed||this.app.disposed||document.hidden||navigator.onLine===false||this.active||this.draining||this.areaAssessment)return this.schedule();
     const prefs=await this.loadPermissions(true);if(!prefs.enabled)return;
     const now=Date.now(),tasks=tasksFor(this.app.state.mind);
-    const energyWaiting=tasks.find(task=>task.autonomous&&task.code==='ENERGY_LOW');if(energyWaiting&&energyAt(this.app.state.mind.energy,now).remaining>=2){this.startIfAuthorized(energyWaiting);return;}
+    if(!researchEnergyReady(this.app.state.mind,now))return this.schedule();
+    const energyWaiting=tasks.find(task=>task.code==='ENERGY_LOW'&&canRetryResearch(task));if(energyWaiting){this.startIfAuthorized(energyWaiting);return;}
     const retry=tasks.find(task=>task.engineVersion===4&&!terminal(task)&&retryableServiceFailure(task)&&(task.retryAt||0)<=now&&canRetryResearch(task));
     if(retry){const next=await this.patch(retry.id,null,item=>{if(!item.pendingSourceEvaluation&&!item.pendingEvidence?.length)item.attempts++;item.code='QUEUED';});this.startIfAuthorized(next);return;}
+    if(!this.areaAssessment && (this.nextAreaAssessment||0)<=now){
+      this.areaAssessment=true;
+      try{
+        const mind=this.app.state.mind;
+        // Rotate the shortlist so a cached result cannot starve newer candidates.
+        const candidates=areaProfileCandidates(mind);
+        const offset=(this.areaAssessmentCursor||0)%Math.max(1,candidates.length);
+        for(const ids of candidates.slice(offset,offset+12)){
+          this.areaAssessmentCursor=(this.areaAssessmentCursor||0)+1;
+          const outcome=await connectAreas(this.app,ids,mind.id,undefined,{automatic:true});
+          if(outcome.dispatched)return this.schedule();
+        }
+      }finally{this.areaAssessment=false;this.nextAreaAssessment=Date.now()+AUTONOMY.cooldown;}
+    }
     const topic=nextOpportunity(this.app.state.mind,now,prefs);
     if(topic){const interpretation=understandInput(`Learn about ${topic}`,'TEACH');if(!interpretation.clarification){const task=await this.prepare(interpretation,`autonomous:${crypto.randomUUID()}`,{autonomous:true});this.startIfAuthorized(task);return;}}
+    this.recoverSemantic();
     this.schedule();
   }
   get status(){return autonomousStatus(this);}

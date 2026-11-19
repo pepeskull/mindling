@@ -19,7 +19,7 @@ with sync_playwright() as p:
    await write(()=>newMindling(createSandbox(Date.now()),{confirmed:true,id:'drop-'+preview}));
    await write(s=>{s.mind.memories=['Video games use engines to render scenes.','Game engines render scenes in video games.'].map((content,i)=>({id:'m'+i,content,category:i?'Game engines':'Video games',categoryId:'area'+i,topic:'Rendering',source:'SERVICE',contentIntegrity:{version:1,status:'captured',length:content.length},analysis:{name:'mindling-learning-service',verification:'unverified-player-claim'},intelligence:{kind:'claim',current:true},relatedMemoryIds:[]}));return s;});
    window.app={state:await read(),store:db,async change(fn,opts){this.state=await write(fn,opts);window.view?.update(this.state.mind);}};
-   await db.saveResearchPermissions(app.state.mind.id,{enabled:true,semanticCallsPerDay:3});
+   await db.saveResearchPermissions(app.state.mind.id,{enabled:true});
    window.calls=0;const gate=new Promise(resolve=>window.releaseResponse=resolve);const originalFetch=window.fetch;
    window.fetch=async(url,opts)=>{if(url!=='/api/mindling/reason')return originalFetch(url,opts);calls++;await gate;const body=JSON.parse(opts.body);if(body.mode!=='area-pair'||body.context.areas.length!==2)throw Error('Not dedicated area analysis');return Response.json({id:body.id,service:'mindling-reasoning-service',result:{decision:window.fixtureDecision,parent:window.fixtureDecision==='CONTAINS'?'A':'NONE',support:'supported',scopePreserved:true,reason:'Both supplied areas describe scene rendering.',citations:['A','B'].map(area=>({area,memory:0,first:0,last:0}))}});};
    document.querySelectorAll('.installation').forEach(e=>e.remove());document.querySelector('#app').hidden=false;document.querySelector('.dashboard-chrome').classList.remove('is-hidden');document.querySelector('#memory-view').hidden=false;document.querySelector('#app').classList.add('memory-mode');
@@ -31,9 +31,10 @@ with sync_playwright() as p:
   a=page.evaluate("point('Video games')");b=page.evaluate("point('Game engines')")
   page.mouse.move(a['x'],a['y']);page.mouse.down();page.mouse.move(b['x'],b['y'],steps=10);page.mouse.up()
   page.wait_for_function('calls===1')
-  assert page.evaluate("!app.state.mind.memories.some(m=>m.relatedMemoryIds.length) && !view.graph.edges.some(e=>e.persisted&&['semantic-area','canonical-area-membership'].includes(e.origin))")
+  assert page.evaluate("view.connectionVisual?.state==='pending' && !app.state.mind.memories.some(m=>m.relatedMemoryIds.length) && !view.graph.edges.some(e=>e.persisted&&['semantic-area','canonical-area-membership'].includes(e.origin))")
   page.evaluate('releaseResponse()')
-  page.wait_for_function("view.root.querySelector('.memory-connection-status')?.textContent.includes('was saved')")
+  page.wait_for_function("view.connectionVisual?.state==='valid'")
+  assert page.locator('.memory-connection-status').count()==0
   assert page.evaluate("calls===1 && app.state.mind.memories.every(m=>m.relatedMemoryIds.length===0) && app.state.mind.semanticAreaRelations.records.length===1 && original===JSON.stringify(app.state.mind.memories.map(m=>[m.content,m.category,m.analysis]))")
   assert page.evaluate("view.graph.edges.some(e=>e.persisted&&['semantic-area','canonical-area-membership'].includes(e.origin))")
   # Duplicate request after the pointer drop cannot bill again.

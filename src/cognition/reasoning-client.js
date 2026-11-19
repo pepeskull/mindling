@@ -9,7 +9,7 @@ const messages = { SERVICE_UNAVAILABLE: 'The reasoning service is not configured
 // Transport only. Retrieval, validation rules, provider phases and persistence
 // remain separate. Explicit evaluation/Talk and consented research phases use this transport.
 async function requestService({ id, context, signal }, mode = 'evaluation') {
-  if(mode==='research-capabilities'){if(!context||typeof context!=='object'||Array.isArray(context)||Object.keys(context).length)throw Error('Invalid capability request.');}else if(mode==='research')validatePlanningContext(context);else if(mode==='research-acquire')validateRetrievalContext(context);else if(mode==='research-evaluate')validateResearchEvaluationContext(context);else validateContext(context);
+  if(mode==='research-capabilities'){if(!context||typeof context!=='object'||Array.isArray(context)||Object.keys(context).length)throw Error('Invalid capability request.');}else if(mode==='research')validatePlanningContext(context);else if(mode==='research-acquire')validateRetrievalContext(context);else if(mode==='research-evaluate')validateResearchEvaluationContext(context);else validateContext(context,{talk:mode==='talk'});
   if(signal.aborted&&['research-acquire','research-evaluate'].includes(mode))throw clientResearchFailure('TRANSPORT_INTERRUPTED',{id,mode,phase:'TRANSPORT',reason:signal.reason});
   if (signal.aborted) throw new DOMException(mode==='talk'?'Talk was cancelled. No Energy was spent.':'Evaluation cancelled', 'AbortError');
   const evidence=['research-acquire','research-evaluate'].includes(mode);

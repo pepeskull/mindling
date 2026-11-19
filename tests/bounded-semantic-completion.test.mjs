@@ -47,11 +47,11 @@ const upstream=async(url,options)=>{
  return Response.json({choices:[{finish_reason:mode==='incomplete'?'length':'stop',message:{content:mode==='json'?'PRIVATE invalid JSON':JSON.stringify(result)}}],usage:{prompt_tokens:1200,completion_tokens:mode==='incomplete'?2600:200,completion_tokens_details:{reasoning_tokens:mode==='incomplete'?2500:100},private:'must not persist'}});
 };
 async function server(body){const response={setHeader(){},on(){},removeListener(){},status(n){this.code=n;return this;},json(b){this.body=b;this.writableEnded=true;return this;}};await handler({method:'POST',headers:{},socket:{remoteAddress:'bounded-'+(++seq)},body},response);return Response.json(response.body,{status:response.code});}
-function setup(){let state={mind:{id:'offline-mind',xp:0,energy:10,memories:structuredClone(records),learningTasks:[{id:'task',status:'COMPLETED',knowledgeIds:['research'],modelCalls:3}]}};return {app:{get state(){return state;}},session:'test',abort:new AbortController(),loadPermissions:async()=>({enabled:true,revision:1}),grant:()=>({}),assertLive(id){assert.equal(id,state.mind.id);},async patch(id,run,fn){const next=structuredClone(state);fn(next.mind.learningTasks[0],next);state=next;},reload(){state=JSON.parse(JSON.stringify(state));}};}
+function setup(){let state={mind:{id:'offline-mind',xp:0,energy:{remaining:10},memories:structuredClone(records),learningTasks:[{id:'task',status:'COMPLETED',knowledgeIds:['research'],modelCalls:3}]}};return {app:{get state(){return state;}},session:'test',abort:new AbortController(),loadPermissions:async()=>({enabled:true,revision:1}),grant:()=>({}),assertLive(id){assert.equal(id,state.mind.id);},async patch(id,run,fn){const next=structuredClone(state);fn(next.mind.learningTasks[0],next);state=next;},reload(){state=JSON.parse(JSON.stringify(state));}};}
 try{
  globalThis.fetch=async(url,options)=>url==='/api/mindling/reason'?server(JSON.parse(options.body)):upstream(url,options);
  for(const outcome of ['valid','empty','invalid','incomplete','json','api']){
-  mode=outcome;const e=setup(),before=modelCalls;await runSemantic(e,e.app.state.mind.learningTasks[0]);const task=e.app.state.mind.learningTasks[0];assert.equal(modelCalls,before+1);assert.equal(task.modelCalls,4);assert.equal(e.app.state.mind.semanticLedger.reserved,1);
+  mode=outcome;const e=setup(),before=modelCalls;await runSemantic(e,e.app.state.mind.learningTasks[0]);const task=e.app.state.mind.learningTasks[0];assert.equal(modelCalls,before+1);assert.equal(task.modelCalls,3);assert.equal(task.semanticAttempts.length,1);
   if(outcome==='valid'){
    assert.equal(task.semanticAnalysis.persisted,1);assert.equal(task.semanticAnalysis.diagnostic.finishReason,'stop');assert.equal(task.semanticAnalysis.diagnostic.accounting.reasoningTokens,100);
    assert.deepEqual(e.app.state.mind.memories[0].relatedMemoryIds,['research']);assert.deepEqual(e.app.state.mind.memories[1].relatedMemoryIds,['teach']);e.reload();assert.equal(graphData(e.app.state.mind).stats.associations,1);
@@ -60,7 +60,7 @@ try{
   if(outcome==='api'){assert.equal(task.semanticAnalysis.diagnostic.upstreamStatus,503);assert.equal(task.semanticAnalysis.diagnostic.errorCategory,'UPSTREAM_HTTP_ERROR');}
   if(outcome==='json')assert.equal(task.semanticAnalysis.diagnostic.detail,'COMPLETION_JSON_INVALID');
   if(outcome==='invalid')assert.equal(task.semanticAnalysis.rejections[0].code,'INVALID_SCHEMA');
-  await runSemantic(e,e.app.state.mind.learningTasks[0]);assert.equal(modelCalls,before+1,'no automatic retry or duplicate inference');assert.equal(e.app.state.mind.xp,0);assert.equal(e.app.state.mind.energy,10);
+  await runSemantic(e,e.app.state.mind.learningTasks[0]);assert.equal(modelCalls,before+1,'no automatic retry or duplicate inference');assert.equal(e.app.state.mind.xp,0);assert.equal(e.app.state.mind.energy.remaining,10);
   assert.deepEqual(e.app.state.mind.memories.map(m=>[m.content,m.research,m.source]),records.map(m=>[m.content,m.research,m.source]));
  }
  assert(!JSON.stringify(logs).includes('PRIVATE'));assert(!JSON.stringify(logs).includes(teach));assert(!JSON.stringify(logs).includes('offline-secret'));assert(!JSON.stringify(logs).includes('must not persist'));

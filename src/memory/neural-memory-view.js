@@ -1,5 +1,4 @@
-import {AREA_PAIR_MESSAGES} from '../semantic/area-pair-worker.js';
-import {CONNECTION_MESSAGES} from '../semantic/manual-connection.js';
+import {areaPairVisualState} from '../semantic/area-pair-contract.js';
 import {mergeProposal,commitHierarchy} from './knowledge-hierarchy.js';
 import {cleanView} from './view-state.js';
 import {clusterPositions,ElasticCluster} from './cluster-drag.js';
@@ -53,7 +52,7 @@ export class NeuralMemoryView {
       if(hit){this.tooltip.textContent=hit.kind==='memory'?memoryLabel(hit).title:(hit.displayLabel||hit.label);this.tooltip.hidden=false;this.tooltip.style.left=`${Math.min(x+14,Math.max(10,box.width-250))}px`;this.tooltip.style.top=`${Math.max(10,y-38)}px`;}else this.hideTooltip();this.drawSoon();
     });
     this.on(this.canvas,'pointerup',event=>{if(!this.drag||event.pointerId!==this.drag.id)return;const drag=this.drag,moved=drag.moved,preview=this.mergePreview;this.drag=null;
-      if(drag.memory&&moved){if(drag.target)void this.connectMemoryPair(drag.memory.recordId,drag.target.recordId);else this.root.querySelector('.graph-message').textContent='No connection requested. Drop onto another current memory.';}else if(preview&&moved){for(const p of drag.cluster.points){p.node.x=p.x;p.node.y=p.y;}this.elastic=null;if(preview.proposal.valid&&performance.now()-preview.since>=600)this.commitMerge(preview.proposal,preview.targetId);else if(!preview.proposal.valid&&preview.proposal.code==='MISSING_CONTAINMENT'&&this.onConnectAreas)void this.connectAreaPair(drag.cluster.root.node.id,preview.targetId);else this.root.querySelector('.graph-message').textContent=preview.proposal.valid?'Hold over the target briefly before releasing to merge.':preview.proposal.reason;}
+      if(drag.memory&&moved){if(drag.target)void this.connectMemoryPair(drag.memory.recordId,drag.target.recordId);else this.root.querySelector('.graph-message').textContent='No connection requested. Drop onto another current memory.';}else if(preview&&moved){for(const p of drag.cluster.points){p.node.x=p.x;p.node.y=p.y;}this.elastic=null;if(preview.proposal.valid&&performance.now()-preview.since>=600)this.commitMerge(preview.proposal,preview.targetId);else if(!preview.proposal.valid&&preview.proposal.code==='MISSING_CONTAINMENT'&&preview.state==='pending'&&this.onConnectAreas)void this.connectAreaPair(drag.cluster.root.node.id,preview.targetId);}
       else{drag.cluster?.release();this.scheduleSave();}
       this.mergePreview=null;if(this.canvas.hasPointerCapture(event.pointerId))this.canvas.releasePointerCapture(event.pointerId);this.drawSoon();
       if(!moved){const box=this.canvas.getBoundingClientRect(),hit=this.hit(event.clientX-box.left,event.clientY-box.top);if(hit)this.select(hit.id);}});
@@ -97,13 +96,22 @@ export class NeuralMemoryView {
     const overview=this.layout.nodes.length>400&&this.zoom<.35,dotBatches=new Map();
     const selected=this.positions.get(this.selected),hover=this.positions.get(this.hover),neighbors=new Set([this.selected,this.hover]);
     for(const edge of activeLayout.edges)if(edge.from===this.selected||edge.to===this.selected){neighbors.add(edge.from);neighbors.add(edge.to);}
-    for(const node of activeLayout.nodes)if(node.kind==='area'){const color=muted.has(node.id)?(preview.proposal.valid?'#83dba6':'#969a9f'):this.colors.get(node.id)||colors[0];const grad=ctx.createRadialGradient(node.x,node.y,5,node.x,node.y,node.clusterRadius);grad.addColorStop(0,color+'13');grad.addColorStop(1,color+'00');ctx.fillStyle=grad;ctx.beginPath();ctx.arc(node.x,node.y,node.clusterRadius,0,Math.PI*2);ctx.fill();}
-    for(const edge of activeLayout.edges){if(this.layout.nodes.length>400&&edge.kind!=='research'&&edge.kind!=='hierarchy'&&!neighbors.has(edge.from)&&!neighbors.has(edge.to))continue;const a=displayPositions.get(edge.from),b=displayPositions.get(edge.to);if(!a||!b)continue;const strong=edge.from===this.selected||edge.to===this.selected;if(overview&&b.kind==='memory'&&edge.kind==='hierarchy'&&!strong&&!muted.has(b.id))continue;ctx.beginPath();ctx.moveTo(a.x,a.y);const dx=b.x-a.x,dy=b.y-a.y;ctx.bezierCurveTo(a.x+dx*.4-dy*.12,a.y+dy*.4+dx*.12,a.x+dx*.65-dy*.12,a.y+dy*.65+dx*.12,b.x,b.y);ctx.strokeStyle=(muted.has(edge.from)||muted.has(edge.to))?(preview.proposal.valid?'#83dba688':'#969a9f66'):edge.kind==='research'?'#92959b99':strong?'#a0f4e1':edge.kind==='hierarchy'?'#8bcfc239':edge.kind==='association'?'#73d8cf65':'#b8a2ed88';ctx.lineWidth=(strong?1.6:.8)/Math.max(.65,this.zoom);ctx.setLineDash(edge.kind==='hierarchy'||edge.kind==='association'?[]:[9,4,2,4]);ctx.stroke();
+    for(const node of activeLayout.nodes)if(node.kind==='area'){const color=muted.has(node.id)?(preview.available?'#83dba6':'#969a9f'):this.colors.get(node.id)||colors[0];const grad=ctx.createRadialGradient(node.x,node.y,5,node.x,node.y,node.clusterRadius);grad.addColorStop(0,color+'13');grad.addColorStop(1,color+'00');ctx.fillStyle=grad;ctx.beginPath();ctx.arc(node.x,node.y,node.clusterRadius,0,Math.PI*2);ctx.fill();}
+    for(const edge of activeLayout.edges){if(this.layout.nodes.length>400&&edge.kind!=='research'&&edge.kind!=='hierarchy'&&!neighbors.has(edge.from)&&!neighbors.has(edge.to))continue;const a=displayPositions.get(edge.from),b=displayPositions.get(edge.to);if(!a||!b)continue;const strong=edge.from===this.selected||edge.to===this.selected;if(overview&&b.kind==='memory'&&edge.kind==='hierarchy'&&!strong&&!muted.has(b.id))continue;ctx.beginPath();ctx.moveTo(a.x,a.y);const dx=b.x-a.x,dy=b.y-a.y;ctx.bezierCurveTo(a.x+dx*.4-dy*.12,a.y+dy*.4+dx*.12,a.x+dx*.65-dy*.12,a.y+dy*.65+dx*.12,b.x,b.y);ctx.strokeStyle=(muted.has(edge.from)||muted.has(edge.to))?(preview.available?'#83dba688':'#969a9f66'):edge.kind==='research'?'#92959b99':strong?'#a0f4e1':edge.kind==='hierarchy'?'#8bcfc239':edge.kind==='association'?'#73d8cf65':'#b8a2ed88';ctx.lineWidth=(strong?1.6:.8)/Math.max(.65,this.zoom);ctx.setLineDash(edge.kind==='hierarchy'||edge.kind==='association'?[]:[9,4,2,4]);ctx.stroke();
       // Only animate edges that are actually rendered, with bounded overlay work.
       if(edge.kind!=='research'&&this.flowPaths.length<64&&!muted.has(edge.from)&&!muted.has(edge.to))this.flowPaths.push({a,b,c1:{x:a.x+dx*.4-dy*.12,y:a.y+dy*.4+dx*.12},c2:{x:a.x+dx*.65-dy*.12,y:a.y+dy*.65+dx*.12}});
     }ctx.setLineDash([]);
+    const visual=['pending','paused'].includes(preview?.state)?{ids:[preview.targetId],state:preview.state}:this.connectionVisual;
+    if(visual){
+      const nodes=activeLayout.nodes.filter(node=>visual.ids.includes(node.recordId||node.id));
+      ctx.strokeStyle=visual.state==='valid'?'#83dba6':visual.state==='paused'?'#c5af84':'#969a9f';
+      ctx.lineWidth=1.5/this.zoom;
+      if(visual.state==='pending'||visual.state==='paused')ctx.setLineDash([4/this.zoom,5/this.zoom]);
+      for(const node of nodes){ctx.beginPath();ctx.arc(node.x,node.y,node.r+6/this.zoom,0,Math.PI*2);ctx.stroke();}
+      ctx.setLineDash([]);
+    }
     const labelCells=new Set();let labelCount=0;
-    for(const node of activeLayout.nodes){ctx.globalAlpha=1;const sx=node.x*this.zoom+this.pan.x,sy=node.y*this.zoom+this.pan.y;if(sx< -120||sx>w+120||sy< -60||sy>h+60)continue;const lit=neighbors.has(node.id),color=muted.has(node.id)?(preview.proposal.valid?'#83dba6':'#969a9f'):this.colors.get(node.colorAreaId||node.areaId||node.id)||colors[0];if(node.kind==='research'){
+    for(const node of activeLayout.nodes){ctx.globalAlpha=1;const sx=node.x*this.zoom+this.pan.x,sy=node.y*this.zoom+this.pan.y;if(sx< -120||sx>w+120||sy< -60||sy>h+60)continue;const lit=neighbors.has(node.id),color=muted.has(node.id)?(preview.available?'#83dba6':'#969a9f'):this.colors.get(node.colorAreaId||node.areaId||node.id)||colors[0];if(node.kind==='research'){
       ctx.save();ctx.shadowBlur=0;ctx.fillStyle=lit?'#757980':'#43474d';ctx.strokeStyle='#92959b';ctx.lineWidth=1;ctx.beginPath();ctx.arc(node.x,node.y,node.r,0,Math.PI*2);ctx.fill();ctx.stroke();
       ctx.strokeStyle='#92959b44';ctx.lineWidth=2/this.zoom;ctx.beginPath();ctx.arc(node.x,node.y,node.r+5,0,Math.PI*2);ctx.stroke();
       if(node.progress>0){ctx.strokeStyle='#c3c6ca';ctx.beginPath();ctx.arc(node.x,node.y,node.r+5,-Math.PI/2,-Math.PI/2+Math.PI*2*Math.min(1,node.progress));ctx.stroke();}
@@ -146,7 +154,8 @@ export class NeuralMemoryView {
     if(node.kind==='research'){title.textContent=node.root?'Learning task':node.label;renderTaskInspector(host,node,{onAction:this.onLearningTask,refresh:()=>this.renderInspector(),memories:this.graph.memories});return;}
     if(node.kind!=='memory'){title.textContent=node.displayLabel||node.label;host.append(el('p',`${(node.descendantMemoryIds||node.memoryIds).length} canonical memories · ${node.kind==='area'?'Knowledge area':'Topic'}`));const candidates=this.filtered.memories.filter(memory=>(node.kind==='area'||node.hierarchyArea)?(memory.areaId===node.id||memory.ancestorAreaIds?.includes(node.id)):memory.topicId===node.id);for(const memory of candidates.slice(0,8)){host.append(memoryButton(memory));}
       const relations=this.graph.edges.filter(e=>e.origin==='semantic-area'&&(e.from===node.id||e.to===node.id));
-      if(relations.length){host.append(el('h4','Supported area connections'));for(const edge of relations){const target=this.graph.areas.find(a=>a.id===(edge.from===node.id?edge.to:edge.from));if(!target)continue;const button=el('button',target.label+' · '+edge.basis.rule);button.type='button';button.dataset.selectMemory=target.id;host.append(button);const relation=this.graph.areaRelations.find(r=>['related-to','overlaps','part-of','instance-of'].includes(r.type)&&[r.from,r.to].includes(node.id)&&[r.from,r.to].includes(target.id));if(relation){const details=el('details'),summary=el('summary','Supporting evidence · model assessed');details.append(summary,el('p',relation.reason));for(const evidence of relation.evidence)details.append(el('blockquote',evidence.span.quote));details.append(el('small','Stored claims and cited summaries are not independently verified.'));host.append(details);}}}
+      if(relations.length){host.append(el('h4','Connected areas'));for(const edge of relations){const target=this.graph.areas.find(a=>a.id===(edge.from===node.id?edge.to:edge.from));if(!target)continue;const button=el('button',target.label);button.type='button';button.dataset.selectMemory=target.id;host.append(button);}}
+
       return;}
     const memory=node.raw,byId=new Map(this.graph.nodes.map(item=>[item.id,item])),label=memoryLabel(node);title.textContent=label.title;
     host.append(el('span',node.historical?'Historical memory':'Current memory',`memory-status-chip ${node.historical?'historical':''}`));
@@ -166,22 +175,25 @@ export class NeuralMemoryView {
       chart.append(svg('polygon',{points:axes.map((axis,i)=>point(i,axis.share/scale).join(',')).join(' '),fill:'#82dfcf20',stroke:'#82dfcf','stroke-width':1.8,'stroke-linejoin':'round'}));axes.forEach((axis,i)=>{const [x,y]=point(i,axis.share/scale),circle=svg('circle',{cx:x,cy:y,r:3,fill:'#c1fff1',tabindex:0}),title=svg('title');title.textContent=`${axis.label}: ${axis.count} of ${this.graph.stats.current} current memories (${Math.round(axis.share*100)}%)`;circle.append(title);chart.append(circle);});host.append(chart);const scaleLabel=el('p',`Radial scale: 0–${Math.round(scale*100)}% of current memories`,'radar-scale-label');host.append(scaleLabel);}
     for(const axis of axes){const li=el('li');li.style.setProperty('--memory-area-color',this.colors.get(axis.id)||NEUTRAL_COLOR);const name=el('span',axis.label),value=el('b',`${axis.count} · ${Math.round(axis.share*100)}%`);li.append(name,value);li.title=axis.members?axis.members.map(a=>`${a.label}: ${a.count}`).join(', '):`${axis.label}: ${axis.count} current canonical memories`;list.append(li);}
   }
-  async connectMemoryPair(a,b){
-    if(this.connectionBusy||!this.onConnectMemories)return;
-    this.connectionBusy=true;const identity=this.viewIdentity;
-    let message=this.root.querySelector('.memory-connection-status');if(!message){message=el('p',undefined,'memory-connection-status');message.setAttribute('role','status');this.root.querySelector('.graph-message').after(message);}message.textContent='Assessing semantic evidence…';
-    try{const result=await this.onConnectMemories([a,b],identity);if(!this.abort.signal.aborted&&this.viewIdentity===identity){message.textContent=CONNECTION_MESSAGES[result?.code]||'The connection could not be assessed.';this.dirty=true;this.queueBuild();}}
-    catch{if(!this.abort.signal.aborted&&this.viewIdentity===identity)message.textContent=CONNECTION_MESSAGES.PERSISTENCE_FAILED;}
-    finally{this.connectionBusy=false;}
-  }
-  async connectAreaPair(a,b){
-    if(this.connectionBusy||!this.onConnectAreas)return;
-    this.connectionBusy=true;const identity=this.viewIdentity;
-    let message=this.root.querySelector('.memory-connection-status');if(!message){message=el('p',undefined,'memory-connection-status');message.setAttribute('role','status');this.root.querySelector('.graph-message').after(message);}message.textContent='Preparing complete area evidence…';
-    try{const result=await this.onConnectAreas([a,b],identity,progress=>{if(!this.abort.signal.aborted&&this.viewIdentity===identity)message.textContent=`Analyzing both areas · ${progress.memories} eligible memories · step ${progress.stage}/${progress.total}${progress.excluded?` · ${progress.excluded} ineligible records excluded`:''}`;});
-      if(!this.abort.signal.aborted&&this.viewIdentity===identity){message.textContent=(AREA_PAIR_MESSAGES[result?.code]||'Area analysis could not complete.')+(result?.reason?' '+result.reason:'')+(result?.total?` Completed steps: ${result.completed}/${result.total}. Drop again to continue only if no request outcome is unknown.`:'');this.dirty=true;this.queueBuild();}}
-    catch{if(!this.abort.signal.aborted&&this.viewIdentity===identity)message.textContent=AREA_PAIR_MESSAGES.PERSISTENCE_FAILED;}
-    finally{this.connectionBusy=false;}
+  connectMemoryPair(a,b){return this.assessConnection([a,b],this.onConnectMemories);}
+  connectAreaPair(a,b){return this.assessConnection([a,b],this.onConnectAreas);}
+  async assessConnection(ids,connect){
+    if(this.connectionBusy||!connect)return;
+    this.connectionBusy=true;
+    const identity=this.viewIdentity;
+    this.connectionVisual={ids,state:'pending'};
+    this.drawSoon();
+    try{
+      const result=await connect(ids,identity);
+      if(this.abort.signal.aborted||this.viewIdentity!==identity)return;
+      const accepted=['CONNECTED','ALREADY_CONNECTED','RELATED','OVERLAPS','CONTAINS'].includes(result?.code);
+      const rejected=['REJECTED','UNRELATED','INSUFFICIENT_EVIDENCE','CONFLICT'].includes(result?.code);
+      this.connectionVisual={ids,state:accepted?'valid':rejected?'unavailable':'paused'};
+      this.dirty=true;this.queueBuild();this.drawSoon();
+    }catch{
+      if(this.viewIdentity===identity)this.connectionVisual={ids,state:'paused'};
+      this.drawSoon();
+    }finally{this.connectionBusy=false;}
   }
   previewMerge(x,y){
     if(!this.onMergeAreas||!this.drag?.cluster)return;
@@ -189,10 +201,16 @@ export class NeuralMemoryView {
     const target=this.layout.nodes.find(n=>n.kind==='area'&&!excluded.has(n.id)&&Math.hypot(n.x-wx,n.y-wy)<=n.r+10/this.zoom);
     if(!target){this.mergePreview=null;return;}if(this.mergePreview?.targetId===target.id)return;
     const proposal=mergeProposal(this.graph,this.state.knowledgeHierarchy,root.id,target.id);
+    const association=proposal.code==='ASSOCIATION_ONLY';
     const involved=new Set([...clusterPositions(this.layout,root.id),...clusterPositions(this.layout,target.id)].map(p=>p.node.id));let layout=null,radius=target.r;
     if(proposal.valid){const mind=commitHierarchy(this.state,this.graph,proposal),g=graphData(mind);layout=layoutGraph(filterGraph(g,{area:proposal.parentId}));const parent=layout.nodes.find(n=>n.id===proposal.parentId);radius=parent.r;const dx=target.x-parent.x,dy=target.y-parent.y;layout.nodes.forEach(n=>{n.x+=dx;n.y+=dy;involved.add(n.id);});}
-    this.mergePreview={targetId:target.id,proposal,radius,layout,involved,since:performance.now()};
-    this.root.querySelector('.graph-message').textContent=proposal.valid?'Hold, then release to retain the specific area inside its broader parent.':this.onConnectAreas&&proposal.code==='MISSING_CONTAINMENT'?'Release to ask Mindling to assess all eligible memories in both areas.':proposal.reason;
+    this.mergePreview={targetId:target.id,proposal,radius,layout,involved,available:proposal.valid||association,state:proposal.valid||association?'valid':proposal.code==='MISSING_CONTAINMENT'&&this.onConnectAreas?'pending':'unavailable',since:performance.now()};
+    const preview=this.mergePreview;
+    if(preview.state==='pending')void areaPairVisualState(this.state,[root.id,target.id]).then(state=>{
+      if(this.mergePreview===preview){preview.state=state;this.drawSoon();}
+    });
+
+
   }
   async commitMerge(proposal,targetId){
     const target=this.positions.get(targetId),anchor=target?{x:target.x,y:target.y}:null;this.mergeBusy=true;clearTimeout(this.saveTimer);const identity=this.viewIdentity;
@@ -204,7 +222,7 @@ export class NeuralMemoryView {
   applyPositions(){for(const area of this.layout.nodes.filter(n=>n.kind==='area').sort((a,b)=>(a.ancestorIds?.length||0)-(b.ancestorIds?.length||0))){if(area.parentId&&this.positionsHierarchyRevision!==(this.state.knowledgeHierarchy?.revision||0))continue;const saved=this.savedPositions[area.id];if(!saved)continue;const dx=saved.x-area.x,dy=saved.y-area.y;for(const p of clusterPositions(this.layout,area.id)){p.node.x+=dx;p.node.y+=dy;}}}
   async restoreView(){
     const identity=this.state.mindlingId||this.state.id;if(!identity||identity===this.viewIdentity)return;
-    this.root.querySelector('.memory-connection-status')?.remove();this.viewIdentity=identity;this.autoFit=true;this.fitted=false;this.zoom=1;this.pan={x:0,y:0};this.root.querySelector('.research-task-browser').open=false;this.root.querySelector('.memory-browser').open=false;this.savedPositions={};this.viewRevision=0;this.layout=null;this.selected=null;this.taskQuery='';this.taskFilter='all';this.taskPage=this.page=0;this.loadingView=true;
+    this.connectionVisual=null;this.viewIdentity=identity;this.autoFit=true;this.fitted=false;this.zoom=1;this.pan={x:0,y:0};this.root.querySelector('.research-task-browser').open=false;this.root.querySelector('.memory-browser').open=false;this.savedPositions={};this.viewRevision=0;this.layout=null;this.selected=null;this.taskQuery='';this.taskFilter='all';this.taskPage=this.page=0;this.loadingView=true;
     try{const saved=await this.onMemoryView?.(identity);if(this.abort.signal.aborted||identity!==this.viewIdentity)return;
       if(saved?.version===1){this.viewRevision=saved.revision;this.positionsHierarchyRevision=saved.hierarchyRevision;const view=cleanView(saved);const {positions,...preferences}=view;Object.assign(this,{...preferences,savedPositions:positions});this.root.querySelector('.research-task-browser').open=view.tasksOpen;this.root.querySelector('.memory-browser').open=view.browseOpen;this.fitted=!view.autoFit;}
       this.root.querySelector('[data-task-search]').value=this.taskQuery;this.root.querySelector('[data-task-filter]').value=this.taskFilter;
