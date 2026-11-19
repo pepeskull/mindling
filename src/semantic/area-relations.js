@@ -7,6 +7,7 @@ export const AREA_RELATIONS=Object.freeze({
  'narrower-than':'The source area is a narrower domain within the target area.',
  'instance-of':'The source is an instance of the target concept, not necessarily a subdomain.',
  'part-of':'The source is a component of the target, not necessarily a subdomain.',
+ 'overlaps':'The areas share supported concepts without asserting containment.',
  'related-to':'An explicit supported association without containment or equivalence.'
 });
 const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===[...keys].sort().join(',');
@@ -35,14 +36,24 @@ export function validateAreaResults(proposals,context,materialize){
 }
 const current=m=>m&&sourceStatus(m)!=='incomplete'&&!m.supersededBy&&m.intelligence?.current!==false&&!['historical','preference','goal','intention'].includes(m.intelligence?.kind||m.kind)&&(!m.contradictions||Array.isArray(m.contradictions)&&m.contradictions.every(c=>c.status==='resolved'));
 export function currentAreaRelation(r,memories,areas){
- if(r?.version!==1||!['model-supported-not-independently-verified','explicit-stored-claim-not-independently-verified'].includes(r.validation)||!Object.hasOwn(AREA_RELATIONS,r.type)||!Array.isArray(r.areas)||r.areas.length!==2||!Array.isArray(r.evidence)||![1,2].includes(r.evidence.length))return false;
+ if(r?.version!==1||!['model-supported-not-independently-verified','explicit-stored-claim-not-independently-verified'].includes(r.validation)||!Object.hasOwn(AREA_RELATIONS,r.type)||!Array.isArray(r.areas)||r.areas.length!==2||!Array.isArray(r.evidence)||!(r.analysis?.kind==='area-pair'?r.evidence.length>=2&&r.evidence.length<=128:[1,2].includes(r.evidence.length)))return false;
  if(r.from===r.to||!r.areas.some(a=>a?.id===r.from)||!r.areas.some(a=>a?.id===r.to)||r.areas.some(a=>!a||!areas.some(b=>a.id===b.id&&a.label===b.label)))return false;
- return r.evidence.every(e=>{
+ const check=e=>{
   if(!e||!e.snapshot)return false;const {snapshot:s,span}=e;
   const matches=memories.filter(m=>m.id===s?.id),m=matches[0];if(matches.length!==1||!current(m)||editableMemoryText(m)!==s.text||!span||s.text.slice(span.start,span.end)!==span.quote)return false;
   if(s.provenance)return m.source==='SERVICE'&&m.intelligence?.kind==='claim'&&m.analysis?.name==='mindling-learning-service'&&m.analysis?.verification===s.provenance.verification&&(m.correctsMemoryId||null)===s.provenance.correctsMemoryId;
   return m.source==='AUTONOMOUS'&&['sourceHash','quoteHash','sourceURL','observedAt'].every(k=>m.research?.[k]===s[k]);
- });
+ };
+ if(!r.evidence.every(check))return false;
+ if(r.analysis?.kind==='area-pair'){
+  if(!Array.isArray(r.analysis.coverage)||r.analysis.coverage.length!==2)return false;
+  for(const covered of r.analysis.coverage){const area=areas.find(a=>a.id===covered.id);if(!area||!Array.isArray(covered.memories)||covered.memories.length>192)return false;
+   const currentIds=[...new Set(area.descendantMemoryIds||area.memoryIds)].filter(id=>memories.some(m=>m.id===id&&!m.supersededBy&&m.intelligence?.current!==false&&(m.intelligence?.kind||m.kind)!=='historical')).sort();
+   if(JSON.stringify(currentIds)!==JSON.stringify(covered.currentIds))return false;
+   if(!covered.memories.every(snapshot=>check({snapshot,span:{start:0,end:snapshot.text.length,quote:snapshot.text}})))return false;
+  }
+ }
+ return true;
 }
 export function persistAreaRelations(mind,accepted,areas,now=Date.now()){
  if(!accepted.length)return [];

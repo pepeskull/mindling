@@ -17,7 +17,7 @@ export function mergeProposal(graph,hierarchy,first,second){
  if(resolved.equivalent)return fail('Equivalent labels do not establish a parent–child relationship.','EQUIVALENT_LABEL');
  if(directions.size>1)return fail('Conflicting parent directions require review.','CONFLICTING_DIRECTIONS');
  if(!directions.size){
-  const association=(graph.areaRelations||[]).some(r=>['related-to','part-of','instance-of'].includes(r.type)&&[r.from,r.to].includes(a.id)&&[r.from,r.to].includes(b.id));
+  const association=(graph.areaRelations||[]).some(r=>['related-to','overlaps','part-of','instance-of'].includes(r.type)&&[r.from,r.to].includes(a.id)&&[r.from,r.to].includes(b.id));
   return fail(association?'A supported association already connects these areas; it does not establish containment. Select an area to inspect the connection.':'No current validated containment decision is available for these areas.',(association?'ASSOCIATION_ONLY':'MISSING_CONTAINMENT'));
  }
  const decision=[...directions.values()][0],parent=graph.areas.find(a=>a.id===decision.parentId),child=graph.areas.find(a=>a.id===decision.childId);
