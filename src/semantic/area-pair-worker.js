@@ -1,19 +1,19 @@
+import {researchEnergyReady} from '../autonomous/energy-readiness.js';
 import {areaPairPlan,validateAreaPairResult,combineAreaResults,areaFail} from './area-pair-contract.js';
-import {SEMANTIC_POLICY} from './scheduling.js';
-import {dayKey} from '../autonomous/autonomous-schedule.js';
+import {reserveSemanticDispatch,settleSemanticDispatch} from './dispatch-guard.js';
 import {digest} from '../autonomous/tasks.js';
 import {validatePermissions} from '../autonomous/research-permissions.js';
 import {semanticDiagnostic} from './diagnostics.js';
 import {persistAreaRelations} from './area-relations.js';
 import {graphData} from '../memory/graph-data.js';
 import {mergeProposal,commitHierarchy} from '../memory/knowledge-hierarchy.js';
-import {CONNECTION_MESSAGES} from './manual-connection.js';
-export const AREA_PAIR_MESSAGES={...CONNECTION_MESSAGES,RELATED:'A supported connection was saved between these areas.',OVERLAPS:'A supported overlap was saved; both areas remain distinct.',CONTAINS:'A supported parent–child relationship was saved. Canonical memories remain unchanged.',UNRELATED:'The supplied evidence does not justify a connection.',INSUFFICIENT_EVIDENCE:'The evidence does not justify a complete area relationship.',INVALID_AREA:'Choose two different knowledge areas.',EVIDENCE_LIMIT:'The complete evidence exceeds the bounded analysis limit. Nothing was omitted and no request was sent.',INCOMPLETE_ANALYSIS:'Analysis is incomplete. Completed steps are retained; no connection has been created.',CONFLICT:'The proposed relationship conflicts with an existing decision or hierarchy. No relationship was changed.',INVALID_EVIDENCE:'The proposed evidence did not pass validation. No connection was saved.',ALREADY_ASSESSED:'This area analysis is already in progress or has an unknown outcome. No repeat request was sent.'};
-export async function connectAreas(app,ids,identity,onProgress=()=>{}){
- let fingerprint,stageIndex=-1,dispatched=false,received=false;
+export async function connectAreas(app,ids,identity,onProgress=()=>{},{automatic=false}={}){
+ let fingerprint,stageIndex=-1,sent=false,dispatched=false,received=false,knownNotDispatched=false;
  const store=app.db||app.store,live=s=>{app.external?.assertWritable();if(app.disposed||s.mind?.id!==identity||s.mind.life?.lifeState!=='ALIVE')areaFail('IDENTITY_CHANGED');};
  try{
-  live(app.state);const plan=areaPairPlan(app.state.mind,ids);
+  live(app.state);
+  if(globalThis.navigator?.onLine===false||globalThis.document?.hidden)areaFail('ANALYSIS_PAUSED');
+  const plan=areaPairPlan(app.state.mind,ids);
   const graph=graphData(app.state.mind),existing=graph.areaRelations.filter(r=>[r.from,r.to].every(id=>ids.includes(id)));
   if(existing.length){const types=new Set(existing.map(r=>r.type));if(types.size>1)areaFail('CONFLICT');return {code:types.has('related-to')?'RELATED':types.has('overlaps')?'OVERLAPS':['broader-than','narrower-than'].some(t=>types.has(t))?'CONTAINS':'CONFLICT',reason:existing[0].reason};}
   fingerprint=await digest(JSON.stringify({identity,plan}));
@@ -23,34 +23,41 @@ export async function connectAreas(app,ids,identity,onProgress=()=>{}){
   const completed=()=>app.state.mind.areaPairAttempts?.find(a=>a.fingerprint===fingerprint);
   if(completed()?.state==='COMPLETED')return {code:completed().outcome,reason:completed().reason};
   for(stageIndex=0;stageIndex<plan.stages.length;stageIndex++){
-   dispatched=false;received=false;
+   dispatched=false;received=false;knownNotDispatched=false;
    if(completed()?.steps[stageIndex]?.state==='COMPLETED')continue;
-   if(completed()?.steps[stageIndex])areaFail('ALREADY_ASSESSED');
+   const previousStep=completed()?.steps[stageIndex];
+   if(previousStep?.state==='DEFERRED'&&previousStep.retryAt>Date.now())areaFail('ANALYSIS_PAUSED');
+   if(previousStep&&previousStep.state!=='DEFERRED')areaFail('ALREADY_ASSESSED');
    const prefs=validatePermissions(await store.researchPermissions(identity),identity);if(!prefs.enabled)areaFail('PERMISSION_REQUIRED');
-   const grant={mindlingId:identity,capability:prefs.capability,revision:prefs.revision},day=dayKey(Date.now()),context=plan.stages[stageIndex],requestId=await digest(JSON.stringify({fingerprint,stageIndex,context}));
+   const grant={mindlingId:identity,capability:prefs.capability,revision:prefs.revision},context=plan.stages[stageIndex],requestId=await digest(JSON.stringify({fingerprint,stageIndex,context}));
    const progress={stage:stageIndex+1,total:plan.stages.length,memories:plan.areas.reduce((n,a)=>n+a.memories.length,0),excluded:plan.areas.reduce((n,a)=>n+a.excluded,0)};
+   if(globalThis.navigator?.onLine===false||globalThis.document?.hidden)areaFail('ANALYSIS_PAUSED');
    onProgress(progress);
    await app.change(s=>{
-    fresh(s);const m=s.mind,attempts=m.areaPairAttempts||[];let record=attempts.find(a=>a.fingerprint===fingerprint);
+    fresh(s);const m=s.mind;if(automatic&&!researchEnergyReady(m))areaFail('ENERGY_LOW');const attempts=m.areaPairAttempts||[];let record=attempts.find(a=>a.fingerprint===fingerprint);
     if(attempts.some(a=>a.fingerprint!==fingerprint&&JSON.stringify(a.areas)===JSON.stringify(plan.areas.map(a=>a.id))&&a.steps.some(s=>['DISPATCHED','OUTCOME_UNKNOWN'].includes(s.state))))areaFail('ALREADY_ASSESSED');
-    if(record?.steps[stageIndex])areaFail('ALREADY_ASSESSED');if(!record&&attempts.length>=32)areaFail('RECEIPT_LIMIT');
-    const ledger=m.semanticLedger?.day===day?m.semanticLedger:{day,reserved:0,completed:0,supplemental:0};
-    if(ledger.reserved>=SEMANTIC_POLICY.maxDaily)areaFail('WINDOW_LIMIT');
-    if(!prefs.semanticCallsPerDay||(ledger.supplemental||0)>=prefs.semanticCallsPerDay)areaFail('ALLOWANCE_REQUIRED');
-    ledger.reserved++;ledger.supplemental=(ledger.supplemental||0)+1;m.semanticLedger=ledger;
+    const previous=record?.steps[stageIndex];
+    if(previous&&(previous.state!=='DEFERRED'||previous.retryAt>Date.now()))areaFail('ALREADY_ASSESSED');
+    if(!record&&attempts.length>=32)areaFail('RECEIPT_LIMIT');
+    if(automatic&&m.nextAreaAssessment>Date.now())areaFail('SEMANTIC_BUSY');
+    if(!reserveSemanticDispatch(m,requestId))areaFail('SEMANTIC_BUSY');
     if(!record){record={fingerprint,state:'PARTIAL',areas:plan.areas.map(a=>a.id),steps:[],total:plan.stages.length,createdAt:Date.now()};attempts.push(record);}m.areaPairAttempts=attempts;
-    record.steps[stageIndex]={state:'DISPATCHED',requestId,day,progress};return s;
+    if(automatic)m.nextAreaAssessment=Date.now()+600000;
+    record.steps[stageIndex]={state:'DISPATCHED',requestId,progress};return s;
    },{preserveGameplay:true,researchGrant:grant});
-   dispatched=true;
+   dispatched=true;sent=true;
    const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,45000);globalThis.window?.addEventListener('pagehide',abort,{once:true});
    let result;try{
     const response=await fetch('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:requestId,mode:'area-pair',context})});
     const text=await response.text();received=true;if(text.length>100000)areaFail('INVALID_RESPONSE');try{result=JSON.parse(text);}catch{areaFail('INVALID_RESPONSE');}
+    if(!response.ok&&result.service==='mindling-reasoning-service'&&result.id===requestId&&result.inferenceDispatched===false&&[429,503].includes(response.status)){
+     knownNotDispatched=true;areaFail('ANALYSIS_PAUSED');
+    }
     if(!response.ok)throw Object.assign(Error('API_FAILURE'),{code:'API_FAILURE',diagnostic:semanticDiagnostic(result.error?.diagnostic)});
     if(result.service!=='mindling-reasoning-service'||result.id!==requestId)areaFail('INVALID_RESPONSE');
    }finally{clearTimeout(timer);globalThis.window?.removeEventListener('pagehide',abort);}
    const checked=validateAreaPairResult(result.result,context);
-   await app.change(s=>{fresh(s);const step=s.mind.areaPairAttempts?.find(a=>a.fingerprint===fingerprint)?.steps[stageIndex];if(step?.state!=='DISPATCHED'||step.requestId!==requestId)areaFail('STALE_EVIDENCE');step.state='COMPLETED';step.result=checked;if(s.mind.semanticLedger?.day===day)s.mind.semanticLedger.completed++;return s;},{preserveGameplay:true,researchGrant:grant});
+   await app.change(s=>{fresh(s);const step=s.mind.areaPairAttempts?.find(a=>a.fingerprint===fingerprint)?.steps[stageIndex];if(step?.state!=='DISPATCHED'||step.requestId!==requestId)areaFail('STALE_EVIDENCE');step.state='COMPLETED';step.result=checked;settleSemanticDispatch(s.mind,requestId);return s;},{preserveGameplay:true,researchGrant:grant});
    dispatched=false;
   }
   const prefs=validatePermissions(await store.researchPermissions(identity),identity);if(!prefs.enabled)areaFail('PERMISSION_REQUIRED');
@@ -69,11 +76,11 @@ export async function connectAreas(app,ids,identity,onProgress=()=>{}){
    }
    record.state='COMPLETED';record.outcome=outcome.decision;record.reason=outcome.reason||'No complete supported relationship was established.';return s;
   },{preserveGameplay:true,researchGrant:grant});
-  return {code:outcome.decision,reason:outcome.reason};
+  return {code:outcome.decision,reason:outcome.reason,dispatched:sent};
  }catch(error){
   const code=error.code==='INVALID_SCHEMA'?'INVALID_RESPONSE':error.code||(dispatched?(received?'PERSISTENCE_FAILED':'OUTCOME_UNKNOWN'):'PERSISTENCE_FAILED');
-  if(dispatched)await app.change(s=>{live(s);const step=s.mind.areaPairAttempts?.find(a=>a.fingerprint===fingerprint)?.steps[stageIndex];if(step?.state==='DISPATCHED'){step.state='OUTCOME_UNKNOWN';step.failure=code;if(error.diagnostic)step.diagnostic=error.diagnostic;}return s;},{preserveGameplay:true}).catch(()=>{});
+  if(dispatched)await app.change(s=>{live(s);const step=s.mind.areaPairAttempts?.find(a=>a.fingerprint===fingerprint)?.steps[stageIndex];if(step?.state==='DISPATCHED'){step.state=knownNotDispatched?'DEFERRED':'OUTCOME_UNKNOWN';if(knownNotDispatched)step.retryAt=Date.now()+60000;step.failure=code;settleSemanticDispatch(s.mind,step.requestId,true);if(error.diagnostic)step.diagnostic=error.diagnostic;}return s;},{preserveGameplay:true}).catch(()=>{});
   const record=app.state.mind?.id===identity?app.state.mind.areaPairAttempts?.find(a=>a.fingerprint===fingerprint):null;
-  return {code,completed:record?.steps.filter(s=>s.state==='COMPLETED').length||0,total:record?.total||0};
+  return {code,dispatched:sent,completed:record?.steps.filter(s=>s.state==='COMPLETED').length||0,total:record?.total||0};
  }
 }

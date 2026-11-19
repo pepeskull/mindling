@@ -1,4 +1,4 @@
-import { energyAt } from '../economy/energy.js';
+import { researchEnergyReady } from './energy-readiness.js';
 import { CLIENT_RESEARCH_CODES } from './client-diagnostics.js';
 import { retryableServiceFailure, canRetryResearch } from './service-diagnostics.js';
 import { specializationFor } from '../pathways/specialization-taxonomy.js';
@@ -17,7 +17,7 @@ export function automaticPause(mind,prefs={},now=Date.now()){
   const reserved=ledger.day===dayKey(now)?(ledger.reservedRequests??(ledger.started||0)*4):0;
   if(reserved+4>(prefs.automaticRequestLimit??12))return 'Automatic research cost-safety reservation limit reached for this UTC day.';
   if(ledger.nextAt>now)return 'Waiting for cooldown.';
-  if(mind.energy&&energyAt(mind.energy,now).remaining<2)return 'Insufficient energy for automatic research readiness.';
+  if(mind.energy&&!researchEnergyReady(mind,now))return 'Insufficient energy for automatic research readiness.';
   return null;
 }
 export function nextOpportunity(mind,now=Date.now(),prefs={}){
@@ -38,6 +38,7 @@ export function nextOpportunity(mind,now=Date.now(),prefs={}){
 export function autonomousDiagnostics(engine){
   if(!engine?.preferences?.enabled)return {status:'PAUSED',reason:'Autonomous learning is disabled.'};
   if(typeof navigator!=='undefined'&&navigator.onLine===false)return {status:'OFFLINE',reason:'Waiting for an internet connection.'};
+  if(!researchEnergyReady(engine.app.state.mind))return {status:'PAUSED',reason:'Research is waiting for Energy.'};
   const tasks=engine.app.state.mind?.learningTasks||[],active=engine.active&&tasks.find(task=>task.id===engine.active.id);
   if(active&&engine.active.run&&active.run!==engine.active.run)return {status:'PAUSED',reason:'Preparing the active operation or waiting for a changed task session.',taskId:engine.active.id,topic:active.topic};
   const phase=active&&({QUEUED:'PLANNING',RESEARCHING:'RESEARCHING',EVALUATING:'ANALYZING',COMMITTING:'LEARNING'})[active.status];

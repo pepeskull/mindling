@@ -45,7 +45,7 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
       const bytes=new TextEncoder().encode(JSON.stringify({mode:'talk',identity,id,context}));
       const digest=await crypto.subtle.digest('SHA-256',bytes);
       const requestId=[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('');
-      reasoning=(await requestTalkReasoning({id:requestId,context,signal})).reasoning;
+      reasoning=(await requestTalkReasoning({id:requestId,context:{...context,agentName:app.state.mind.name},signal})).reasoning;
     }
     if(app.disposed||signal.aborted)throw Error('Talk was cancelled. No Energy was spent.');
     // Commit only after a validated reply (or genuine empty-knowledge state).

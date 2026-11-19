@@ -1,3 +1,4 @@
+import {researchEnergyReady} from '../autonomous/energy-readiness.js';
 // Authorization is shown only from persisted permissions, never from a draft.
 export class ResearchAccess {
  constructor(host,{getState,onSave,canAct=()=>true}){
@@ -8,7 +9,10 @@ export class ResearchAccess {
   this.save.addEventListener('click',()=>this.commit(),{signal:this.abort.signal});this.refresh();
  }
  refresh(){const state=this.getState(),p=state?.researchPermissions;this.ready=Boolean(p)&&p.loaded!==false;this.enabled=this.ready&&p.enabled===true;
-  this.save.textContent='Research';this.save.setAttribute('aria-label',this.enabled?'Research On':'Research Off');this.save.setAttribute('aria-checked',String(this.enabled));this.save.disabled=!this.ready||this.busy||!this.onSave||!this.canAct();
+  const running=this.enabled&&researchEnergyReady(state);
+  this.save.textContent='Research';this.save.dataset.running=String(running);
+  this.save.setAttribute('aria-label',running?'Research on. Click to revoke access.':this.enabled?'Research paused for Energy. Click to revoke access.':'Research off. Click to authorize access.');
+  this.save.setAttribute('aria-checked',String(this.enabled));this.save.disabled=!this.ready||this.busy||!this.onSave||!this.canAct();
   if(this.identity!==state?.mindlingId){this.identity=state?.mindlingId;this.status.textContent='';}
  }
  async commit(){if(this.save.disabled||!this.canAct())return;const identity=this.getState()?.mindlingId,enabled=!this.enabled;this.busy=true;this.refresh();this.status.textContent='Saving…';

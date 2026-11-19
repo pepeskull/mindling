@@ -41,7 +41,6 @@ export class EvolutionPreview {
       onConnectAreas:this.interactive&&typeof this.change==='function'?(ids,identity,progress)=>connectAreas(this,ids,identity,progress):null,
       onConnectMemories:this.interactive&&typeof this.change==='function'?(ids,identity)=>connectMemories(this,ids,identity):null,
       onMergeAreas:typeof this.change==='function'?async(proposal,identity)=>{await this.change(s=>{if(s.mind.id!==identity)throw Error('Mindling changed.');return {...s,mind:commitHierarchy(s.mind,graphData(s.mind),proposal)};},{preserveGameplay:true});}:null,
-      onSemanticAllowance:typeof this.change==='function'?n=>learningEngine(this).setSemanticAllowance(n):null,
       onResearchAccess:typeof this.change==='function'?(enabled,limit)=>learningEngine(this).setAccess(enabled,limit):null,
       onClarification:typeof this.change==='function'?(token,choice,detail)=>resumeClarification(this,token,choice,detail):null,onCancelClarification:()=>cancelClarification(this) });
     const snapshot = this.snapshotProvider ? await this.snapshotProvider() : null;

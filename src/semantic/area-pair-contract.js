@@ -1,3 +1,4 @@
+import {digest} from '../autonomous/tasks.js';
 import {eligibleSemanticMemory,semanticSnapshot,validateSemanticContext} from './model-contract.js';
 import {sentenceSpans,materialize} from './evidence-spans.js';
 import {graphData} from '../memory/graph-data.js';
@@ -68,4 +69,22 @@ export function combineAreaResults(results,plan){
  if(positives.some(r=>r.decision==='CONTAINS')&&(!results.every(r=>r.decision==='CONTAINS'&&r.parent===results[0].parent)||plan.areas.some(a=>a.excluded)))return {decision:'INSUFFICIENT_EVIDENCE'};
  if(positives.some(r=>r.decision!==positives[0].decision))return {decision:'INSUFFICIENT_EVIDENCE'};
  return {decision:positives[0].decision,parent:positives[0].parent,reason:positives[0].reason,evidence:[...new Map(positives.flatMap(r=>r.evidence).map(e=>[JSON.stringify([e.snapshot.id,e.span]),e])).values()]};
+}
+
+
+// Check negative and interrupted receipts against the same evidence version
+// used at dispatch. This is local and safe to call during a drag preview.
+export async function areaPairVisualState(mind, ids) {
+  const attempts=mind.areaPairAttempts || [];
+  try {
+    const plan=areaPairPlan(mind, ids);
+    if (!attempts.length) return 'pending';
+    const fingerprint=await digest(JSON.stringify({identity:mind.id,plan}));
+    const record=attempts.find(attempt=>attempt.fingerprint===fingerprint);
+    if (record?.steps.some(step=>step.state==='OUTCOME_UNKNOWN'||step.state==='DEFERRED'&&step.retryAt>Date.now())) return 'paused';
+    if (record?.state==='COMPLETED' && ['UNRELATED','INSUFFICIENT_EVIDENCE'].includes(record.outcome)) return 'unavailable';
+  } catch {
+    return 'unavailable';
+  }
+  return 'pending';
 }

@@ -96,5 +96,5 @@ test('autonomous initiation and follow-ups use persisted daily budgets, cooldown
   mind.autonomousLearning={day:'2000-01-01',started:3,nextAt:now+1};assert.equal(nextOpportunity(mind,now),null);
   const privateCategory={...mind,autonomousLearning:undefined,pathways:[],learningTasks:[],memories:[{id:'private',content:'A private retained claim.',category:'Sensitive client dealings'}]};assert.equal(nextOpportunity(privateCategory,now),null);
   assert.equal(autonomousStatus({preferences:{enabled:false}}),'PAUSED');
-  assert.equal(autonomousStatus({preferences:{enabled:true},app:{state:{mind:{learningTasks:[]}}}}),'IDLE');
+  assert.equal(autonomousStatus({preferences:{enabled:true},app:{state:{mind:{energy:{remaining:3},learningTasks:[]}}}}),'IDLE');
 });

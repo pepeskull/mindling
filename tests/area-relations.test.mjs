@@ -39,13 +39,25 @@ test('bounded old-record proof resolution is idempotent, domain-independent, and
  for(const [child,parent]of [['Quantum mechanics','Science'],['Electric vehicles','Automobiles'],['Unseen domain','Unseen parent']]){const s={mind:{memories:[memory('a',child,`${child} is a type of ${parent}.`),memory('b',parent,'A separate retained assertion.')]}};reconcileAreaEvidence(s);const g=graphData(s.mind);assert(mergeProposal(g,null,id(g,child),id(g,parent)).valid);}
  for(const content of ['Ice hockey may be a type of sport.','Ice hockey is not a type of sport.','Ice hockey is a type of sport. This is disputed.','National Hockey League is an ice hockey league.']){const s={mind:fixture()};s.mind.memories[0].content=content;reconcileAreaEvidence(s);assert.equal(s.mind.semanticAreaRelations,undefined);}
 });
-test('existing worker persists area decisions in its authorized inference transaction with no extra call or reward',async()=>{
- const {runSemantic}=await import('../src/semantic/model-worker.js');const old=globalThis.fetch;let calls=0;
- let state={mind:{...fixture(),learningTasks:[{id:'research',status:'COMPLETED',knowledgeIds:['hockey'],modelCalls:3}]}};
- const engine={session:'offline',app:{get state(){return state;}},abort:new AbortController(),loadPermissions:async()=>({enabled:true,revision:1}),grant:()=>({}),assertLive:id=>assert.equal(id,state.mind.id),async patch(id,run,fn){const next=structuredClone(state);fn(next.mind.learningTasks[0],next);state=next;}};
- try{globalThis.fetch=async(url,options)=>{calls++;assert.equal(url,'/api/mindling/reason');const {id,context}=JSON.parse(options.body),proposed=model(state.mind).result;assert(context.areas);return Response.json({service:'mindling-reasoning-service',id,result:proposed});};
- await runSemantic(engine,state.mind.learningTasks[0]);assert.equal(calls,1);assert.equal(state.mind.semanticAreaRelations.records.length,1);assert.equal(state.mind.learningTasks[0].semanticAreaAnalysis.persisted,1);assert.equal(state.mind.learningTasks[0].modelCalls,4);
- state=JSON.parse(JSON.stringify(state));await runSemantic(engine,state.mind.learningTasks[0]);assert.equal(calls,1);assert.equal(state.mind.xp,12);assert.equal(state.mind.energy,8);
+test('automatic area analysis uses its dedicated contract and preserves research accounting',async()=>{
+ const {connectAreas}=await import('../src/semantic/area-pair-worker.js');
+ const {defaultPermissions}=await import('../src/autonomous/research-permissions.js');
+ const old=globalThis.fetch;let calls=0;
+ const app={state:{mind:{...fixture(),energy:{remaining:8},life:{lifeState:'ALIVE'},learningTasks:[{id:'research',status:'COMPLETED',knowledgeIds:['hockey'],modelCalls:3}]}},
+  store:{async researchPermissions(){return {...defaultPermissions('isolated'),enabled:true};}},async change(fn){this.state=fn(structuredClone(this.state));}};
+ const graph=graphData(app.state.mind),ids=[id(graph,'Ice hockey'),id(graph,'Sport')];
+ try{
+  globalThis.fetch=async(url,options)=>{
+   calls++;const {id,mode,context}=JSON.parse(options.body);assert.equal(mode,'area-pair');
+   assert.equal(context.areas.length,2);
+   return Response.json({service:'mindling-reasoning-service',id,result:{decision:'RELATED',parent:'NONE',support:'supported',scopePreserved:true,reason:'The passages relate hockey to sport.',citations:['A','B'].map(area=>({area,memory:0,first:0,last:0}))}});
+  };
+  assert.equal((await connectAreas(app,ids,'isolated',undefined,{automatic:true})).code,'RELATED');
+  app.state=JSON.parse(JSON.stringify(app.state));
+  assert.equal((await connectAreas(app,ids,'isolated',undefined,{automatic:true})).code,'RELATED');
+  assert.equal(calls,1);
+  assert.equal(app.state.mind.learningTasks[0].modelCalls,3);
+  assert.equal(app.state.mind.xp,12);
  }finally{globalThis.fetch=old;}
 });
 test('validated equivalent labels can resolve containment without combining identities; multi-area evidence stays separate',()=>{

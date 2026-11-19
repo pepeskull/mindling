@@ -22,7 +22,6 @@ export function activityEvents(mind={}){
 }
 export function semanticSummary(mind={},now=Date.now()){
  const tasks=(mind.learningTasks||[]).filter(t=>t.semanticAnalysis||t.semanticWork);
- const current=mind.semanticLedger?.day===new Date(now).toISOString().slice(0,10)?mind.semanticLedger:{};
  const latest=tasks.slice().sort((a,b)=>(b.semanticWork?.updatedAt||b.updatedAt)-(a.semanticWork?.updatedAt||a.updatedAt));
  const failure=latest.find(t=>t.semanticAnalysis?.status==='FAILED_OR_INTERRUPTED'),success=latest.find(t=>t.semanticAnalysis?.status==='COMPLETED');
  const attempts=tasks.flatMap(t=>t.semanticAttempts||[]);
@@ -30,7 +29,6 @@ export function semanticSummary(mind={},now=Date.now()){
  const successTimes=[...attempts.filter(a=>a.state==='COMPLETED').map(a=>a.completedAt),success?.semanticWork?.updatedAt].filter(Number.isFinite);
  const totals=key=>tasks.reduce((n,t)=>{const r=(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED'&&a.result);return n+(r.length?r.reduce((sum,a)=>sum+(key==='accepted'?(a.result.accepted||0):(a.result.rejections?.length||0)),0):(t.semanticAnalysis?.[key]||0));},0);
  return {pending:tasks.filter(t=>['DEFERRED','RESERVED'].includes(t.semanticWork?.state)).length,running:tasks.filter(t=>t.semanticWork?.state==='DISPATCHED').length,completed,failed:tasks.filter(t=>t.semanticAnalysis?.status==='FAILED_OR_INTERRUPTED').length,
- reserved:current.reserved||0,callsCompleted:current.completed||0,remaining:mind.researchPermissions?.enabled?Math.max(0,Math.min(3-(current.reserved||0),(mind.researchPermissions?.semanticCallsPerDay||0)-(current.supplemental||0))):0,
  examined:tasks.reduce((n,t)=>n+(t.semanticAttempts||[]).filter(a=>a.state==='COMPLETED').reduce((sum,a)=>sum+(a.pairs?.length||0),0),0),accepted:totals('accepted'),rejected:totals('rejected'),
  lastSuccess:successTimes.length?Math.max(...successTimes):null,lastFailure:failure?{code:['INCOMPLETE_GENERATION','INVALID_SCHEMA','API_FAILURE','REQUEST_INTERRUPTED','MODEL_UNAVAILABLE','STALE_EVIDENCE','AUTHORIZATION_CHANGED'].includes(failure.semanticAnalysis.failure)?failure.semanticAnalysis.failure:'ANALYSIS_FAILED',diagnostic:semanticDiagnostic(failure.semanticAnalysis.diagnostic),correlationId:/^[a-f0-9]{64}$/.test(failure.semanticAnalysis.fingerprint)?failure.semanticAnalysis.fingerprint:null}:null};
 }

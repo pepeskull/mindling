@@ -9,8 +9,10 @@ const boundedText = max => ({ type: 'string', minLength: 1, maxLength: max });
 const strict = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 const idArray = ids => ({ type: 'array', maxItems: 10, items: ids.length ? { type: 'string', enum: ids } : { type: 'string', maxLength: 0 } });
 
-export function validateContext(value) {
-  if (!object(value, ['version', 'problem', 'candidates', 'totalCurrent']) || ![1, 2].includes(value.version) || !text(value.problem, 2000) || !Array.isArray(value.candidates) || value.candidates.length < 1 || value.candidates.length > 24 || !Number.isSafeInteger(value.totalCurrent) || value.totalCurrent < value.candidates.length || value.totalCurrent > 100000) fail();
+export function validateContext(value,{talk=false}={}) {
+  const hasName=talk&&Object.hasOwn(value||{},'agentName');
+  if(hasName&&(!text(value.agentName,40)||/[\p{Cc}\p{Cf}]/u.test(value.agentName)))fail();
+  if (!object(value, ['version', 'problem', 'candidates', 'totalCurrent', ...(hasName?['agentName']:[])]) || ![1, 2].includes(value.version) || !text(value.problem, 2000) || !Array.isArray(value.candidates) || value.candidates.length < 1 || value.candidates.length > 24 || !Number.isSafeInteger(value.totalCurrent) || value.totalCurrent < value.candidates.length || value.totalCurrent > 100000) fail();
   const ids = new Set();
   for (const m of value.candidates) {
     if (!object(m, ['id','content','complete','concept','topic','category','kind','certainty','verification','confidence','contradictions','conflictsComplete','omittedLinks','links','ranking',...(value.version === 2 ? ['integrity'] : [])]) || !text(m.id, 160) || ids.has(m.id) || !text(m.content, 900) || typeof m.complete !== 'boolean') fail();
