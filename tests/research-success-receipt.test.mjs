@@ -46,3 +46,37 @@ test('server serialization failures preserve completed work and its signed analy
 test('unavailable storage cannot silently erase a received server failure diagnostic',async()=>scenario(async c=>{
  await c.run();assert.equal(c.server.code,502);assert.equal(c.engine.clientFailure.diagnostic.code,'CHECKPOINT_PERSISTENCE_FAILED');assert.ok(c.engine.diagnostics.reason.includes('RESPONSE_SERIALIZATION_ERROR'));assert.ok(c.logs.some(log=>log.event==='mindling.research.server-receipt'&&log.detail==='RESPONSE_SERIALIZATION_FAILED'));assert.equal(c.app.state.mind.memories.length,0);assert.equal(c.app.state.mind.energy.remaining,10);assert.equal(c.app.state.mind.lifetimeXP,0);assert.doesNotMatch(JSON.stringify(c.logs),/Private|synthetic-received-secret|opaque-model|https:/);
 },{kind:'serialization',fault:'all'}));
+
+test('ambiguous completed response retains only a quarantined report and never resumes or creates memories',async()=>{
+ const {createRequire}=await import('node:module');
+ const {searchPayload}=createRequire(import.meta.url)('./support/research-success-fixture.cjs');
+ const {canRetryResearch}=await import('../src/autonomous/service-diagnostics.js');
+ const {validateResearchCheckpoint}=await import('../src/autonomous/research-contract.js');
+ await scenario(async c=>{
+  await c.run();
+  assert.equal(c.server.code,409);
+  assert.equal(c.server.body.sourceCheckpoint,undefined);
+  const saved=JSON.parse(JSON.stringify(c.saved()));
+  assert.equal(saved.status,'BLOCKED');
+  assert.equal(saved.researchExecution.outcomeUnknown,true);
+  assert.equal(saved.sourceRequests,2);
+  assert.equal(saved.modelCalls,3);
+  assert.equal(saved.completedToolCalls,2);
+  assert.equal(saved.sourceReferences.length,0);
+  assert.equal(saved.researchObservation.sources.length,3);
+  assert.equal(saved.completedWork.includes('source'),false);
+  assert.equal(saved.knowledgeIds.length,0);
+  assert.equal(c.app.state.mind.memories.length,0);
+  assert.equal(canRetryResearch(saved),false);
+  assert.throws(()=>validateResearchCheckpoint(saved.researchObservation));
+  assert.doesNotMatch(JSON.stringify(c.logs),/https:\/\/|The rules of a game/);
+  const calls=c.calls.length;
+  c.reopen().recover();
+  assert.equal(c.calls.length,calls);
+ },{acquisitionPayload:()=>{
+  const response=searchPayload();
+  response.output.splice(1,0,{id:'second',type:'web_search_call',status:'completed',action:{type:'search',sources:[]}},
+   {id:'third',type:'web_search_call',status:'searching',action:{type:'open_page',url:'https://example.org/pending'}});
+  return response;
+ }});
+});

@@ -14,7 +14,7 @@ const url='https://www.ninds.nih.gov/health-information/public-education/brain-b
 const request={topic:'human brain and neuron communication',mode:'FOUNDATION',freshness:false,scope:{criterion:null,geography:[],geographyMode:null,period:null,quantity:null}};
 const context={request,queries:['human neurons synapses signaling'],remainingCalls:2};
 const evaluation={claims:[{sourceId:`web:${sha(url+'\n'+quote)}`,quote,category:'Biology',topic:'Neuroscience',reason:'Relevant source-cited report; not independent verification.',validAt:null}],limitations:['Search summaries are not raw source text.'],nextQuestion:'How do inhibitory synapses influence neural signaling'};
-function payload({cite=true,search=true,status='completed'}={}){return {id:'resp_synthetic_local',status,output:[...(search?[{type:'web_search_call',status:'completed',action:{type:'search',queries:context.queries,sources:[{type:'url',url}]}}]:[]),{type:'message',status:'completed',content:[{type:'output_text',text:quote+' [1]',annotations:cite?[{type:'url_citation',start_index:quote.length+1,end_index:quote.length+4,title:'Synthetic NIH source fixture',url}]:[]}]}]};}
+function payload({cite=true,search=true,status='completed'}={}){return {id:'resp_synthetic_local',status,output:[...(search?[{id:'fixture-search-1',type:'web_search_call',status:'completed',action:{type:'search',queries:context.queries,sources:[{type:'url',url}]}}]:[]),{type:'message',status:'completed',content:[{type:'output_text',text:quote+' [1]',annotations:cite?[{type:'url_citation',start_index:quote.length+1,end_index:quote.length+4,title:'Synthetic NIH source fixture',url}]:[]}]}]};}
 const originalFetch=globalThis.fetch;
 let sequence=0;
 async function api(mode,context,fetcher){

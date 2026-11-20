@@ -227,6 +227,7 @@ export class AutonomousLearningEngine {
           const acquired=error.checkpoint.evidence;item.completedToolCalls=acquired.requests;item.completedWork=[...new Set([...item.completedWork,'retrieval','source'])];
           for(const source of acquired.sources)if(!item.sourceReferences.some(ref=>ref.url===source.url))item.sourceReferences.push({url:source.url,title:source.title,provider:source.provider,type:source.type,hash:source.hash,status:'pending-analysis',authorizedAt:Date.now(),observedAt:Date.now()});
         }
+        if(error.observation?.correlationId===item.researchExecution?.correlationId&&item.researchExecution?.outcomeUnknown)item.researchObservation=error.observation;
         if(error.recoveryBlockedReason)item.retryBlockedReason=error.recoveryBlockedReason;
         item.message=code==='ENERGY_LOW'?'Research is waiting for Energy.':error.clientDiagnostic?CLIENT_RESEARCH_CODES[code]:error.diagnostic?researchFailureMessage(error.diagnostic,!!item.pendingSourceEvidence):code==='OFFLINE'?'Research paused — Offline.':SERVICE_MESSAGES[code]||'Research paused. The task details preserve the service failure.';
       });this.notify(blocked);
@@ -300,6 +301,7 @@ export class AutonomousLearningEngine {
         const calls=checkpoint?1:2;if((item.modelCalls||0)+calls>LIMITS.inferenceCalls||(item.evaluationCalls||0)>=2)throw Error('BUDGET_EXHAUSTED');
         item.modelCalls=(item.modelCalls||0)+calls;item.evaluationCalls=(item.evaluationCalls||0)+1;
         if(!checkpoint){item.sourceRequests+=remainingCalls;item.researchExecution={version:1,reserved:remainingCalls,toolState:'RESERVED',clientDispatched:false,upstreamDispatched:null,completed:0,failed:0,outcomeUnknown:false};}
+        delete item.researchObservation;
         item.researchExecution.correlationId=id;item.researchExecution.operation=checkpoint?'research-evaluate':'research-acquire';
         item.status=checkpoint?'EVALUATING':'RESEARCHING';item.code=checkpoint?'EVALUATING':'SEARCHING';item.message=checkpoint?'Evaluating the previously retrieved signed evidence; no new search.':'Researching public sources and comparing cited evidence.';
       },{researchGrant:this.grant(prefs)});

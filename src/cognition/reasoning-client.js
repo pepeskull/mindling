@@ -1,7 +1,7 @@
 import { clientResearchFailure } from '../autonomous/client-diagnostics.js';
 import { validateResearchReceipt } from './research-receipt.js';
 import { SERVICE_MESSAGES, validateServiceDiagnostic } from '../autonomous/service-diagnostics.js';
-import { validatePlanningContext, validatePlanningResult, validateRetrievalContext, validateResearchCheckpoint, validateResearchEvaluationContext } from '../autonomous/research-contract.js';
+import { validatePlanningContext, validatePlanningResult, validateRetrievalContext, validateResearchCheckpoint, validateResearchObservation, validateResearchEvaluationContext } from '../autonomous/research-contract.js';
 import { validateContext, validateResult, validateTalkResult } from '../training/contract.js';
 
 const messages = { SERVICE_UNAVAILABLE: 'The reasoning service is not configured or its model is unavailable.', RATE_LIMITED: 'Too many requests. Wait a minute before trying again.', EVALUATION_IN_PROGRESS: 'This evaluation is already running. Wait for it to finish.', EVALUATION_TIMEOUT: 'The evaluation timed out. No successful result was recorded.', REQUEST_INVALID: 'The stored context could not be submitted. Refresh and try again.', REQUEST_TOO_LARGE: 'The selected context is too large. Try a shorter problem.' };
@@ -32,6 +32,13 @@ async function requestService({ id, context, signal }, mode = 'evaluation') {
       if(mode.startsWith('research')&&result?.sourceCheckpoint){
         try{validateResearchCheckpoint(result.sourceCheckpoint);failure.checkpoint=result.sourceCheckpoint;}
         catch{failure.recoveryBlockedReason='CHECKPOINT_INVALID';}
+      }
+      if(mode==='research-acquire'&&result?.researchObservation&&failure.code==='TOOL_LIFECYCLE_INCOMPLETE'&&failure.diagnostic?.outcomeUnknown&&failure.diagnostic.sourceCount===0&&failure.diagnostic.extraction?.disposition==='OBSERVED_ONLY'){
+        try{
+          const observation=validateResearchObservation(result.researchObservation);
+          if(observation.correlationId!==id||result.service!=='mindling-reasoning-service'||response.status!==409)throw Error('Mismatched observation');
+          failure.observation=observation;
+        }catch{/* Preserve the lifecycle failure even when the optional observation is invalid. */}
       }
       throw failure;
     }

@@ -7,7 +7,7 @@ import {defaultPermissions,assertResearchGrant} from '../../src/autonomous/resea
 import {understandInput} from '../../src/learning/input-understanding.js';
 const require=createRequire(import.meta.url),{handler}=require('../../src/server/mindling-reasoning.cjs'),fixture=require('./research-success-fixture.cjs');
 let sequence=0;
-export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,beforeAcquisition=null,mutate=null,evaluate=fixture.evaluation,hypotheses=[]}={}){
+export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,beforeAcquisition=null,mutate=null,evaluate=fixture.evaluation,acquisitionPayload=fixture.searchPayload,hypotheses=[]}={}){
  const originals={fetch:globalThis.fetch,warn:console.warn,now:Date.now,timer:globalThis.setTimeout,document:Object.getOwnPropertyDescriptor(globalThis,'document'),window:Object.getOwnPropertyDescriptor(globalThis,'window'),navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),key:process.env.SERVICE_API,model:process.env.SERVICE_MODEL,web:process.env.MINDLING_WEB_SEARCH};
  const control={kind,fault,afterBody,mutate,calls:[],logs:[],server:null,elapsed:0};Date.now=()=>originals.now()+control.elapsed;
  for(const [name,value] of [['window',new EventTarget()],['document',Object.assign(new EventTarget(),{hidden:false})],['navigator',{onLine:true}]])Object.defineProperty(globalThis,name,{configurable:true,value});
@@ -49,13 +49,13 @@ export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='s
    return {ok:response.ok,status:response.status,async text(){const text=await response.text();if(body.mode==='research-acquire')control.afterBody?.(control);return text;}};
   }
   if(url.endsWith('/models/opaque-model'))return Response.json({id:'opaque-model'});
-  if(url.endsWith('/responses')){control.elapsed+=23087;return Response.json(fixture.searchPayload());}
+  if(url.endsWith('/responses')){control.elapsed+=23087;return Response.json(acquisitionPayload());}
   if(url!=='https://api.openai.com/v1/chat/completions')throw Error('External target forbidden');
   const request=JSON.parse(options.body),data=JSON.parse(request.messages[1].content);
   return Response.json({choices:[{finish_reason:'stop',message:{content:JSON.stringify(request.response_format.json_schema.name==='mindling_planning'?{hypotheses,plan:['Find supported Gaming rules'],clarification:null,queries:['Gaming game rules'],sourceCategory:'web'}:relevantFixture(evaluate(data.sources)))}}]});
  };
  try{
-  await engine.loadPermissions();await engine.setAccess(true);
+  await store.saveResearchPermissions('received-node',{enabled:true});await engine.loadPermissions();
   const task=await engine.prepare(understandInput('Learn about Gaming','TEACH'),'received-request',{autonomous:true});
   control.task=task;control.run=()=>engine.run(app.state.mind.learningTasks.find(t=>t.id===task.id),'Gaming');
   control.saved=()=>app.state.mind.learningTasks.find(t=>t.id===task.id);

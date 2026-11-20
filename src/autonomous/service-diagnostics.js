@@ -46,13 +46,13 @@ export function matchingEvaluationFailure(task){
   return diagnostic.phase==='SOURCE_EVALUATION'&&diagnostic.errorCategory&&receipt?.correlationId===diagnostic.correlationId&&receipt.operation===diagnostic.operation?diagnostic:null;
 }
 export function researchFailureMessage(diagnostic,hasCheckpoint=false){
-  if(diagnostic?.errorCategory==='TOOL_LIFECYCLE_INCOMPLETE')return 'Research paused — The provider reported incomplete tool work, possibly beyond the requested limit. No sources were accepted and no repeat search is authorized.';
+  if(diagnostic?.errorCategory==='TOOL_LIFECYCLE_INCOMPLETE')return 'Research paused — The outcome of a tool request is unknown. No sources were accepted. The reservation is kept and the search will not be repeated.';
   if(diagnostic?.detail==='TOOL_BUDGET_EXCEEDED')return 'Research paused — The service returned more distinct tool calls than authorized. Potentially spent budget remains reserved; no repeat search is allowed.';
   if(['TOOL_ACCOUNTING_AMBIGUOUS','TOOL_EVENT_CONFLICT','TOOL_ACCOUNTING_LIMIT'].includes(diagnostic?.detail))return diagnostic.outcomeUnknown?'Research paused — The service returned ambiguous tool-call accounting. Potentially spent budget remains reserved; no repeat search is allowed.':'Research paused — The service returned more distinct tool calls than authorized. No knowledge was accepted and the search will not be repeated.';
   if(diagnostic?.detail==='LIMITATION_INVALID')return `Research paused — An evidence limitation could not be represented safely. ${hasCheckpoint?'Retrieved sources are saved for a bounded evaluation-only retry.':'No research knowledge was saved.'}`;
   return SERVICE_MESSAGES[diagnostic?.errorCategory]||'Research paused. The task details preserve the service failure.';
 }
-const invalidReceipt=task=>['EVALUATION_IN_PROGRESS','TOOL_BUDGET_VIOLATION','TOOL_LIFECYCLE_INCOMPLETE','INVALID_TOOL_ACCOUNTING','RECEIPT_VALIDATION_FAILED','CHECKPOINT_VALIDATION_FAILED','EVIDENCE_VALIDATION_FAILED','STALE_RESEARCH_RESPONSE'].includes(task.code);
+const invalidReceipt=task=>Boolean(task.researchObservation)||['EVALUATION_IN_PROGRESS','TOOL_BUDGET_VIOLATION','TOOL_LIFECYCLE_INCOMPLETE','INVALID_TOOL_ACCOUNTING','RECEIPT_VALIDATION_FAILED','CHECKPOINT_VALIDATION_FAILED','EVIDENCE_VALIDATION_FAILED','STALE_RESEARCH_RESPONSE'].includes(task.code);
 export const retryableServiceFailure=task=>task.code!=='NO_MODEL_CANDIDATES'&&!invalidReceipt(task)&&(!!task.pendingSourceEvaluation||!!task.pendingEvidence?.length||task.code==='RESPONSE_PARSE_ERROR'&&!!task.pendingSourceEvidence||['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE','UPSTREAM_NETWORK_ERROR','UPSTREAM_TIMEOUT','REQUEST_INTERRUPTED','UPSTREAM_HTTP_ERROR','RESPONSE_SERIALIZATION_ERROR'].includes(task.code));
 // A saved source plan must never trigger another search when its ceiling was reserved.
 export function canRetryResearch(task){

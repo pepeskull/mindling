@@ -36,6 +36,10 @@ export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},me
   if(task.pendingSourceEvidence)host.append(el('p','Signed source evidence is saved. Only its analysis can resume within the remaining budget; no new search is authorized.','memory-content-status'));
   if(task.discoveryQueries)host.append(el('p',`Search queries completed: ${task.completedQueries||0} · Query budget used: ${task.discoveryQueries} / 2`,'memory-content-status'));
   host.append(el('p',legacy&&active?'Historical task. Its former research workflow is unavailable. Saved sources and knowledge remain intact.':task.message));
+  if(task.researchObservation?.sources.length){
+    const count=task.researchObservation.sources.length;
+    host.append(el('p',`${count} cited ${count===1?'report source retained':'report sources retained'} as observations. Tool work is unresolved. These observations cannot be used as evidence.`,'memory-content-status'));
+  }
   if(task.limitations?.length){host.append(el('h4','Evidence limitations'));for(const limitation of task.limitations)host.append(el('p',limitation,'memory-content-status'));}
   const diagnostics=task.evidenceDiagnostics;
   if(diagnostics)host.append(el('p',`Proposed claims: ${diagnostics.candidates} · Passed evidence checks: ${diagnostics.accepted}`,'memory-content-status'));

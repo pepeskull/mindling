@@ -91,3 +91,33 @@ test('provider diagnostics bound output and preserve repeated observation identi
  assert.deepEqual(trace.providerOutput.items.slice(0,2).map(i=>i.identity),[1,1]);
  assert.equal(trace.providerOutput.items[2].type,'other');
 });
+
+test('a terminal observation with a missing or malformed ID cannot confirm dispatch, even within ceiling',()=>{
+ for(const id of [undefined,null,' ','invalid/id',{}]){
+  const trace={};
+  assert.throws(()=>accountTools({status:'completed',output:[tool(id)]},2,trace),e=>e.detail==='TOOL_ACCOUNTING_AMBIGUOUS');
+  assert.equal(trace.completed,0);
+  assert.equal(trace.toolAccounting.terminalCalls,0);
+  assert.equal(trace.toolAccounting.dispatchUnknown,1);
+  assert.equal(trace.outcomeUnknown,true);
+ }
+});
+
+test('failed and top-level incomplete responses cannot retain accepted sources',async()=>{
+ const oldFetch=globalThis.fetch,enabled=process.env.MINDLING_WEB_SEARCH;
+ process.env.MINDLING_WEB_SEARCH='enabled';
+ const input={request:{topic:'public computing',mode:'FOUNDATION',freshness:false,scope:{criterion:null,geography:[],geographyMode:null,period:null,quantity:null}},queries:['public computing'],remainingCalls:2};
+ try{
+  for(const shape of ['failed','incomplete','conflicting-envelope']){
+   const payload=fixture.searchPayload();
+   if(shape==='failed')payload.output[0].status='failed';
+   else if(shape==='incomplete')payload.status='incomplete';
+   else payload.incomplete_details={reason:'max_output_tokens'};
+   globalThis.fetch=async()=>Response.json(payload);
+   const trace={sourceCount:0};
+   await assert.rejects(search(input,'synthetic-only','opaque',undefined,trace),e=>e.detail===(shape==='failed'?'TOOL_NOT_COMPLETED':'RESPONSE_INCOMPLETE'));
+   assert.equal(trace.sourceCount,0);
+   assert.equal(trace.outcomeUnknown,shape!=='failed');
+  }
+ }finally{globalThis.fetch=oldFetch;if(enabled===undefined)delete process.env.MINDLING_WEB_SEARCH;else process.env.MINDLING_WEB_SEARCH=enabled;}
+});

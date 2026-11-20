@@ -4,6 +4,7 @@ const {outputDiagnostics}=require('./research-output-diagnostics.cjs');
 // Only identical provider IDs establish one invocation. Never deduplicate by
 // query, URL, action text or position: a repeat search can consume another call.
 const terminal=status=>['completed','failed'].includes(status);
+const knownId=id=>typeof id==='string'&&/^[A-Za-z0-9_-]{1,160}$/.test(id);
 const pending=status=>['queued','in_progress','searching'].includes(status);
 function mergeFields(a,b,key=''){
   if(a===undefined)return b;
@@ -30,9 +31,15 @@ function accountTools(payload,ceiling,trace){
   trace.providerOutput=outputDiagnostics(payload,ceiling);
   const output=Array.isArray(payload?.output)?payload.output:[],raw=output.filter(item=>item?.type==='web_search_call'),seen=new Map(),calls=[];
   trace.observedToolEvents=raw.length;
-  const conflicts=new Set();
+  const conflicts=new Set(),completedActions=new Map();
   for(const call of raw){
-    if(typeof call.id==='string'&&call.id){
+    if(knownId(call.id)){
+      if(call.status==='completed'){
+        // A same-ID pending event can supply lifecycle information, never
+        // citation authority. Only terminal success may supply source fields.
+        try{completedActions.set(call.id,mergeFields(completedActions.get(call.id),call.action));}
+        catch{conflicts.add(call.id);}
+      }
       if(seen.has(call.id)){
         const index=seen.get(call.id);
         try{calls[index]=mergeEvent(calls[index],call);}catch{conflicts.add(call.id);}
@@ -42,31 +49,31 @@ function accountTools(payload,ceiling,trace){
     }
     calls.push(call);
   }
-  trace.toolAccounting={distinctIds:seen.size,anonymous:calls.filter(c=>!c.id).length,conflicts:conflicts.size,incomplete:calls.filter(c=>!['completed','failed'].includes(c.status)).length,responseCompleted:payload?.status==='completed',requestedLimit:ceiling,reportedCalls:calls.length,duplicateObservations:raw.length-calls.length,terminalCalls:calls.filter(c=>terminal(c.status)&&!conflicts.has(c.id)).length,dispatchUnknown:calls.filter(c=>!terminal(c.status)||conflicts.has(c.id)).length};
+  trace.toolAccounting={distinctIds:seen.size,anonymous:calls.filter(c=>!knownId(c.id)).length,conflicts:conflicts.size,incomplete:calls.filter(c=>!['completed','failed'].includes(c.status)).length,responseCompleted:payload?.status==='completed',requestedLimit:ceiling,reportedCalls:calls.length,duplicateObservations:raw.length-calls.length,terminalCalls:calls.filter(c=>terminal(c.status)&&knownId(c.id)&&!conflicts.has(c.id)).length,dispatchUnknown:calls.filter(c=>!terminal(c.status)||!knownId(c.id)||conflicts.has(c.id)).length};
   // Status counts distinguish provider lifecycle shapes without logging IDs,
   // queries, source text or assuming that a pending invocation was dispatched.
   if(trace.toolAccounting.incomplete){const unfinished=calls.filter(c=>!terminal(c.status));Object.assign(trace.toolAccounting,{queued:unfinished.filter(c=>c.status==='queued').length,inProgress:unfinished.filter(c=>c.status==='in_progress').length,searching:unfinished.filter(c=>c.status==='searching').length,otherPending:unfinished.filter(c=>!pending(c.status)).length});}
   const bounded=calls.length<=64;
-  const confirmed=calls.filter(c=>!conflicts.has(c.id));
+  const confirmed=calls.filter(c=>knownId(c.id)&&!conflicts.has(c.id));
   trace.completed=bounded?confirmed.filter(c=>c.status==='completed').length:0;
   trace.failed=bounded?confirmed.filter(c=>c.status==='failed').length:0;
   trace.searchCompleted=trace.completed>0;
-  trace.outcomeUnknown=!bounded||conflicts.size>0||payload?.status!=='completed'||!Array.isArray(payload?.output)||calls.some(c=>!['completed','failed'].includes(c.status));
+  trace.outcomeUnknown=!bounded||trace.toolAccounting.anonymous>0||conflicts.size>0||payload?.status!=='completed'||Boolean(payload?.incomplete_details)||!Array.isArray(payload?.output)||calls.some(c=>!['completed','failed'].includes(c.status));
   if(!bounded)throw fail('INVALID_TOOL_ACCOUNTING','TOOL_ACCOUNTING_LIMIT');
   if(conflicts.size)throw fail('INVALID_TOOL_ACCOUNTING','TOOL_EVENT_CONFLICT');
+  if(trace.toolAccounting.anonymous)throw fail('INVALID_TOOL_ACCOUNTING','TOOL_ACCOUNTING_AMBIGUOUS');
+  const terminalOutput=calls.map(call=>call.status==='completed'?{...call,action:completedActions.get(call.id)}:call);
   if(calls.length>ceiling){
-    // Anonymous repeated-looking entries cannot safely be assumed to be
-    // duplicate lifecycle events, nor evidence of distinct billable calls.
-    if(calls.some(c=>typeof c.id!=='string'||!c.id)){
-      trace.completed=calls.filter(c=>c.id&&c.status==='completed').length;trace.failed=calls.filter(c=>c.id&&c.status==='failed').length;
-      trace.searchCompleted=trace.completed>0;trace.outcomeUnknown=true;throw fail('INVALID_TOOL_ACCOUNTING','TOOL_ACCOUNTING_AMBIGUOUS');
-    }
     if(trace.completed+trace.failed>ceiling)throw fail('TOOL_BUDGET_VIOLATION','TOOL_BUDGET_EXCEEDED');
-    // A third ID may be an attempted/ignored invocation. It is not proof of
-    // a third completed or billed search, but is not safe evidence to accept.
-    throw fail('TOOL_LIFECYCLE_INCOMPLETE','TOOL_LIMIT_OUTCOME_UNKNOWN');
+    const failure=fail('TOOL_LIFECYCLE_INCOMPLETE','TOOL_LIMIT_OUTCOME_UNKNOWN');
+    // Report inspection is separate from acquisition. This is the precise
+    // production shape and never grants permission to evaluate or retry.
+    if(payload.status==='completed'&&!payload.incomplete_details&&trace.completed===ceiling&&trace.failed===0&&calls.length===ceiling+1&&calls.some(c=>pending(c.status))){
+      failure.completedObservations=terminalOutput.filter(c=>c.status==='completed');
+    }
+    throw failure;
   }
   if(trace.toolAccounting.incomplete)throw fail('TOOL_LIFECYCLE_INCOMPLETE','TOOL_LIFECYCLE_INCOMPLETE');
-  return calls;
+  return terminalOutput;
 }
 module.exports={accountTools};

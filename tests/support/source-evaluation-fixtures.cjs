@@ -12,7 +12,7 @@ function searchPayload(){
     annotations.push({type:'url_citation',url:urls[index],title:`Synthetic source ${index+1}`,start_index,end_index:text.length});
   });
   return {id:'resp_synthetic_source_validation',status:'completed',output:[
-    {type:'web_search_call',status:'completed',action:{type:'search',sources:urls.map(url=>({type:'url',url}))}},
+    {id:'fixture-search-1',type:'web_search_call',status:'completed',action:{type:'search',sources:urls.map(url=>({type:'url',url}))}},
     {type:'message',status:'completed',content:[{type:'output_text',text,annotations}]}
   ]};
 }

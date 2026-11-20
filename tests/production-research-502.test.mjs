@@ -15,7 +15,7 @@ const request={topic:'social norms',mode:'FOUNDATION',autonomous:true,freshness:
 const context={request,queries:['social norms values laws'],remainingCalls:2};
 const result={claims:[{sourceId:`web:${sha(sourceURL+'\n'+quote)}`,quote,category:'Social',topic:'Social norms',reason:'Relevant synthetic cited claim.',validAt:null}],limitations:[],nextQuestion:null};
 function searchPayload(action='search',status='completed'){
- return {id:'resp_synthetic_production',status:'completed',output:[{type:'web_search_call',status,action:action==='search'?{type:action,sources:[{type:'url',url:sourceURL}]}:{type:action,url:sourceURL}},{type:'message',status:'completed',content:[{type:'output_text',text:quote+' [1]',annotations:[{type:'url_citation',url:sourceURL,title:'Synthetic research fixture',start_index:quote.length+1,end_index:quote.length+4}]}]}]};
+ return {id:'resp_synthetic_production',status:'completed',output:[{id:'fixture-search-1',type:'web_search_call',status,action:action==='search'?{type:action,sources:[{type:'url',url:sourceURL}]}:{type:action,url:sourceURL}},{type:'message',status:'completed',content:[{type:'output_text',text:quote+' [1]',annotations:[{type:'url_citation',url:sourceURL,title:'Synthetic research fixture',start_index:quote.length+1,end_index:quote.length+4}]}]}]};
 }
 let sequence=0;
 async function call(mode,input,upstream,{timeout=false}={}){
