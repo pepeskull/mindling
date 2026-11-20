@@ -53,14 +53,19 @@ test('identical production counters cannot distinguish completed-search citation
   assert.deepEqual(outputDiagnostics(payload(),2),outputDiagnostics(payload({citation:'pending'}),2));
   assert.deepEqual(outputDiagnostics(payload(),2),outputDiagnostics(payload({invalidRange:true}),2));
 });
-test('nine-item completed report cannot bypass unknown accounting even with matching search citations',async()=>{
+test('nine-item report retains matched observations without accepting evidence or unlocking a retry',async()=>{
   for(const citation of ['completed','pending']){
     await mocked(payload({citation}),async(run,calls)=>{
-      const trace={sourceCount:0};
-      await assert.rejects(run(trace),e=>e.code==='TOOL_LIFECYCLE_INCOMPLETE'&&e.detail==='TOOL_LIMIT_OUTCOME_UNKNOWN');
+      const trace={sourceCount:0,correlationId:'a'.repeat(64)};
+      await assert.rejects(run(trace),e=>{
+        assert.equal(e.code,'TOOL_LIFECYCLE_INCOMPLETE');
+        assert.equal(e.detail,'TOOL_LIMIT_OUTCOME_UNKNOWN');
+        assert.equal(e.observation?.sources.length,citation==='completed'?2:undefined);
+        return true;
+      });
       assert.equal(trace.completed,2);assert.equal(trace.outcomeUnknown,true);assert.equal(trace.sourceCount,0);
       assert.equal(trace.toolAccounting.distinctIds,3);assert.equal(trace.toolAccounting.dispatchUnknown,1);
-      assert.equal(trace.extraction,undefined);assert.equal(calls(),1);
+      assert.equal(trace.extraction.disposition,citation==='completed'?'OBSERVED_ONLY':'NO_RETAINED_OBSERVATIONS');assert.equal(calls(),1);
       const task={code:'TOOL_LIFECYCLE_INCOMPLETE',sourceRequests:2,modelCalls:3,pendingSourceEvidence:{}};
       assert.equal(canRetryResearch(JSON.parse(JSON.stringify(task))),false);
     });
@@ -79,4 +84,42 @@ test('fully accounted control retains matching cited passages but rejects open-o
       for(const source of result.sources){assert.equal(source.type,'web-search-synthesis');assert.equal(source.status,'tool-cited');assert.match(source.hash,/^[a-f0-9]{64}$/);assert.equal(source.passages.length,1);}
     });
   }
+});
+
+test('FIFA ordering: completed search and open_page match citations while the third search stays unknown',async()=>{
+  const response=payload();
+  response.output.splice(7,1);
+  const openUrl=response.output.at(-1).content[0].annotations[1].url;
+  response.output[3].action={type:'open_page',url:openUrl};
+  response.output[5].action={type:'search'};
+  await mocked(response,async(run,calls)=>{
+    const trace={sourceCount:0,correlationId:'b'.repeat(64)};
+    await assert.rejects(run(trace),error=>{
+      assert.equal(error.detail,'TOOL_LIMIT_OUTCOME_UNKNOWN');
+      assert.equal(error.observation.sources.length,2);
+      assert.equal(error.observation.sources[1].url,openUrl);
+      assert.equal(error.observation.kind,'unresolved-tool-report');
+      assert.equal(error.observation.sources[0].status,'tool-cited');
+      return true;
+    });
+    assert.equal(calls(),1);
+    assert.equal(trace.completed,2);
+    assert.equal(trace.toolAccounting.dispatchUnknown,1);
+    assert.equal(trace.sourceCount,0);
+  });
+});
+
+test('same-ID pending sources cannot gain authority from a completed event',async()=>{
+  const response=payload({resolved:true,citation:'pending'});
+  response.output.unshift({type:'web_search_call',id:'item-2',status:'searching',action:{
+    type:'search',sources:[{type:'url',url:'https://example.org/open-only'}]
+  }});
+  await mocked(response,async run=>{
+    const trace={};
+    const result=await run(trace);
+    assert.equal(result.requests,2);
+    assert.equal(result.sources.length,0);
+    assert.equal(trace.toolAccounting.duplicateObservations,1);
+    assert.equal(trace.extraction.dropped.NOT_IN_TOOL_SOURCES,2);
+  });
 });

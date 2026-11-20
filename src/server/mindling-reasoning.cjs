@@ -179,7 +179,7 @@ async function handler(req, res) {
     if(failure.limitationFailure)trace.limitationFailure=failure.limitationFailure;
     const diagnostic=report(safeCode,failure.detail||(trace.phase==='RESPONSE_SERIALIZATION'?'RESPONSE_SERIALIZATION_FAILED':'VALIDATION_FAILED'));
     const status=safeCode==='TOOL_LIFECYCLE_INCOMPLETE'?409:failure.detail==='CHECKPOINT_INVALID_OR_EXPIRED'?400:safeCode==='UPSTREAM_TIMEOUT'?504:safeCode==='RATE_LIMITED'?429:safeCode==='MODEL_UNAVAILABLE'?503:safeCode==='REQUEST_INTERRUPTED'?499:502;
-    if(!res.writableEnded&&!res.destroyed)return res.status(status).json({service:SERVICE,error:{code:safeCode,...(isResearch?{diagnostic}:{})},...(isResearch&&recoverable?{sourceCheckpoint:recoverable}:{})});
+    if(!res.writableEnded&&!res.destroyed)return res.status(status).json({service:SERVICE,error:{code:safeCode,...(isResearch?{diagnostic}:{})},...(isResearch&&recoverable?{sourceCheckpoint:recoverable}:{}),...(body.mode==='research-acquire'&&safeCode==='TOOL_LIFECYCLE_INCOMPLETE'&&failure.observation?{researchObservation:failure.observation}:{})});
   } finally { clearTimeout(timer); req.removeListener?.('aborted', abort); res.removeListener?.('close',responseClosed);activeInformation.delete(requestKey);active.delete(requestKey); }
 }
 module.exports = { handler };

@@ -63,7 +63,7 @@ test('hosted source retention keeps later dated passages and a second source in 
   let text='',annotations=[];for(const [i,p]of paragraphs.entries()){if(text)text+='\n\n';text+=p+' ';const start=text.length;text+='[source]';annotations.push({type:'url_citation',url:i===2?second:url,title:'Synthetic regression citation',start_index:start,end_index:text.length});}
   globalThis.fetch=async(target,options)=>{
     assert.equal(target,'https://api.openai.com/v1/responses');const body=JSON.parse(options.body),input=JSON.parse(body.input);assert.deepEqual(input.plan,['Find current standings','Compare a second reliable source']);assert.equal(body.max_tool_calls,2);
-    return Response.json({id:'resp_synthetic_regression',status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url},{type:'url',url:second}]}},{type:'message',status:'completed',content:[{type:'output_text',text,annotations}]}]});
+    return Response.json({id:'resp_synthetic_regression',status:'completed',output:[{id:'fixture-search-1',type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url},{type:'url',url:second}]}},{type:'message',status:'completed',content:[{type:'output_text',text,annotations}]}]});
   };
   try{
     const result=await search({request:{topic:'Spain top men league standings',mode:'TALK_RESEARCH',freshness:true,scope:{criterion:'standings',geography:[],geographyMode:null,period:null,quantity:null}},queries:['LaLiga standings'],remainingCalls:2,plan:['Find current standings','Compare a second reliable source']},'synthetic-key','opaque-model',new AbortController().signal);

@@ -16,7 +16,7 @@ function assessment(data){
 function searchPayload(){
  let text='';const annotations=[];
  researchQuotes.forEach((quote,index)=>{if(text)text+='\n\n';text+=quote+' ';const start_index=text.length;text+=`[${index+1}]`;annotations.push({type:'url_citation',url:researchURLs[index],title:`Synthetic genre source ${index+1}`,start_index,end_index:text.length});});
- return {id:'resp_synthetic_genres',status:'completed',output:[...researchURLs.map(url=>({type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url}]}})),{type:'message',status:'completed',content:[{type:'output_text',text,annotations}]}]};
+ return {id:'resp_synthetic_genres',status:'completed',output:[...researchURLs.map((url,index)=>({id:'search-'+index,type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url}]}})),{type:'message',status:'completed',content:[{type:'output_text',text,annotations}]}]};
 }
 const sourceEvaluation=sources=>({claims:sources.map(source=>({sourceId:source.id,quote:source.passages[0],category:'Genre comparison',topic:'Common video game genres',reason:'Synthetic source-supported fixture; not independently verified.',validAt:null})),limitations:['These are explicitly synthetic cited report summaries.'],nextQuestion:null});
 module.exports={claim,corrected,changedSubject,definition,decision,assessment,searchPayload,sourceEvaluation};

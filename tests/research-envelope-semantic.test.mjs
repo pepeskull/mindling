@@ -43,7 +43,7 @@ function escapedReport(multi=false){
  for(let i=0;i<3;i++)for(let j=0;j<(multi?2:1);j++){
   if(text)text+='\n\n';text+=`Report ${i} passage ${j} describes a cryptographic literal: `+'\\'.repeat(multi?1090:2250);const start_index=text.length;text+='[source]';annotations.push({type:'url_citation',url:urls[i],title:'Synthetic literal report',start_index,end_index:text.length});
  }
- return {id:'resp_literal_fixture',status:'completed',output:[{type:'web_search_call',status:'completed',action:{type:'search',sources:urls.map(url=>({type:'url',url}))}},{type:'message',status:'completed',content:[{type:'output_text',text,annotations}]}]};
+ return {id:'resp_literal_fixture',status:'completed',output:[{id:'fixture-search-1',type:'web_search_call',status:'completed',action:{type:'search',sources:urls.map(url=>({type:'url',url}))}},{type:'message',status:'completed',content:[{type:'output_text',text,annotations}]}]};
 }
 const literalEvaluation=sources=>({claims:sources.map(s=>({sourceId:s.id,quote:(s.passages?.[0]||s.text).slice(0,100),category:'Cryptography',topic:'Literal representation',reason:'Exact synthetic passage.',validAt:null})),limitations:[],nextQuestion:null});
 test('large valid single passages compact losslessly within the original checkpoint limit and recover without search',async()=>mocked(async({api,calls})=>{

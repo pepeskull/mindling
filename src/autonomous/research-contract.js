@@ -197,6 +197,16 @@ export function validateAcquisition(value){
   }
   validateSourceEvaluation(value.evaluation,value.sources);return value;
 }
+// Quarantined reports have no signature or evaluation and cannot serve as a
+// research checkpoint. Keeping them never changes task counters.
+export function validateResearchObservation(value){
+  const allowed='correlationId,kind,responseId,sources,version';
+  if(!object(value)||Object.keys(value).sort().join(',')!==allowed||value.version!==1||value.kind!=='unresolved-tool-report'||!/^[a-f0-9]{64}$/.test(value.correlationId||'')||!Array.isArray(value.sources)||!value.sources.length||value.sources.length>3||JSON.stringify(value).length>18000)acquisitionFailure('OBSERVATION_FIELDS_INVALID');
+  const fields='domain,hash,id,observedAt,passages,provider,publishedAt,publisher,status,text,title,type,url';
+  if(value.sources.some(s=>!object(s)||Object.keys(s).sort().join(',')!==fields||s.publisher!==null))acquisitionFailure('OBSERVATION_SOURCE_INVALID');
+  validateAcquisition({provider:INFORMATION_PROVIDER,responseId:value.responseId,sources:value.sources,requests:1,bytes:0,evaluation:{claims:[],limitations:[],nextQuestion:null}});
+  return value;
+}
 // Public, signed source evidence only; never credentials or a private conversation.
 // The browser validates shape; only the server can verify the HMAC proof.
 export function validateResearchCheckpoint(value){

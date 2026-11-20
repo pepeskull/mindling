@@ -9,7 +9,7 @@ function searchPayload(){
   let text='';const annotations=[];
   quotes.forEach((quote,index)=>{if(text)text+='\n\n';text+=quote+' ';const start_index=text.length;text+=`[${index+1}]`;annotations.push({type:'url_citation',url:urls[index],title:`Synthetic Gaming source ${index+1}`,start_index,end_index:text.length});});
   return {id:'resp_synthetic_gaming_limitations',status:'completed',output:[
-    ...urls.map(url=>({type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url}]}})),
+    ...urls.map((url,index)=>({id:'search-'+index,type:'web_search_call',status:'completed',action:{type:'search',sources:[{type:'url',url}]}})),
     {type:'message',status:'completed',content:[{type:'output_text',text,annotations}]}
   ]};
 }

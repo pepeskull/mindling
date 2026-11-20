@@ -1,6 +1,6 @@
 import {validateHypotheses,validateHypothesisReview} from './research-hypotheses.js';
 import { validateServiceDiagnostic } from './service-diagnostics.js';
-import { validatePlanningContext, validQuery, validateResearchCheckpoint, validateSourceEvaluation } from './research-contract.js';
+import { validatePlanningContext, validQuery, validateResearchCheckpoint, validateResearchObservation, validateSourceEvaluation } from './research-contract.js';
 import { validateClientDiagnostic } from './client-diagnostics.js';
 import { validClarification, validateAnswers } from '../learning/clarification-model.js';
 import { LEARNING_MODES } from '../learning/input-understanding.js';
@@ -12,6 +12,10 @@ export const terminal=task=>['COMPLETED','CANCELLED','FAILED'].includes(task.sta
 export const taskProgress=task=>Math.min(1,new Set(task.completedWork||[]).size/WORK.length);
 export function validTask(task,mindId){
   try {
+  if(task?.researchObservation!==undefined){
+    validateResearchObservation(task.researchObservation);
+    if(task.researchObservation.correlationId!==task.researchExecution?.correlationId||task.researchExecution?.outcomeUnknown!==true)return false;
+  }
   if(task?.hypotheses!==undefined)validateHypotheses(task.hypotheses);
   if(task?.hypothesisReview?.length)validateHypothesisReview(task.hypothesisReview,[0,1,2].map(()=>({})),(task.hypotheses||[]).map(h=>h.id));
   if(task?.pendingSourceEvidence)validateResearchCheckpoint(task.pendingSourceEvidence);
@@ -57,7 +61,7 @@ export function validTask(task,mindId){
     &&(task.discoveryQueries===undefined||Number.isSafeInteger(task.discoveryQueries)&&task.discoveryQueries>=0&&task.discoveryQueries<=2)
     &&(task.discoveryCandidates===undefined||Array.isArray(task.discoveryCandidates)&&task.discoveryCandidates.length<=4&&task.discoveryCandidates.every(candidate=>typeof candidate.url==='string'&&candidate.url.length<=500&&typeof candidate.title==='string'&&candidate.title.length<=240))
     &&(!task.acceptedQuotes||Array.isArray(task.acceptedQuotes)&&task.acceptedQuotes.length<=LIMITS.memories&&task.acceptedQuotes.every(hash=>/^[a-f0-9]{64}$/.test(hash)))
-    &&(!task.scope||typeof task.scope==='object')&&JSON.stringify(task).length<=(task.pendingSourceEvidence?36000:task.engineVersion===4?27000:18000);
+    &&(!task.scope||typeof task.scope==='object')&&JSON.stringify(task.researchObservation?{...task,researchObservation:undefined}:task).length<=(task.pendingSourceEvidence?36000:task.engineVersion===4?27000:18000);
   } catch { return false; }
 }
 export function tasksFor(mind={}){return Array.isArray(mind.learningTasks)?mind.learningTasks.filter(task=>validTask(task,mind.mindlingId||mind.id)).slice(0,LIMITS.tasks):[];}
