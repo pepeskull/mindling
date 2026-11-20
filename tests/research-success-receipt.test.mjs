@@ -4,10 +4,10 @@ import {scenario} from './support/research-success-harness.mjs';
 import {canRetryResearch} from '../src/autonomous/service-diagnostics.js';
 
 test('23-second server success with three sources/accepted claims reaches canonical integration',async()=>scenario(async c=>{
- await c.run();const task=c.saved();assert.equal(c.server.code,200);assert.ok(c.server.body.execution.durationMs>=23087);assert.equal(c.server.body.execution.validation.accepted,3);assert.equal(task.status,'COMPLETED');assert.equal(task.sourceReferences.length,3);assert.equal(c.app.state.mind.memories.length,3);assert.equal(task.researchExecution.outcomeUnknown,false);assert.equal(task.sourceRequests,2);assert.equal(task.modelCalls,3);assert.equal(c.app.state.mind.lifetimeXP,0);assert.equal(c.app.state.mind.energy.remaining,10);
+ await c.run();const task=c.saved();assert.equal(c.server.code,200);assert.ok(c.server.body.execution.durationMs>=23087);assert.equal(c.server.body.execution.validation.accepted,3);assert.equal(task.status,'COMPLETED');assert.equal(task.sourceReferences.length,3);assert.equal(c.app.state.mind.memories.length,3);assert.equal(task.researchExecution.outcomeUnknown,false);assert.equal(task.sourceRequests,4);assert.equal(task.modelCalls,3);assert.equal(c.app.state.mind.lifetimeXP,0);assert.equal(c.app.state.mind.energy.remaining,10);
 }));
 for(const [kind,code,phase] of [['missing','TRANSPORT_INTERRUPTED','TRANSPORT'],['network','TRANSPORT_FAILED','TRANSPORT'],['timeout','TRANSPORT_TIMEOUT','TRANSPORT'],['body-abort','TRANSPORT_INTERRUPTED','TRANSPORT'],['parse','RESPONSE_PARSE_FAILED','RESPONSE_PARSE']])test(`${kind}: server completed does not fabricate browser receipt`,async()=>scenario(async c=>{
- await c.run();const task=c.saved();assert.equal(c.server.code,200);assert.equal(c.server.body.execution.detail,'COMPLETED');assert.equal(task.code,code);assert.equal(task.clientDiagnostic.phase,phase);assert.equal(task.sourceReferences.length,0);assert.equal(task.completedToolCalls||0,0);assert.equal(task.researchExecution.outcomeUnknown,true);assert.equal(task.sourceRequests,2);assert.equal(c.app.state.mind.memories.length,0);assert.equal(canRetryResearch(task),false);assert.equal(c.app.state.mind.energy.remaining,10);assert.equal(c.app.state.mind.lifetimeXP,0);
+ await c.run();const task=c.saved();assert.equal(c.server.code,200);assert.equal(c.server.body.execution.detail,'COMPLETED');assert.equal(task.code,code);assert.equal(task.clientDiagnostic.phase,phase);assert.equal(task.sourceReferences.length,0);assert.equal(task.completedToolCalls||0,0);assert.equal(task.researchExecution.outcomeUnknown,true);assert.equal(task.sourceRequests,4);assert.equal(c.app.state.mind.memories.length,0);assert.equal(canRetryResearch(task),false);assert.equal(c.app.state.mind.energy.remaining,10);assert.equal(c.app.state.mind.lifetimeXP,0);
 },{kind}));
 test('fully received response followed by abort saves evidence instead of becoming unknown',async()=>scenario(async c=>{
  await c.run();let task=c.saved();assert.equal(task.code,'INTEGRATION_PAUSED');assert.equal(task.clientDiagnostic.validated,true);assert.equal(task.clientDiagnostic.abortReason,'HIDDEN');assert.equal(task.sourceReferences.length,3);assert.equal(task.completedToolCalls,1);assert.equal(task.researchExecution.outcomeUnknown,false);assert.ok(task.pendingSourceEvaluation&&task.pendingSourceEvidence);assert.equal(c.app.state.mind.memories.length,0);
@@ -29,7 +29,7 @@ for(const [name,mutate,code] of [
  ['checkpoint scope',r=>r.sourceCheckpoint.request.topic='Another public topic','CHECKPOINT_VALIDATION_FAILED'],
  ['checkpoint evidence',r=>r.sourceCheckpoint.evidence.sources[0].text+=' altered','CHECKPOINT_VALIDATION_FAILED']
 ])test(`${name} cannot integrate an unvalidated acquisition`,async()=>scenario(async c=>{
- await c.run();assert.equal(c.saved().code,code);assert.equal(c.app.state.mind.memories.length,0);assert.equal(c.saved().sourceRequests,2);assert.equal(canRetryResearch(c.saved()),false);
+ await c.run();assert.equal(c.saved().code,code);assert.equal(c.app.state.mind.memories.length,0);assert.equal(c.saved().sourceRequests,4);assert.equal(canRetryResearch(c.saved()),false);
 },{mutate}));
 test('source hash mismatch remains a distinct integrity failure after durable receipt',async()=>scenario(async c=>{
  await c.run();assert.equal(c.saved().code,'EVIDENCE_VALIDATION_FAILED');assert.equal(canRetryResearch(c.saved()),false);assert.ok(c.saved().pendingSourceEvidence);assert.equal(c.saved().researchExecution.outcomeUnknown,false);assert.equal(c.app.state.mind.memories.length,0);
@@ -59,7 +59,7 @@ test('ambiguous completed response retains only a quarantined report and never r
   const saved=JSON.parse(JSON.stringify(c.saved()));
   assert.equal(saved.status,'BLOCKED');
   assert.equal(saved.researchExecution.outcomeUnknown,true);
-  assert.equal(saved.sourceRequests,2);
+  assert.equal(saved.sourceRequests,4);
   assert.equal(saved.modelCalls,3);
   assert.equal(saved.completedToolCalls,2);
   assert.equal(saved.sourceReferences.length,0);

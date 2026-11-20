@@ -1,7 +1,14 @@
+import {validWebSearchCallCount} from '../autonomous/research-budget.js';
 import {validateHypothesisReview} from '../autonomous/research-hypotheses.js';
 import {validateAcquisition,validateResearchCheckpoint} from '../autonomous/research-contract.js';
 import {validateServiceDiagnostic} from '../autonomous/service-diagnostics.js';
 import {clientResearchFailure} from '../autonomous/client-diagnostics.js';
+
+export function validateAcquisitionToolBudget(requests, limit, execution){
+  if(!validWebSearchCallCount(limit)||requests>limit)throw Error('Research receipt exceeds the reserved tool budget.');
+  const reportedLimits=[execution?.toolAccounting?.requestedLimit,execution?.providerOutput?.requestedMaxToolCalls];
+  if(reportedLimits.some(value=>value!==undefined&&value!==limit))throw Error('Research receipt does not match the reserved tool budget.');
+}
 
 export function validateResearchReceipt(result,{id,mode,context}){
   const metadata={id,mode,received:true,status:200};
@@ -13,6 +20,7 @@ export function validateResearchReceipt(result,{id,mode,context}){
     execution=result.execution;
     validateAcquisition(result.acquisition);
     const a=result.acquisition;
+    if(mode==='research-acquire')validateAcquisitionToolBudget(a.requests,context.remainingCalls,execution);
     if(execution.sourceCount!==a.sources.length||execution.completed!==a.requests||execution.outcomeUnknown||!execution.searchCompleted||execution.failed!==0||execution.errorCategory!==null&&!(a.sources.length===0&&execution.errorCategory==='NO_CITABLE_EVIDENCE')||execution.validation&&execution.validation.accepted!==a.evaluation.claims.length)throw Error();
   }catch{
     throw Object.assign(clientResearchFailure('RECEIPT_VALIDATION_FAILED',{...metadata,phase:'RECEIPT_VALIDATION'}),{execution});

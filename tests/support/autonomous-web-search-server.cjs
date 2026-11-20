@@ -21,7 +21,7 @@ globalThis.fetch=async(target,options)=>{
   const body=JSON.parse(options.body);
   if(target.endsWith('/responses')){
     const {request}=JSON.parse(body.input);
-    if(request.topic.startsWith('intelligence budget')){const payload=intelligenceFixture.searchPayload();payload.output.splice(1,0,...Array.from({length:2},(_,i)=>({...structuredClone(payload.output[0]),id:'extra-'+i})));if(request.topic.includes('anonymous'))for(const item of payload.output)delete item.id;return Response.json(payload);}
+    if(request.topic.startsWith('intelligence budget')){const payload=intelligenceFixture.searchPayload();payload.output.splice(1,0,...Array.from({length:body.max_tool_calls},(_,i)=>({...structuredClone(payload.output[0]),id:'extra-'+i})));if(request.topic.includes('anonymous'))for(const item of payload.output)delete item.id;return Response.json(payload);}
     if(request.topic.startsWith('intelligence '))return Response.json(intelligenceFixture.searchPayload());
     if(request.topic.startsWith('semantic crypto'))return Response.json(semanticFixture.searchPayload());
     if(request.topic.startsWith('evolution '))return Response.json(evolutionFixture.searchPayload(request.topic));

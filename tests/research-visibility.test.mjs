@@ -6,7 +6,7 @@ for(const cycles of [1,4])test(`visibility changes ${cycles} times retain valida
  await c.run();let task=c.saved();
  assert.equal(task.code,'INTEGRATION_PAUSED');assert.equal(task.clientDiagnostic.received,true);assert.equal(task.clientDiagnostic.validated,true);
  assert.equal(task.researchExecution.outcomeUnknown,false);assert.equal(task.sourceReferences.length,3);assert.ok(task.pendingSourceEvidence&&task.pendingSourceEvaluation);
- assert.equal(c.app.state.mind.memories.length,0);assert.equal(task.sourceRequests,2);assert.equal(task.modelCalls,3);
+ assert.equal(c.app.state.mind.memories.length,0);assert.equal(task.sourceRequests,4);assert.equal(task.modelCalls,3);
  const count=c.calls.length;document.hidden=false;await c.run();task=c.saved();
  assert.equal(task.status,'COMPLETED');assert.equal(c.app.state.mind.memories.length,3);assert.equal(c.calls.length,count);assert.equal(task.modelCalls,3);
  assert.ok(c.app.state.mind.memories.every(m=>m.research&&m.category));

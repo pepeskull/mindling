@@ -37,10 +37,11 @@ const narrower=(source,quote=passages[0])=>({
   sourceId:source.id,quote,category:'Science',topic:'Scientific hypotheses',reason:'Direct definition in a cited passage.',validAt:null
 });
 
-for(const autonomous of [true,false]){
-  test(`Science refinement retains a narrower quote with insufficient original hypotheses (${autonomous?'autonomous':'manual'})`,async()=>{
+for(const [autonomous,legacyTask] of [[true,false],[false,false],[true,true]]){
+  test(`Science refinement retains a narrower quote with insufficient original hypotheses (${legacyTask?'legacy task':autonomous?'autonomous':'manual'})`,async()=>{
     let evaluations=0;
     await scenario(async c=>{
+      if(legacyTask)delete c.saved().searchToolLimit;
       await c.run();
       const queued=c.saved();
       assert.equal(queued.evidenceRefinement.state,'QUEUED');
@@ -57,7 +58,7 @@ for(const autonomous of [true,false]){
       assert.equal(completed.evidenceRefinement.state,'COMPLETED');
       assert.match(completed.evidenceRefinement.id,/^[a-f0-9]{64}$/);
       assert.equal(completed.serviceDiagnostic.refinement,true);
-      assert.equal(completed.sourceRequests,2);
+      assert.equal(completed.sourceRequests,legacyTask?2:4);
       assert.equal(completed.modelCalls,4);
       assert.equal(completed.evaluationCalls,2);
       assert.equal(searches(c),1);

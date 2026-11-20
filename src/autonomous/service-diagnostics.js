@@ -1,3 +1,4 @@
+import {remainingWebSearchCalls,validWebSearchCallCount} from './research-budget.js';
 import {refinementWaiting} from './evidence-refinement.js';
 import { validateExtractionDiagnostics } from './extraction-diagnostics.js';
 import { validateLimitationFailure } from './research-limitations.js';
@@ -25,7 +26,7 @@ function validateProviderOutput(value){
   const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&keys.every(k=>Object.hasOwn(v,k));
   const count=n=>Number.isSafeInteger(n)&&n>=0&&n<=10000;
   const status=s=>['completed','failed','incomplete','searching','in_progress','queued','cancelled','other'].includes(s);
-  if(!exact(value,['responseStatus','requestedMaxToolCalls','incompleteDetailsPresent','incompleteReason','omittedItems','items'])||!status(value.responseStatus)||![1,2].includes(value.requestedMaxToolCalls)||typeof value.incompleteDetailsPresent!=='boolean'||!['max_output_tokens','content_filter','other'].includes(value.incompleteReason)||!count(value.omittedItems)||!Array.isArray(value.items)||value.items.length>64)throw Error('Invalid provider output diagnostic');
+  if(!exact(value,['responseStatus','requestedMaxToolCalls','incompleteDetailsPresent','incompleteReason','omittedItems','items'])||!status(value.responseStatus)||!validWebSearchCallCount(value.requestedMaxToolCalls)||typeof value.incompleteDetailsPresent!=='boolean'||!['max_output_tokens','content_filter','other'].includes(value.incompleteReason)||!count(value.omittedItems)||!Array.isArray(value.items)||value.items.length>64)throw Error('Invalid provider output diagnostic');
   for(const [index,item] of value.items.entries())if(!exact(item,['index','identity','type','status','action','sourceReferences','actionURL','citationReferences','textPresent'])||item.index!==index||!(item.identity===null||Number.isInteger(item.identity)&&item.identity>=1&&item.identity<=64)||!['web_search_call','message','reasoning','other'].includes(item.type)||!status(item.status)||!['search','open_page','find_in_page','other'].includes(item.action)||!count(item.sourceReferences)||!count(item.citationReferences)||typeof item.actionURL!=='boolean'||typeof item.textPresent!=='boolean')throw Error('Invalid provider item diagnostic');
 }
 export function validateServiceDiagnostic(value){
@@ -34,7 +35,7 @@ export function validateServiceDiagnostic(value){
   if(value.candidateOutcome!==undefined&&!['NO_USABLE_PASSAGES','NO_GENERATED_CANDIDATES','CANDIDATE_PARSE_FAILED','CANDIDATE_SCHEMA_FAILED','CANDIDATE_RELEVANCE_REJECTED','CANDIDATE_EVIDENCE_REJECTED','CANDIDATES_ACCEPTED','EVALUATION_INTERRUPTED'].includes(value.candidateOutcome))throw Error('Invalid candidate outcome');
   if(value.observedToolEvents!==undefined&&(!Number.isSafeInteger(value.observedToolEvents)||value.observedToolEvents<0||value.observedToolEvents>10000))throw Error('Invalid observed tool count');
   if(value.providerOutput!==undefined)validateProviderOutput(value.providerOutput);
-  if(value.toolAccounting!==undefined){const t=value.toolAccounting;if(!t||Object.keys(t).some(k=>!['anonymous','conflicts','distinctIds','incomplete','responseCompleted','requestedLimit','reportedCalls','duplicateObservations','terminalCalls','dispatchUnknown','queued','inProgress','searching','otherPending'].includes(k))||typeof t.responseCompleted!=='boolean'||['anonymous','conflicts','distinctIds','incomplete'].some(k=>!Number.isSafeInteger(t[k])||t[k]<0||t[k]>10000))throw Error('Invalid tool accounting diagnostic');for(const k of ['requestedLimit','reportedCalls','duplicateObservations','terminalCalls','dispatchUnknown','queued','inProgress','searching','otherPending'])if(t[k]!==undefined&&(!Number.isSafeInteger(t[k])||t[k]<0||t[k]>10000))throw Error('Invalid tool accounting counter');}
+  if(value.toolAccounting!==undefined){const t=value.toolAccounting;if(!t||Object.keys(t).some(k=>!['anonymous','conflicts','distinctIds','incomplete','responseCompleted','requestedLimit','reportedCalls','duplicateObservations','terminalCalls','dispatchUnknown','queued','inProgress','searching','otherPending'].includes(k))||typeof t.responseCompleted!=='boolean'||['anonymous','conflicts','distinctIds','incomplete'].some(k=>!Number.isSafeInteger(t[k])||t[k]<0||t[k]>10000))throw Error('Invalid tool accounting diagnostic');for(const k of ['requestedLimit','reportedCalls','duplicateObservations','terminalCalls','dispatchUnknown','queued','inProgress','searching','otherPending'])if(t[k]!==undefined&&(!Number.isSafeInteger(t[k])||t[k]<0||t[k]>10000))throw Error('Invalid tool accounting counter');if(t.requestedLimit!==undefined&&!validWebSearchCallCount(t.requestedLimit))throw Error('Invalid requested tool limit');}
   if(value.refinement!==undefined&&(value.refinement!==true||value.operation!=='research-evaluate'))throw Error('Invalid refinement diagnostic');
   if(value.extraction!==undefined)validateExtractionDiagnostics(value.extraction);
   if(value.validation!==undefined)validateSourceEvaluationDiagnostics(value.validation);
@@ -54,7 +55,7 @@ export function researchFailureMessage(diagnostic,hasCheckpoint=false){
   if(diagnostic?.detail==='LIMITATION_INVALID')return `Research paused — An evidence limitation could not be represented safely. ${hasCheckpoint?'Retrieved sources are saved for a bounded evaluation-only retry.':'No research knowledge was saved.'}`;
   return SERVICE_MESSAGES[diagnostic?.errorCategory]||'Research paused. The task details preserve the service failure.';
 }
-const invalidReceipt=task=>Boolean(task.researchObservation)||['EVALUATION_IN_PROGRESS','TOOL_BUDGET_VIOLATION','TOOL_LIFECYCLE_INCOMPLETE','INVALID_TOOL_ACCOUNTING','RECEIPT_VALIDATION_FAILED','CHECKPOINT_VALIDATION_FAILED','EVIDENCE_VALIDATION_FAILED','STALE_RESEARCH_RESPONSE'].includes(task.code);
+const invalidReceipt=task=>Boolean(task.researchObservation)||task.researchExecution?.outcomeUnknown===true||task.researchExecution?.toolState==='DISPATCHED'||['EVALUATION_IN_PROGRESS','TOOL_BUDGET_VIOLATION','TOOL_LIFECYCLE_INCOMPLETE','INVALID_TOOL_ACCOUNTING','RECEIPT_VALIDATION_FAILED','CHECKPOINT_VALIDATION_FAILED','EVIDENCE_VALIDATION_FAILED','STALE_RESEARCH_RESPONSE'].includes(task.code);
 export const retryableServiceFailure=task=>task.code!=='NO_MODEL_CANDIDATES'&&!invalidReceipt(task)&&(!!task.pendingSourceEvaluation||!!task.pendingEvidence?.length||task.code==='RESPONSE_PARSE_ERROR'&&!!task.pendingSourceEvidence||['INTERRUPTED','OFFLINE','RATE_LIMITED','PLANNING_UNAVAILABLE','UPSTREAM_NETWORK_ERROR','UPSTREAM_TIMEOUT','REQUEST_INTERRUPTED','UPSTREAM_HTTP_ERROR','RESPONSE_SERIALIZATION_ERROR'].includes(task.code));
 // A saved source plan must never trigger another search when its ceiling was reserved.
 export function canRetryResearch(task){
@@ -64,6 +65,6 @@ export function canRetryResearch(task){
   if(task.evidenceRefinement)return false;
   if(task.attempts>2||task.attempts===2&&task.code!=='QUEUED')return false;
   if(task.pendingSourceEvidence)return (task.modelCalls||0)<4&&(task.evaluationCalls||0)<2;
-  if(task.sourcePlan)return (task.sourceRequests||0)<2&&(task.modelCalls||0)+2<=4;
+  if(task.sourcePlan)return remainingWebSearchCalls(task)>0&&(task.modelCalls||0)+2<=4;
   return (task.planningCalls||0)<2&&(task.modelCalls||0)<4;
 }

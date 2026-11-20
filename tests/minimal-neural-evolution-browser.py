@@ -36,7 +36,7 @@ with sync_playwright() as p:
           const complement=await run('complement',false);check(complement.status==='COMPLETED'&&app.state.mind.memories.length===3,'complement missing');check(app.state.mind.energy.remaining===8&&app.state.mind.lifetimeXP===5,'ordinary Teach research accounting changed');
           check(JSON.stringify(app.state.player)===identity&&JSON.stringify(app.state.mind.originPathways)===origins,'identity/origins changed');
           const graph=graphData(app.state.mind),edges=graph.edges.map(e=>[e.kind,...[e.from,e.to].sort()].join(':'));check(new Set(edges).size===edges.length,'duplicate graph edges');
-          check(app.state.mind.learningTasks.every(t=>(t.sourceRequests||0)<=2&&(t.modelCalls||0)<=4),'budget ceilings changed');
+          check(app.state.mind.learningTasks.every(t=>(t.sourceRequests||0)<=4&&(t.modelCalls||0)<=4),'budget ceilings changed');
           await engine.setAccess(false);engine.destroy();Date.now=realNow;const saved=await read();store.close();globalThis.evolutionSaved=saved;
           return 'PASS '+(preview?'Preview':'primary')+': real handler + cited report validation, conflict retention, two-source successor, repeat idempotency, complementary knowledge, exact provenance, graph/identity/origin integrity, Energy/XP and unchanged call budgets';
         }''',preview),flush=True)

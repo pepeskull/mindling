@@ -53,7 +53,7 @@ with sync_playwright() as p:
       check(app.state.mind.learningTasks.find(task=>task.id===stars.id).status==='COMPLETED','recovered task incomplete');
       // Source failure has no side effects and persists a bounded backoff state.
       let failed=await engine.prepare(understandInput('Learn about source failure','TEACH'),'failure-request');await engine.run(failed,failed.topic);
-      failed=app.state.mind.learningTasks.find(task=>task.id===failed.id);check(failed.code==='RATE_LIMITED'&&failed.retryAt>Date.now()&&failed.sourceRequests===2,'rate limit/budget not durable');
+      failed=app.state.mind.learningTasks.find(task=>task.id===failed.id);check(failed.code==='RATE_LIMITED'&&failed.retryAt>Date.now()&&failed.sourceRequests===4,'rate limit/budget not durable');
       check(app.state.mind.memories.length===2&&app.state.mind.lifetimeXP===0,'failed search fabricated learning');
       // Cancel a real in-flight browser request; stale remote callbacks cannot commit.
       let cancelled=await engine.prepare(understandInput('Learn about cancellation','TEACH'),'cancel-request');const running=engine.run(cancelled,'cancel operation');

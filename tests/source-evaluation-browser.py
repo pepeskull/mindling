@@ -56,7 +56,7 @@ with sync_playwright() as p:
         const deadline=performance.now()+10000;while(engine.active||engine.draining){if(performance.now()>deadline)throw Error('Checkpoint recovery timed out');await new Promise(r=>setTimeout(r,10));}
         task=app.state.mind.learningTasks.find(t=>t.id===recovering.id);
         check(task.status==='COMPLETED'&&!task.pendingSourceEvidence,'signed analysis did not recover');
-        check(task.modelCalls===4&&task.sourceRequests===2&&task.completedToolCalls===1,'recovery changed call ceilings or reservations');
+        check(task.modelCalls===4&&task.sourceRequests===4&&task.completedToolCalls===1,'recovery changed call ceilings or reservations');
         check(operations.filter(m=>m==='research-acquire').length===searches,'checkpoint recovery repeated web search');
         check(app.state.mind.memories.length===1&&JSON.stringify(app.state.mind.memories)===memoryBefore,'duplicate recovered claim wrote or mutated canonical knowledge');
         check(app.state.mind.energy.remaining===initial.energy&&app.state.mind.lifetimeXP===initial.xp,'recovery charged duplicate costs or rewards');

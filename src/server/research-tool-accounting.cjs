@@ -63,17 +63,17 @@ function accountTools(payload,ceiling,trace){
   if(conflicts.size)throw fail('INVALID_TOOL_ACCOUNTING','TOOL_EVENT_CONFLICT');
   if(trace.toolAccounting.anonymous)throw fail('INVALID_TOOL_ACCOUNTING','TOOL_ACCOUNTING_AMBIGUOUS');
   const terminalOutput=calls.map(call=>call.status==='completed'?{...call,action:completedActions.get(call.id)}:call);
-  if(calls.length>ceiling){
-    if(trace.completed+trace.failed>ceiling)throw fail('TOOL_BUDGET_VIOLATION','TOOL_BUDGET_EXCEEDED');
-    const failure=fail('TOOL_LIFECYCLE_INCOMPLETE','TOOL_LIMIT_OUTCOME_UNKNOWN');
-    // Report inspection is separate from acquisition. This is the precise
-    // production shape and never grants permission to evaluate or retry.
-    if(payload.status==='completed'&&!payload.incomplete_details&&trace.completed===ceiling&&trace.failed===0&&calls.length===ceiling+1&&calls.some(c=>pending(c.status))){
-      failure.completedObservations=terminalOutput.filter(c=>c.status==='completed');
+  if(trace.completed+trace.failed>ceiling)throw fail('TOOL_BUDGET_VIOLATION','TOOL_BUDGET_EXCEEDED');
+  if(trace.toolAccounting.incomplete){
+    const detail=calls.length>ceiling?'TOOL_LIMIT_OUTCOME_UNKNOWN':'TOOL_LIFECYCLE_INCOMPLETE';
+    const failure=fail('TOOL_LIFECYCLE_INCOMPLETE',detail);
+    // Only a completed report can yield observations. The unfinished items
+    // cannot supply source authority, even if they fit inside the ceiling.
+    if(payload.status==='completed'&&!payload.incomplete_details&&trace.completed>0){
+      failure.completedObservations=terminalOutput.filter(call=>call.status==='completed');
     }
     throw failure;
   }
-  if(trace.toolAccounting.incomplete)throw fail('TOOL_LIFECYCLE_INCOMPLETE','TOOL_LIFECYCLE_INCOMPLETE');
   return terminalOutput;
 }
 module.exports={accountTools};

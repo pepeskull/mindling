@@ -1,3 +1,4 @@
+import {webSearchLimit} from './research-budget.js';
 import {hypothesisStage} from './research-hypotheses.js';
 import {refinementMessage} from './evidence-refinement.js';
 import { currentMemoryVersion, editableMemoryText } from '../learning/correction-content.js';
@@ -27,8 +28,11 @@ export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},me
   const progress=el('progress');progress.max=1;progress.value=taskProgress(task);progress.setAttribute('aria-label','Task work completed, not knowledge mastery');
   const preparation=['understanding','retrieval','plan'].filter(unit=>task.completedWork.includes(unit)).length,acquired=memories.filter(memory=>!memory.historical&&task.knowledgeIds.includes(memory.recordId)&&memory.raw.research?.taskId===task.id).length;
   host.append(progress,el('p',`Task progress: ${task.completedWork.length} / 7 steps (${Math.round(taskProgress(task)*100)}%)`),el('p',`Task preparation: ${preparation} / 3 steps · ${task.engineVersion===4?'Cited web sources':'Research sources retrieved'}: ${task.sourceReferences.filter(source=>source.hash&&source.observedAt).length} · New knowledge acquired: ${acquired} ${acquired===1?'memory':'memories'}`));
-  if(task.engineVersion===4)host.append(el('p',`Hosted tool calls completed: ${task.completedToolCalls||0} · Tool budget reserved: ${task.sourceRequests} / 2`,'memory-content-status'));
-  if(task.engineVersion===4)host.append(el('p','Reserved tool budget is a pre-request ceiling, not the number of completed or billed calls. Unknown interrupted work stays reserved.','memory-content-status'));
+  if(task.engineVersion===4){
+    const limit=webSearchLimit(task),budget=task.sourceRequests<=limit?`Tool budget reserved: ${task.sourceRequests} / ${limit}`:`Historical source requests: ${task.sourceRequests}`;
+    host.append(el('p',`Hosted tool calls completed: ${task.completedToolCalls||0} · ${budget}`,'memory-content-status'));
+    host.append(el('p','Reserved tool budget is a pre-request ceiling, not the number of completed or billed calls. Unknown interrupted work stays reserved.','memory-content-status'));
+  }
   if(task.researchExecution){const e=task.researchExecution;host.append(el('p',`Hosted work: ${e.toolState.replaceAll('_',' ').toLowerCase()} · Reserved: ${e.reserved} · Completed: ${e.completed} · Failed: ${e.failed} · Outcome unknown: ${e.outcomeUnknown?'yes':'no'}`,'memory-content-status'));}
   if(task.serviceDiagnostic){const d=task.serviceDiagnostic;host.append(el('p',`${d.correlationId===task.researchExecution?.correlationId?'Request reference':'Previous request reference'}: ${d.correlationId} · Phase: ${d.phase} · Endpoint: ${d.endpoint||'not dispatched'} · Upstream HTTP: ${d.upstreamStatus??'unknown'} · Detail: ${d.detail}`,'memory-content-status'));}
   if(task.serviceDiagnostic?.toolAccounting)host.append(el('p',`Provider accounting: ${JSON.stringify(task.serviceDiagnostic.toolAccounting)}`,'memory-content-status'));

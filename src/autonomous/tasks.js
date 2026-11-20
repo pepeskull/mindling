@@ -1,3 +1,4 @@
+import {MAX_WEB_SEARCH_CALLS,storedSourceRequestLimit,validWebSearchCallCount,webSearchLimit} from './research-budget.js';
 import {validRefinement} from './evidence-refinement.js';
 import {validateHypotheses,validateHypothesisReview} from './research-hypotheses.js';
 import { validateServiceDiagnostic } from './service-diagnostics.js';
@@ -6,7 +7,7 @@ import { validateClientDiagnostic } from './client-diagnostics.js';
 import { validClarification, validateAnswers } from '../learning/clarification-model.js';
 import { LEARNING_MODES } from '../learning/input-understanding.js';
 export const TASK_STATES=Object.freeze(['PREPARED','QUEUED','RESEARCHING','EVALUATING','COMMITTING','COMPLETED','BLOCKED','FAILED','CANCELLED']);
-export const LIMITS=Object.freeze({tasks:24,unfinished:8,concurrent:1,attempts:2,sourceRequests:3,memories:3,sourceBytes:65536,inferenceCalls:4});
+export const LIMITS=Object.freeze({tasks:24,unfinished:8,concurrent:1,attempts:2,sourceReferences:3,memories:3,sourceBytes:65536,inferenceCalls:4});
 export const WORK=Object.freeze(['understanding','retrieval','plan','source','evidence','knowledge','answer']);
 const modes=Object.values(LEARNING_MODES);
 export const terminal=task=>['COMPLETED','CANCELLED','FAILED'].includes(task.status);
@@ -28,7 +29,8 @@ export function validTask(task,mindId){
     if(!task.pendingSourceEvidence||Object.keys(value).sort().join(',')!=='authorizedAt,evaluation,receivedAt,version'||value.version!==1||!Number.isSafeInteger(value.authorizedAt)||!Number.isSafeInteger(value.receivedAt)||value.receivedAt<value.authorizedAt||task.serviceDiagnostic?.errorCategory!==null||task.serviceDiagnostic.correlationId!==task.researchExecution?.correlationId)return false;
     validateSourceEvaluation(value.evaluation,task.pendingSourceEvidence.evidence.sources);
   }
-  if(task?.researchExecution){const e=task.researchExecution;if(e.version!==1||!['RESERVED','DISPATCHED','COMPLETED','FAILED','OUTCOME_UNKNOWN'].includes(e.toolState)||!Number.isSafeInteger(e.reserved)||e.reserved<1||e.reserved>2||!Number.isSafeInteger(e.completed)||e.completed<0||e.completed>64||!Number.isSafeInteger(e.failed)||e.failed<0||e.failed>64||typeof e.clientDispatched!=='boolean'||typeof e.outcomeUnknown!=='boolean'||![null,true,false].includes(e.upstreamDispatched))return false;}
+  if(task?.searchToolLimit!==undefined&&task.searchToolLimit!==MAX_WEB_SEARCH_CALLS)return false;
+  if(task?.researchExecution){const e=task.researchExecution;if(e.version!==1||!['RESERVED','DISPATCHED','COMPLETED','FAILED','OUTCOME_UNKNOWN'].includes(e.toolState)||!validWebSearchCallCount(e.reserved)||e.reserved>webSearchLimit(task)||!Number.isSafeInteger(e.completed)||e.completed<0||e.completed>64||!Number.isSafeInteger(e.failed)||e.failed<0||e.failed>64||typeof e.clientDispatched!=='boolean'||typeof e.outcomeUnknown!=='boolean'||![null,true,false].includes(e.upstreamDispatched))return false;}
   if(task?.learningRewarded!==undefined&&typeof task.learningRewarded!=='boolean')return false;
   if(task?.sourcePlan){validatePlanningContext(task.sourcePlan.request);if(!Array.isArray(task.sourcePlan.queries)||task.sourcePlan.queries.length>2||!task.sourcePlan.queries.every(validQuery)||!['web','biomedical','unsupported'].includes(task.sourcePlan.sourceCategory)||typeof task.sourcePlan.available!=='boolean')return false;}
   if(task?.pendingEvidence&&(!Array.isArray(task.pendingEvidence)||task.pendingEvidence.length>3||task.pendingEvidence.some(claim=>typeof claim.quote!=='string'||claim.quote.length<40||claim.quote.length>700||!/^[a-f0-9]{64}$/.test(claim.quoteHash)||!/^[a-f0-9]{64}$/.test(claim.sourceHash)||typeof claim.category!=='string'||!claim.category.trim()||claim.category.length>80||typeof claim.topic!=='string'||!claim.topic.trim()||claim.topic.length>100||!task.sourceReferences?.some(source=>source.url===claim.sourceURL&&source.hash===claim.sourceHash&&source.observedAt===claim.observedAt))))return false;
@@ -39,9 +41,9 @@ export function validTask(task,mindId){
     &&typeof task.objective==='string'&&task.objective.length>0&&task.objective.length<=2000&&typeof task.topic==='string'&&task.topic.length<=160
     &&typeof task.run==='string'&&task.run.length<=100&&typeof task.requestId==='string'&&task.requestId.length<=100
     &&Number.isSafeInteger(task.createdAt)&&Number.isSafeInteger(task.updatedAt)&&task.updatedAt>=task.createdAt
-    &&Number.isSafeInteger(task.attempts)&&task.attempts>=0&&task.attempts<=LIMITS.attempts&&Number.isSafeInteger(task.sourceRequests)&&task.sourceRequests>=0&&task.sourceRequests<=LIMITS.sourceRequests
+    &&Number.isSafeInteger(task.attempts)&&task.attempts>=0&&task.attempts<=LIMITS.attempts&&Number.isSafeInteger(task.sourceRequests)&&task.sourceRequests>=0&&task.sourceRequests<=storedSourceRequestLimit(task)
     &&Array.isArray(task.completedWork)&&new Set(task.completedWork).size===task.completedWork.length&&task.completedWork.every(unit=>WORK.includes(unit))
-    &&Array.isArray(task.sourceReferences)&&task.sourceReferences.length<=LIMITS.sourceRequests&&task.sourceReferences.every(source=>typeof source?.url==='string'&&source.url.length<=500&&new URL(source.url).protocol==='https:'&&!new URL(source.url).username&&!new URL(source.url).password&&Number.isSafeInteger(source.authorizedAt)&&(!source.hash||/^[a-f0-9]{64}$/.test(source.hash))&&(!source.observedAt||Number.isSafeInteger(source.observedAt)&&source.observedAt>=source.authorizedAt))
+    &&Array.isArray(task.sourceReferences)&&task.sourceReferences.length<=LIMITS.sourceReferences&&task.sourceReferences.every(source=>typeof source?.url==='string'&&source.url.length<=500&&new URL(source.url).protocol==='https:'&&!new URL(source.url).username&&!new URL(source.url).password&&Number.isSafeInteger(source.authorizedAt)&&(!source.hash||/^[a-f0-9]{64}$/.test(source.hash))&&(!source.observedAt||Number.isSafeInteger(source.observedAt)&&source.observedAt>=source.authorizedAt))
     &&Array.isArray(task.knowledgeIds)&&task.knowledgeIds.length<=LIMITS.memories&&task.knowledgeIds.every(id=>typeof id==='string'&&id.length<=160)
     &&Array.isArray(task.referenceIds)&&task.referenceIds.length<=24&&task.referenceIds.every(id=>typeof id==='string'&&id.length<=160)
     &&Array.isArray(task.plan)&&task.plan.length<=3&&task.plan.every(label=>typeof label==='string'&&label.length<=160)
