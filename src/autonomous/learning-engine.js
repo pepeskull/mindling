@@ -1,3 +1,4 @@
+import {MAX_WEB_SEARCH_CALLS,remainingWebSearchCalls} from './research-budget.js';
 import {queuedRefinement,refinementWaiting,refinementBlocker,refinementMessage} from './evidence-refinement.js';
 import {researchEnergyReady} from './energy-readiness.js';
 import {areaProfileCandidates} from '../semantic/area-profiles.js';
@@ -136,7 +137,7 @@ export class AutonomousLearningEngine {
     if(interpretation.clarification)throw Error('Resolve the clarification before preparing research.');
     const context=trainingContext(interpretation.requestText||interpretation.normalizedText,mind),gap=knowledgeGap(interpretation,context,reply,Date.now(),mind),queryKey=await this.taskId(interpretation,identity),id=taskId||queryKey,now=Date.now();
     const task={version:1,engineVersion:4,workVersion:2,id,queryKey,mindlingId:identity,requestId,run:crypto.randomUUID(),mode:interpretation.depth,originalText:interpretation.normalizedText,objective:interpretation.requestText||interpretation.normalizedText,topic:interpretation.topic,scope:{...interpretation.scope},interpretationAnswers:{...interpretation.answers},timeSensitive:interpretation.timeSensitive,
-      autonomous,status:'BLOCKED',createdAt:now,updatedAt:now,attempts:0,sourceRequests:0,completedWork:['understanding'],referenceIds:gap.referenceIds,sourceReferences:[],knowledgeIds:[],
+      autonomous,status:'BLOCKED',createdAt:now,updatedAt:now,attempts:0,searchToolLimit:MAX_WEB_SEARCH_CALLS,sourceRequests:0,completedWork:['understanding'],referenceIds:gap.referenceIds,sourceReferences:[],knowledgeIds:[],
       plan:interpretation.depth===LEARNING_MODES.DEEP?['Identify bounded subtopics','Compare available evidence and conflicts','Retain only supported knowledge']:['Identify essential concepts','Check evidence availability','Retain only supported knowledge'],
       code:'PERMISSION_REQUIRED',message:'Preparing Mindling research. Source-backed learning requires a connected information tool.',energyCharged:autonomous||interpretation.depth===LEARNING_MODES.TALK_RESEARCH&&mind.processed.includes(requestId),gapReasons:gap.reasons};
     await this.app.change(state=>{
@@ -313,10 +314,10 @@ export class AutonomousLearningEngine {
       authorizedAt=saved.authorizedAt;observedAt=saved.receivedAt;
       result={service:'mindling-reasoning-service',kind:'research-acquisition',acquisition:{...checkpoint.evidence,evaluation:saved.evaluation},execution:task.serviceDiagnostic,sourceCheckpoint:checkpoint};
       const mode=task.researchExecution.operation,id=task.researchExecution.correlationId;
-      const context=mode==='research-acquire'?{request:task.sourcePlan.request,plan:task.plan,...(task.hypotheses?.length?{hypotheses:task.hypotheses}:{})}:{checkpoint,...(task.evidenceRefinement?.state==='RECEIVED'?{refinement:true}:{})};
+      const context=mode==='research-acquire'?{request:task.sourcePlan.request,plan:task.plan,remainingCalls:task.researchExecution.reserved,...(task.hypotheses?.length?{hypotheses:task.hypotheses}:{})}:{checkpoint,...(task.evidenceRefinement?.state==='RECEIVED'?{refinement:true}:{})};
       validateResearchReceipt(result,{id,mode,context});
     }else{
-      const checkpoint=task.pendingSourceEvidence,remainingCalls=2-(task.sourceRequests||0);
+      const checkpoint=task.pendingSourceEvidence,remainingCalls=remainingWebSearchCalls(task);
       if(!checkpoint&&remainingCalls<1)throw Error('BUDGET_EXHAUSTED');
       const learning=researchLearningContext(task.sourcePlan.request.topic,this.app.state.mind,task.plan);
       const context=checkpoint?{checkpoint,learning,...(refining?{refinement:true}:{})}:{request:task.sourcePlan.request,queries:task.sourcePlan.queries,remainingCalls,plan:task.plan,learning,...(task.hypotheses?.length?{hypotheses:task.hypotheses}:{})};
@@ -336,7 +337,11 @@ export class AutonomousLearningEngine {
         }
         const calls=checkpoint?1:2;if((item.modelCalls||0)+calls>LIMITS.inferenceCalls||(item.evaluationCalls||0)>=2)throw Error('BUDGET_EXHAUSTED');
         item.modelCalls=(item.modelCalls||0)+calls;item.evaluationCalls=(item.evaluationCalls||0)+1;
-        if(!checkpoint){item.sourceRequests+=remainingCalls;item.researchExecution={version:1,reserved:remainingCalls,toolState:'RESERVED',clientDispatched:false,upstreamDispatched:null,completed:0,failed:0,outcomeUnknown:false};}
+        if(!checkpoint){
+          if(item.researchExecution?.outcomeUnknown||!remainingCalls||remainingWebSearchCalls(item)!==remainingCalls)throw Error('BUDGET_EXHAUSTED');
+          item.sourceRequests+=remainingCalls;
+          item.researchExecution={version:1,reserved:remainingCalls,toolState:'RESERVED',clientDispatched:false,upstreamDispatched:null,completed:0,failed:0,outcomeUnknown:false};
+        }
         delete item.researchObservation;
         item.researchExecution.correlationId=id;item.researchExecution.operation=checkpoint?'research-evaluate':'research-acquire';
         if(refining)item.researchExecution.clientDispatched=true;

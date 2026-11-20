@@ -106,7 +106,7 @@ with sync_playwright() as p:
             }
             check(JSON.stringify(app.state.mind.memories)===initial.memories,'failure changed previous knowledge');
           }
-          check(calls===1&&value.sourceRequests===2&&value.modelCalls===3,'duplicate dispatch or changed ceilings');
+          check(calls===1&&value.sourceRequests===4&&value.modelCalls===3,'duplicate dispatch or changed ceilings');
           check(app.state.mind.energy.remaining===initial.energy&&app.state.mind.lifetimeXP===initial.xp&&JSON.stringify(app.state.player)===initial.player&&JSON.stringify(app.state.mind.pathways)===initial.origins,'identity/economy/origins changed');
           if(kind!=='success')check(JSON.stringify(app.state.mind.memories.find(m=>m.id==='previous'))===JSON.stringify(prior),'existing memory changed');
           if(value.status==='COMPLETED')for(const memory of app.state.mind.memories.filter(m=>m.research)){const source=value.sourceReferences.find(s=>s.url===memory.research.sourceURL);check(source.passages.includes(memory.research.evidenceText)&&source.hash===memory.research.sourceHash&&memory.research.verification==='tool-cited-unverified-synthesis','provenance changed');}
@@ -121,7 +121,7 @@ with sync_playwright() as p:
             let calls=0;globalThis.fetch=async()=>{calls++;throw Error('Unknown navigation outcome must not repeat search');};
             const engine=new AutonomousLearningEngine(app);await engine.loadPermissions();engine.recover();const deadline=performance.now()+3000;
             while(app.state.mind.learningTasks[0].status!=='BLOCKED'){if(performance.now()>deadline)throw Error('Recovery did not classify unknown navigation');await new Promise(r=>setTimeout(r,5));}
-            const task=app.state.mind.learningTasks[0];if(task.code!=='TRANSPORT_INTERRUPTED'||!task.researchExecution.outcomeUnknown||task.sourceReferences.length||calls||task.sourceRequests!==2)throw Error('Navigation invented a receipt or repeated search');
+            const task=app.state.mind.learningTasks[0];if(task.code!=='TRANSPORT_INTERRUPTED'||!task.researchExecution.outcomeUnknown||task.sourceReferences.length||calls||task.sourceRequests!==4)throw Error('Navigation invented a receipt or repeated search');
             engine.destroy();store.close();return 'PASS';
           }''',preview)
         assert result=='PASS',(preview,case,result)

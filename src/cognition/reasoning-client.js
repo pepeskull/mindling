@@ -1,5 +1,5 @@
 import { clientResearchFailure } from '../autonomous/client-diagnostics.js';
-import { validateResearchReceipt } from './research-receipt.js';
+import { validateAcquisitionToolBudget, validateResearchReceipt } from './research-receipt.js';
 import { SERVICE_MESSAGES, validateServiceDiagnostic } from '../autonomous/service-diagnostics.js';
 import { validatePlanningContext, validatePlanningResult, validateRetrievalContext, validateResearchCheckpoint, validateResearchObservation, validateResearchEvaluationContext } from '../autonomous/research-contract.js';
 import { validateContext, validateResult, validateTalkResult } from '../training/contract.js';
@@ -30,7 +30,11 @@ async function requestService({ id, context, signal }, mode = 'evaluation') {
       const failure=Error(message);failure.code=result?.error?.code;
       if(mode.startsWith('research')&&result?.error?.diagnostic){validateServiceDiagnostic(result.error.diagnostic);if(result.error.diagnostic.correlationId!==id||result.error.diagnostic.operation!==mode)throw Error('Mismatched research diagnostic.');failure.diagnostic=result.error.diagnostic;}
       if(mode.startsWith('research')&&result?.sourceCheckpoint){
-        try{validateResearchCheckpoint(result.sourceCheckpoint);failure.checkpoint=result.sourceCheckpoint;}
+        try{
+          const checkpoint=validateResearchCheckpoint(result.sourceCheckpoint);
+          if(mode==='research-acquire')validateAcquisitionToolBudget(checkpoint.evidence.requests,context.remainingCalls,failure.diagnostic);
+          failure.checkpoint=checkpoint;
+        }
         catch{failure.recoveryBlockedReason='CHECKPOINT_INVALID';}
       }
       if(mode==='research-acquire'&&result?.researchObservation&&failure.code==='TOOL_LIFECYCLE_INCOMPLETE'&&failure.diagnostic?.outcomeUnknown&&failure.diagnostic.sourceCount===0&&failure.diagnostic.extraction?.disposition==='OBSERVED_ONLY'){

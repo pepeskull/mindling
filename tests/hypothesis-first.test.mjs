@@ -14,7 +14,7 @@ test('hypotheses stay unverified; planning and verified source acquisition use e
  assert.equal(t.hypothesisReview.filter(r=>r.status==='supported').length,3);
  const plan=requests.find(([url,b])=>b.response_format?.json_schema?.name==='mindling_planning');
  assert(plan);assert(!plan[1].tools);assert(plan[1].messages[0].content.includes('unverified'));
- const search=requests.find(([url])=>url.endsWith('/responses'));assert.deepEqual(JSON.parse(search[1].input).hypotheses,hypotheses);assert.equal(search[1].max_tool_calls,2);
+ const search=requests.find(([url])=>url.endsWith('/responses'));assert.deepEqual(JSON.parse(search[1].input).hypotheses,hypotheses);assert.equal(search[1].max_tool_calls,4);
  assert(requests.indexOf(plan)<requests.indexOf(search));
  for(const m of c.app.state.mind.memories){assert(m.research.quoteHash);assert(m.research.sourceURL);assert.equal(m.research.verification,'tool-cited-unverified-synthesis');}
 },{hypotheses,evaluate}));
@@ -57,7 +57,7 @@ test('unknown hosted tool outcome cannot promote or retry prepared hypotheses',a
  };
  await c.run();const t=c.saved();
  assert.equal(t.code,'TOOL_LIFECYCLE_INCOMPLETE');assert.deepEqual(t.hypotheses,hypotheses);
- assert.equal(c.app.state.mind.memories.length,0);assert.equal(t.sourceRequests,2);assert.equal(t.modelCalls,3);
+ assert.equal(c.app.state.mind.memories.length,0);assert.equal(t.sourceRequests,4);assert.equal(t.modelCalls,3);
  assert.equal(t.pendingSourceEvidence,undefined);assert.equal(t.researchExecution.outcomeUnknown,true);
  const {canRetryResearch}=await import('../src/autonomous/service-diagnostics.js');assert.equal(canRetryResearch(JSON.parse(JSON.stringify(t))),false);
 },{hypotheses,evaluate}));

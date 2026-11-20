@@ -1,3 +1,4 @@
+import {validWebSearchCallCount} from './research-budget.js';
 import {hypothesesSchema,validateHypotheses,reviewSchema,validateHypothesisReview} from './research-hypotheses.js';
 import {researchSubject,subjectMatches} from './research-subject.js';
 import {validateResearchLearningContext} from '../learning/research-learning-context.js';
@@ -83,7 +84,7 @@ export function validateRetrievalContext(value){
   if(value.hypotheses!==undefined)validateHypotheses(value.hypotheses);
   validatePlanningContext(value.request);if(value.learning!==undefined)validateResearchLearningContext(value.learning);
   if(value.plan!==undefined&&(!Array.isArray(value.plan)||value.plan.length>3||!value.plan.every(item=>text(item,160))))fail();
-  if(!Array.isArray(value.queries)||!value.queries.length||value.queries.length>2||!value.queries.every(validQuery)||!Number.isSafeInteger(value.remainingCalls)||value.remainingCalls<1||value.remainingCalls>2)fail();return value;
+  if(!Array.isArray(value.queries)||!value.queries.length||value.queries.length>2||!value.queries.every(validQuery)||!validWebSearchCallCount(value.remainingCalls))fail();return value;
 }
 export function publicSourceURL(value){
   if(!text(value,500))fail();const url=new URL(value),host=url.hostname.toLowerCase();
@@ -183,7 +184,7 @@ export function validateSourceEvaluationDiagnostics(value){
 }
 const acquisitionFailure=detail=>{throw Object.assign(Error('Research evidence failed validation. No unsupported knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail});};
 export function validateAcquisition(value){
-  if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.sources)||value.sources.length>3||!Number.isSafeInteger(value.requests)||value.requests<1||value.requests>2||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>196608)acquisitionFailure('ACQUISITION_FIELDS_INVALID');
+  if(!object(value)||value.provider!==INFORMATION_PROVIDER||!Array.isArray(value.sources)||value.sources.length>3||!validWebSearchCallCount(value.requests)||!Number.isSafeInteger(value.bytes)||value.bytes<0||value.bytes>196608)acquisitionFailure('ACQUISITION_FIELDS_INVALID');
   if(!text(value.responseId,160))acquisitionFailure('RESPONSE_ID_INVALID');
   for(const source of value.sources){
     if(!object(source)||!/^web:[a-f0-9]{64}$/.test(source.id))acquisitionFailure('SOURCE_ID_INVALID');

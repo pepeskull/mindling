@@ -24,7 +24,7 @@ with sync_playwright() as p:
       await engine.run(first,first.topic);
       let saved=app.state.mind.learningTasks.find(task=>task.id===first.id);
       check(saved.code==='UPSTREAM_HTTP_ERROR'&&saved.lastFailurePhase==='SOURCE_EVALUATION','analysis failure masked');
-      check(saved.completedToolCalls===1&&saved.sourceRequests===2&&saved.sourceReferences.length===1&&saved.modelCalls===3,'confirmed search/reservation not preserved');
+      check(saved.completedToolCalls===1&&saved.sourceRequests===4&&saved.sourceReferences.length===1&&saved.modelCalls===3,'confirmed search/reservation not preserved');
       check(saved.pendingSourceEvidence&&saved.researchExecution.toolState==='COMPLETED'&&!saved.researchExecution.outcomeUnknown,'source checkpoint/known completion lost');
       check(app.state.mind.memories.length===0,'analysis failure invented knowledge');
       const signature=saved.pendingSourceEvidence.signature;engine.destroy();store.close();store=await new PreviewStore().open();app.store=store;app.state=await store.read();
@@ -34,19 +34,26 @@ with sync_playwright() as p:
       saved=app.state.mind.learningTasks.find(task=>task.id===first.id);
       check(saved.status==='COMPLETED'&&app.state.mind.memories.length===1,'signed evidence analysis did not recover');
       check(operations.filter(mode=>mode==='research-acquire').length===before&&operations.filter(mode=>mode==='research-evaluate').length===1,'recovery repeated search');
-      check(saved.sourceRequests===2&&saved.modelCalls===4&&saved.evaluationCalls===2&&saved.attempts===2&&!saved.pendingSourceEvidence,'double reservation or model ceiling violation');
+      check(saved.sourceRequests===4&&saved.modelCalls===4&&saved.evaluationCalls===2&&saved.attempts===2&&!saved.pendingSourceEvidence,'double reservation or model ceiling violation');
       // Incident B and an unknown interrupted call cannot be retried into a misleading BUDGET_EXHAUSTED.
       await app.change(state=>{state.mind.autonomousLearning.nextAt=0;return state;});
       const second=await engine.prepare(understandInput('Learn about no hosted action','TEACH'),'missing-tool',{autonomous:true});
       await engine.run(second,second.topic);let missing=app.state.mind.learningTasks.find(task=>task.id===second.id);
-      check(missing.code==='NO_SEARCH_EXECUTED'&&missing.completedToolCalls===0&&missing.sourceRequests===2,'no-tool failure misclassified');
+      check(missing.code==='NO_SEARCH_EXECUTED'&&missing.completedToolCalls===0&&missing.sourceRequests===4,'no-tool failure misclassified');
       const total=operations.length;let blocked=false;try{await engine.act('retry',second.id);}catch{blocked=true;}
       missing=app.state.mind.learningTasks.find(task=>task.id===second.id);check(blocked&&operations.length===total&&missing.code==='NO_SEARCH_EXECUTED'&&missing.lastFailureCode==='NO_SEARCH_EXECUTED','failed retry overwrote original error or dispatched again');
       await app.change(state=>{state.mind.autonomousLearning.nextAt=0;return state;});
       const third=await engine.prepare(understandInput('Learn about cancellation','TEACH'),'unknown-tool',{autonomous:true});
-      const running=engine.run(third,'cancel operation');while(app.state.mind.learningTasks.find(task=>task.id===third.id)?.researchExecution?.toolState!=='DISPATCHED')await new Promise(resolve=>setTimeout(resolve,5));
+      const dispatched=async()=>{
+        const deadline=Date.now()+5000;
+        while(app.state.mind.learningTasks.find(task=>task.id===third.id)?.researchExecution?.toolState!=='DISPATCHED'){
+          check(Date.now()<deadline,'search was never dispatched');
+          await new Promise(resolve=>setTimeout(resolve,5));
+        }
+      };
+      const running=engine.run(third,third.topic);await dispatched();
       engine.active.controller.abort();await running;let interrupted=app.state.mind.learningTasks.find(task=>task.id===third.id);
-      check(interrupted.code==='TRANSPORT_INTERRUPTED'&&interrupted.clientDiagnostic.phase==='TRANSPORT'&&!interrupted.clientDiagnostic.received&&interrupted.researchExecution.outcomeUnknown&&interrupted.sourceRequests===2,'unknown remote work refunded or misreported');
+      check(interrupted.code==='TRANSPORT_INTERRUPTED'&&interrupted.clientDiagnostic.phase==='TRANSPORT'&&!interrupted.clientDiagnostic.received&&interrupted.researchExecution.outcomeUnknown&&interrupted.sourceRequests===4,'unknown remote work refunded or misreported');
       check(!canRetryResearch(interrupted),'unknown search can repeat');
       check(app.state.mind.memories.length===1&&app.state.mind.energy.remaining===energy&&app.state.mind.lifetimeXP===xp,'failure/recovery changed rewards or fabricated memories');
       check(JSON.stringify(app.state.player)===player&&JSON.stringify(app.state.mind.pathways)===origins,'identity/origins changed');

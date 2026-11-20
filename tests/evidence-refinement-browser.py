@@ -76,7 +76,7 @@ with sync_playwright() as playwright:
         page.evaluate(MOUNT, {"preview": preview, "seed": False})
         page.evaluate("fixture.engine.tick()")
         page.wait_for_function("fixture.task().status==='COMPLETED'")
-        assert page.evaluate("""()=>fixture.task().modelCalls===4&&fixture.task().sourceRequests===2
+        assert page.evaluate("""()=>fixture.task().modelCalls===4&&fixture.task().sourceRequests===4
             &&fixture.app.state.mind.memories.length===1&&sessionStorage.getItem('research-acquire')==='1'
             &&sessionStorage.getItem('research-evaluate')==='1'""")
         page.evaluate("fixture.engine.destroy();fixture.db.close()")

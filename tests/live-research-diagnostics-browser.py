@@ -33,7 +33,7 @@ with sync_playwright() as p:
       const manual=await engine.prepare(interpretation,'manual-undated');await engine.run(manual,'LaLiga season evidence');
       const insufficient=app.state.mind.learningTasks.find(task=>task.id===manual.id);
       check(insufficient.status==='BLOCKED'&&insufficient.code==='NO_EVIDENCE'&&insufficient.completedWork.length===5,'observed 5/7 outcome not reproduced');
-      check(insufficient.completedToolCalls===1&&insufficient.sourceRequests===2&&insufficient.sourceReferences.length===1,'tool reservation or source counts changed');
+      check(insufficient.completedToolCalls===1&&insufficient.sourceRequests===4&&insufficient.sourceReferences.length===1,'tool reservation or source counts changed');
       check(insufficient.evidenceDiagnostics.rejections[0].code==='MISSING_AS_OF_DATE'&&app.state.mind.memories.length===0,'undated fact escaped validation');
       check(engine.status==='PAUSED'&&engine.diagnostics.taskId===automatic.id,'manual insufficient evidence incorrectly turned autonomy into ERROR');
       check(app.state.mind.energy.remaining===energyAfterTalk&&app.state.mind.lifetimeXP===0,'research charged extra Energy/XP');

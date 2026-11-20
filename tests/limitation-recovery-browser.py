@@ -42,7 +42,7 @@ with sync_playwright() as p:
         check(task.topic==='Gaming'&&task.autonomous,'scheduler did not select Gaming');
         check(task.code==='RESPONSE_PARSE_ERROR'&&task.lastFailureCode==='RESPONSE_PARSE_ERROR'&&task.lastFailurePhase==='SOURCE_EVALUATION','received error masked as interruption/offline');
         check(task.serviceDiagnostic.detail==='LIMITATION_INVALID'&&task.serviceDiagnostic.limitationFailure.rule==='TOO_LONG','limitation subrule lost');
-        check(task.completedToolCalls===2&&task.sourceRequests===2&&task.pendingSourceEvidence?.evidence.sources.length===2,'two completed calls/signed evidence lost');
+        check(task.completedToolCalls===2&&task.sourceRequests===4&&task.pendingSourceEvidence?.evidence.sources.length===2,'two completed calls/signed evidence lost');
         check(app.state.mind.memories.length===0&&app.state.mind.energy.remaining===initial.energy&&app.state.mind.lifetimeXP===initial.xp,'failure mutated knowledge or rewards');
         const host=document.createElement('section');renderTaskDiagnostics(host,{task});check(host.textContent.includes('RESPONSE_PARSE_ERROR · SOURCE_EVALUATION · LIMITATION_INVALID'),'inspector hides real category');
         const signature=task.pendingSourceEvidence.signature,count=operations.length,searches=operations.filter(m=>m==='research-acquire').length;
@@ -57,7 +57,7 @@ with sync_playwright() as p:
         await app.change(s=>{s.mind.learningTasks[0].retryAt=0;return s;});await engine.tick();await wait(()=>!engine.active&&!engine.draining);
         task=app.state.mind.learningTasks[0];
         check(task.status==='COMPLETED'&&app.state.mind.memories.length===1,'Gaming retry did not integrate supported claim');
-        check(operations.filter(m=>m==='research-acquire').length===searches&&task.modelCalls===4&&task.evaluationCalls===2&&task.sourceRequests===2&&task.completedToolCalls===2,'recovery exceeded reservation or repeated search');
+        check(operations.filter(m=>m==='research-acquire').length===searches&&task.modelCalls===4&&task.evaluationCalls===2&&task.sourceRequests===4&&task.completedToolCalls===2,'recovery exceeded reservation or repeated search');
         check(task.limitations[0]==='  These synthetic cited summaries are not independently verified.\\nA second source does not remove uncertainty.\\t','meaningful qualification was rewritten');
         check(task.evidenceDiagnostics.rejections.some(r=>r.code==='QUOTE_NOT_IN_CITED_PASSAGE'),'PR 115 independent validation lost');
         const memory=app.state.mind.memories[0],source=task.sourceReferences.find(s=>s.url===memory.research.sourceURL);
