@@ -160,7 +160,6 @@ export function selectSourceEvaluation(value,sources,{allowFollowup=true,subject
       else if(proposal.relevance!=='direct')rule='SUBJECT_MISMATCH';
       if(object(proposal)){const {relevance,...supported}=proposal;claim=supported;}
     }
-    if(hypotheses.length&&!value.hypothesisReview.some(r=>r.status==='supported'&&r.claimIndex===index))rule=rule||'HYPOTHESIS_SUPPORT_MISSING';
     rule=rule||claimRejection(claim,sources);
     if(rule)validation.rejections.push({index,rule});else{claims.push(claim);acceptedIndices.push(index);}
   });
@@ -219,7 +218,11 @@ export function validateResearchCheckpoint(value){
   if(JSON.stringify(value).length>24000)acquisitionFailure('CHECKPOINT_SIZE_LIMIT');return value;
 }
 export function validateResearchEvaluationContext(value){
-  if(!object(value)||!['checkpoint','checkpoint,learning'].includes(Object.keys(value).sort().join(',')))fail();validateResearchCheckpoint(value.checkpoint);if(value.learning!==undefined)validateResearchLearningContext(value.learning);return value;
+  if(!object(value)||!['checkpoint','checkpoint,learning','checkpoint,refinement','checkpoint,learning,refinement'].includes(Object.keys(value).sort().join(',')))fail();
+  validateResearchCheckpoint(value.checkpoint);
+  if(value.learning!==undefined)validateResearchLearningContext(value.learning);
+  if(Object.hasOwn(value,'refinement')&&value.refinement!==true)fail();
+  return value;
 }
 
 // Persist only a validated public topic, bound to this task's clarified scope.

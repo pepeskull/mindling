@@ -9,7 +9,7 @@ export function validateResearchReceipt(result,{id,mode,context}){
   try{
     if(result?.service!=='mindling-reasoning-service'||result.kind!=='research-acquisition')throw Error();
     validateServiceDiagnostic(result.execution);
-    if(result.execution.correlationId!==id||result.execution.operation!==mode)throw Error();
+    if(result.execution.correlationId!==id||result.execution.operation!==mode||Boolean(result.execution.refinement)!==Boolean(context.refinement))throw Error();
     execution=result.execution;
     validateAcquisition(result.acquisition);
     const a=result.acquisition;

@@ -1,5 +1,5 @@
 import {hypothesisStage} from './research-hypotheses.js';
-import {canRetryResearch} from './service-diagnostics.js';
+import {refinementMessage} from './evidence-refinement.js';
 import { currentMemoryVersion, editableMemoryText } from '../learning/correction-content.js';
 import { rejectionExplanation } from './research-evidence.js';
 import { taskProgress, taskStatusLabel } from './tasks.js';
@@ -33,6 +33,7 @@ export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},me
   if(task.serviceDiagnostic){const d=task.serviceDiagnostic;host.append(el('p',`${d.correlationId===task.researchExecution?.correlationId?'Request reference':'Previous request reference'}: ${d.correlationId} · Phase: ${d.phase} · Endpoint: ${d.endpoint||'not dispatched'} · Upstream HTTP: ${d.upstreamStatus??'unknown'} · Detail: ${d.detail}`,'memory-content-status'));}
   if(task.serviceDiagnostic?.toolAccounting)host.append(el('p',`Provider accounting: ${JSON.stringify(task.serviceDiagnostic.toolAccounting)}`,'memory-content-status'));
   if(task.clientDiagnostic){const d=task.clientDiagnostic;host.append(el('p',`${task.status==='COMPLETED'||d.correlationId!==task.researchExecution?.correlationId?'Previous browser diagnostic':'Browser diagnostic'}: ${d.code} · Phase: ${d.phase} · Body received: ${d.received?'yes':'no'} · Validated receipt: ${d.validated?'yes':'no'}${d.abortReason?' · Cause: '+d.abortReason:''}`,'memory-content-status'));}
+  if(task.evidenceRefinement)host.append(el('p',refinementMessage(task.evidenceRefinement),'memory-content-status'));
   if(task.pendingSourceEvidence)host.append(el('p','Signed source evidence is saved. Only its analysis can resume within the remaining budget; no new search is authorized.','memory-content-status'));
   if(task.discoveryQueries)host.append(el('p',`Search queries completed: ${task.completedQueries||0} · Query budget used: ${task.discoveryQueries} / 2`,'memory-content-status'));
   host.append(el('p',legacy&&active?'Historical task. Its former research workflow is unavailable. Saved sources and knowledge remain intact.':task.message));
@@ -66,7 +67,7 @@ export function renderTaskDiagnostics(host,node,{onAction=null,refresh=()=>{},me
   if(!active)return;
   if(['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code))actionButton('Clarify request','clarify');
   else if(legacy)host.append(el('p','Submit the topic again to start research with the current information tool.','memory-content-status'));
-  else if(['INTERRUPTED','PLANNING_UNAVAILABLE','INFORMATION_UNCONFIGURED'].includes(task.code)&&task.attempts<2)actionButton('Retry interrupted planning','retry');
+  else if(!task.pendingSourceEvidence&&!task.evidenceRefinement&&['INTERRUPTED','PLANNING_UNAVAILABLE','INFORMATION_UNCONFIGURED'].includes(task.code)&&task.attempts<2)actionButton('Retry interrupted planning','retry');
   actionButton('Cancel task','cancel');
 }
 
@@ -78,7 +79,7 @@ export function renderTaskInspector(host,node,{onAction=null,memories=[]}={}){
   for(const id of task.knowledgeIds){const memory=memories.find(item=>item.recordId===id);if(memory)host.append(memoryButton(memory));}
   if(onAction&&!['COMPLETED','CANCELLED','FAILED'].includes(task.status)){
     const status=el('p');status.setAttribute('role','status');
-    for(const [action,label] of [...(task.code==='NO_MODEL_CANDIDATES'&&task.pendingSourceEvidence&&canRetryResearch(task)?[['retry','Re-evaluate saved sources (API cost may apply)']]:[]),...(['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code)?[['clarify','Clarify request']]:[]),['cancel','Cancel learning']]){
+    for(const [action,label] of [...(['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code)?[['clarify','Clarify request']]:[]),['cancel','Cancel learning']]){
       const button=el('button',label,'related-memory-button');button.type='button';button.addEventListener('click',async()=>{button.disabled=true;try{await onAction(action,task.id);}catch{status.textContent='Unable to update learning. Please try again.';}finally{button.disabled=false;}});host.append(button);
     }host.append(status);
   }

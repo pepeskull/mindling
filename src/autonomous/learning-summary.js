@@ -1,3 +1,4 @@
+import {refinementMessage} from './evidence-refinement.js';
 import { taskProgress } from './tasks.js';
 const PAUSES={
  NO_MODEL_CANDIDATES:'The search returned cited passages, but the evaluator proposed no candidate claims. No claims were rejected or saved.',
@@ -14,6 +15,7 @@ const PAUSES={
 };
 export function learningSummary(task,memories=[]){
   const status=({COMPLETED:'Completed',CANCELLED:'Cancelled',FAILED:'Research unavailable',BLOCKED:'Learning paused',PREPARED:'Preparing',QUEUED:'Preparing',RESEARCHING:'Researching',EVALUATING:'Evaluating',COMMITTING:'Retaining knowledge'})[task.status]||'Learning paused';
-  const message=task.status==='COMPLETED'?'Supported knowledge retained.':task.status==='CANCELLED'?'Learning cancelled.':task.status==='FAILED'?'Reliable research is unavailable right now.':task.status==='BLOCKED'?(task.code==='TOOL_LIFECYCLE_INCOMPLETE'?'Provider tool work has an unknown outcome. Budget remains reserved; automatic repeat search is blocked.':task.code==='NO_EVIDENCE'?'More supporting evidence is needed.':task.code==='OFFLINE'?'Learning will resume when connected.':['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code)?'Please clarify what you want to learn.':(PAUSES[task.code]||'Research is paused. Inspect this task’s diagnostic code; existing knowledge is preserved.')):'Exploring and connecting knowledge.';
+  const persistenceFailure=['CHECKPOINT_PERSISTENCE_FAILED','EVIDENCE_PERSISTENCE_FAILED','INTEGRATION_FAILED'].includes(task.code);
+ const message=persistenceFailure?task.message:task.evidenceRefinement&&['BLOCKED','EVALUATING'].includes(task.status)?refinementMessage(task.evidenceRefinement):task.status==='COMPLETED'?'Supported knowledge retained.':task.status==='CANCELLED'?'Learning cancelled.':task.status==='FAILED'?'Reliable research is unavailable right now.':task.status==='BLOCKED'?(task.code==='TOOL_LIFECYCLE_INCOMPLETE'?'Provider tool work has an unknown outcome. Budget remains reserved; automatic repeat search is blocked.':task.code==='NO_EVIDENCE'?'More supporting evidence is needed.':task.code==='OFFLINE'?'Learning will resume when connected.':['CLARIFICATION','MODEL_CLARIFICATION'].includes(task.code)?'Please clarify what you want to learn.':(PAUSES[task.code]||'Research is paused. Inspect this task’s diagnostic code; existing knowledge is preserved.')):'Exploring and connecting knowledge.';
   return {diagnosticCode:typeof task.code==='string'&&/^[A-Z_]{1,80}$/.test(task.code)?task.code:null,subject:task.topic||'Learning',status,message,progress:Math.round(taskProgress(task)*100),retained:memories.filter(m=>!m.historical&&task.knowledgeIds.includes(m.recordId)&&m.raw.research?.taskId===task.id).length,sources:task.sourceReferences.filter(s=>s.hash&&s.observedAt).length};
 }
