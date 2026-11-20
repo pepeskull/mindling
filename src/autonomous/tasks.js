@@ -1,3 +1,4 @@
+import {validRefinement} from './evidence-refinement.js';
 import {validateHypotheses,validateHypothesisReview} from './research-hypotheses.js';
 import { validateServiceDiagnostic } from './service-diagnostics.js';
 import { validatePlanningContext, validQuery, validateResearchCheckpoint, validateResearchObservation, validateSourceEvaluation } from './research-contract.js';
@@ -16,6 +17,7 @@ export function validTask(task,mindId){
     validateResearchObservation(task.researchObservation);
     if(task.researchObservation.correlationId!==task.researchExecution?.correlationId||task.researchExecution?.outcomeUnknown!==true)return false;
   }
+  if(task?.evidenceRefinement!==undefined&&!validRefinement(task.evidenceRefinement))return false;
   if(task?.hypotheses!==undefined)validateHypotheses(task.hypotheses);
   if(task?.hypothesisReview?.length)validateHypothesisReview(task.hypothesisReview,[0,1,2].map(()=>({})),(task.hypotheses||[]).map(h=>h.id));
   if(task?.pendingSourceEvidence)validateResearchCheckpoint(task.pendingSourceEvidence);

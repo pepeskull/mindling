@@ -29,15 +29,14 @@ test('hypotheses cannot supply their own evidence; unsupported and malformed rev
  const declined=selectSourceEvaluation({claims:[],limitations:['No applicable evidence.'],nextQuestion:null,hypothesisReview:[{id:'h1',status:'contradicted',claimIndex:null,reason:'Retained sources conflict with the proposal.'}]},sources,{hypotheses:[hypotheses[0]]});
  assert.equal(declined.evaluation.claims.length,0);
 });
-test('signed hypothesis context survives abstention and explicit evaluation-only recovery without another search',async()=>{
+test('signed hypothesis context survives abstention and automatic evaluation-only recovery without another search',async()=>{
  let calls=0;
  await scenario(async c=>{
   await c.run();let t=c.saved();assert.equal(t.code,'NO_MODEL_CANDIDATES');
   const cp=validateResearchCheckpoint(t.pendingSourceEvidence);assert.deepEqual(cp.hypotheses,hypotheses);
   const {verify}=require('../src/server/research-checkpoint.cjs');
   await assert.rejects(verify({...cp,hypotheses:[{...hypotheses[0],claim:'Tampered claim'}]},'synthetic-received-secret'));
-  c.reopen();await c.engine.loadPermissions();c.engine.startIfAuthorized=()=>{};
-  await c.engine.act('retry',t.id);await c.run();t=c.saved();
+  c.reopen();await c.tick();t=c.saved();
   assert.equal(t.status,'COMPLETED');assert.equal(t.modelCalls,4);assert.equal(t.evaluationCalls,2);
   assert.equal(c.calls.filter(url=>url.endsWith('/responses')).length,1);assert.equal(c.app.state.mind.memories.length,3);
  },{hypotheses,evaluate:sources=>++calls===1?{claims:[],limitations:['Insufficient evidence selected.'],nextQuestion:null,hypothesisReview:hypotheses.map(h=>({id:h.id,status:'insufficient',claimIndex:null,reason:'No qualifying passage selected.'}))}:evaluate(sources)});
@@ -63,8 +62,8 @@ test('unknown hosted tool outcome cannot promote or retry prepared hypotheses',a
  const {canRetryResearch}=await import('../src/autonomous/service-diagnostics.js');assert.equal(canRetryResearch(JSON.parse(JSON.stringify(t))),false);
 },{hypotheses,evaluate}));
 test('continued abstention exhausts the existing evaluation allowance without another search or automatic retry',async()=>scenario(async c=>{
- await c.run();c.engine.startIfAuthorized=()=>{};await c.engine.act('retry',c.saved().id);await c.run();
- const t=c.saved(),before=c.calls.length;assert.equal(t.code,'NO_MODEL_CANDIDATES');assert.equal(t.modelCalls,4);
+ await c.run();await c.tick();
+ const t=c.saved(),before=c.calls.length;assert.equal(t.code,'NO_MODEL_CANDIDATES');assert.equal(t.modelCalls,4);assert.equal(t.evidenceRefinement.state,'EXHAUSTED');
  await assert.rejects(c.engine.act('retry',t.id));assert.equal(c.calls.length,before);
  assert.equal(c.calls.filter(url=>url.endsWith('/responses')).length,1);assert.equal(c.app.state.mind.memories.length,0);
 },{hypotheses,evaluate:()=>({claims:[],limitations:['Insufficient qualifying source evidence.'],nextQuestion:null,hypothesisReview:hypotheses.map(h=>({id:h.id,status:'insufficient',claimIndex:null,reason:'Sources do not establish this proposal.'}))})}));

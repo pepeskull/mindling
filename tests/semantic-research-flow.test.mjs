@@ -40,18 +40,18 @@ test('zero generated candidates remain distinct from rejected evidence after the
   assert.deepEqual(t.evidenceDiagnostics.rejections,[]);assert.equal(t.evidenceDiagnostics.candidateOutcome,'NO_MODEL_CANDIDATES');
   assert.equal(c.app.state.mind.memories.length,0);assert.equal(c.app.state.mind.energy.remaining,10);
   assert.equal(c.app.state.mind.lifetimeXP,0);
-  const count=c.calls.length;c.engine.startIfAuthorized(t);assert.equal(c.calls.length,count);
+  assert.equal(t.evidenceRefinement.state,'QUEUED');
  },{evaluate:()=>({claims:[],limitations:['No directly applicable claim selected.'],nextQuestion:null})});
 });
-test('explicit empty-result retry reuses signed sources within four inference calls and performs no new search',async()=>{
+test('automatic empty-result refinement reuses signed sources within four inference calls and performs no new search',async()=>{
  const {scenario}=await import('./support/research-success-harness.mjs'),fixture=createRequire(import.meta.url)('./support/research-success-fixture.cjs');
  let evaluations=0;
  await scenario(async c=>{
   await c.run();let task=c.saved();assert(task.pendingSourceEvidence);assert.equal(task.code,'NO_MODEL_CANDIDATES');
   const searchCount=()=>c.calls.filter(url=>url.endsWith('/responses')).length;
   assert.equal(searchCount(),1);
-  // Exercise the explicit action without starting the scheduler concurrently.
-  c.engine.startIfAuthorized=()=>{};await c.engine.act('retry',task.id);await c.run();
+  await assert.rejects(c.engine.act('retry',task.id),/managed automatically/);
+  await c.tick();
   task=c.saved();assert.equal(task.status,'COMPLETED');assert.equal(searchCount(),1);
   assert.equal(task.modelCalls,4);assert.equal(task.evaluationCalls,2);assert.equal(c.app.state.mind.memories.length,3);
  },{evaluate:sources=>++evaluations===1?{claims:[],limitations:['No selected claim.'],nextQuestion:null}:fixture.evaluation(sources)});
