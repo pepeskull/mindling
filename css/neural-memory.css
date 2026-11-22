@@ -170,7 +170,16 @@
 
 
 .task-browser-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
-.task-browser-tools :is(input,select){min-inline-size:0;padding:6px 8px;border:1px solid var(--border-subtle);border-radius:5px;background:var(--bg-panel,#101212);color:var(--text-secondary);font-size:10px}
+.task-browser-tools :is(input,select) {
+  min-inline-size: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 5px;
+  background: var(--bg-panel, #101212);
+  color: var(--text-secondary);
+  font-size: 10px;
+  margin: 10px 0px;
+}
 .task-browser-body>div:last-child{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:4px}
 .task-browser-body>div:last-child button{width:auto;padding-inline:6px}
 .task-browser-body>div:last-child span{text-align:center}

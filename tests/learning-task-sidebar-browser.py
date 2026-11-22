@@ -16,7 +16,7 @@ SETUP = """async () => {
     id:'sidebar-fixture',learningSession:'fixture-session',
     memories:[{id:'saturn',content:'Saturn has rings.',category:'Science',topic:'Saturn',
       research:{taskId:taskId(1),sourceURL:source.url}}],
-    learningTasks:Array.from({length:10},(_,i)=>({
+    learningTasks:Array.from({length:20},(_,i)=>({
       version:1,engineVersion:4,id:taskId(i),mindlingId:'sidebar-fixture',
       requestId:'fixture-'+i,run:'fixture',session:'fixture-session',mode:'TALK_RESEARCH',
       objective:'Learn about topic '+i,topic:'Topic '+i,createdAt:1,updatedAt:i+1,attempts:0,
@@ -67,7 +67,7 @@ def mount(context, overrides=None, errors=None):
         page.on('pageerror', lambda error: errors.append(str(error)))
     page.goto(BASE + '/')
     page.evaluate(SETUP)
-    page.wait_for_function('view.taskNodes.size === 9 && view.canvas.width > 0')
+    page.wait_for_function('view.taskNodes.size === 19 && view.canvas.width > 0')
     return page
 
 def boxes(page, selectors):
@@ -104,22 +104,28 @@ def check_sidebar(page, touch):
         assert sidebar.locator('.task-browser-body').evaluate('(el) => el.scrollTop === 0')
 
     search, status = sidebar.locator('[data-task-search]'), sidebar.locator('[data-task-filter]')
+    for control in (search, status):
+        assert control.evaluate('(el) => getComputedStyle(el).margin') == '10px 0px'
     rows = sidebar.locator('[data-select-learning]')
     pagination = sidebar.locator('[data-task-page-label]')
     previous, next_page = sidebar.locator('[data-task-page=prev]'), sidebar.locator('[data-task-page=next]')
-    assert rows.count() == 6 and rows.first.inner_text().startswith('Topic 9')
-    assert pagination.inner_text() == '1–6 of 9' and previous.is_disabled()
+    assert rows.count() == 12 and rows.first.inner_text().startswith('Topic 19')
+    assert pagination.inner_text() == '1–12 of 19' and previous.is_disabled()
     next_page.click()
-    assert pagination.inner_text() == '7–9 of 9' and next_page.is_disabled()
+    assert pagination.inner_text() == '13–19 of 19' and rows.count() == 7 and next_page.is_disabled()
     previous.click()
-    assert pagination.inner_text() == '1–6 of 9'
+    assert pagination.inner_text() == '1–12 of 19' and previous.is_disabled()
     search.fill('topic 5')
     assert rows.count() == 1 and rows.first.inner_text().startswith('Topic 5')
+    assert pagination.inner_text() == '1–1 of 1' and previous.is_disabled() and next_page.is_disabled()
     search.fill('')
     status.select_option('active')
-    assert pagination.inner_text() == '1–6 of 7'
+    assert pagination.inner_text() == '1–12 of 17'
+    next_page.click()
+    assert pagination.inner_text() == '13–17 of 17' and rows.count() == 5 and next_page.is_disabled()
     status.select_option('actionable')
     assert rows.count() == 1 and rows.first.inner_text().startswith('Topic 2')
+    assert pagination.inner_text() == '1–1 of 1' and previous.is_disabled()
     rows.first.click()
     assert rows.first.get_attribute('aria-pressed') == 'true'
     detail = page.locator('.memory-inspector-content')
@@ -138,7 +144,7 @@ def check_sidebar(page, touch):
     status.select_option('all')
     search.fill('topic')
     next_page.click()
-    assert pagination.inner_text() == '7–9 of 9'
+    assert pagination.inner_text() == '13–19 of 19'
     assert page.evaluate('JSON.stringify(sidebarState) === initialState')
 
     page.evaluate('''async () => {
@@ -147,10 +153,10 @@ def check_sidebar(page, touch):
       view.destroy();
       mountSidebarView();
     }''')
-    page.wait_for_function('view.taskNodes.size === 9 && !view.loadingView')
+    page.wait_for_function('view.taskNodes.size === 19 && !view.loadingView')
     assert sidebar.get_by_role('heading', name='Learning Tasks').is_visible()
     assert search.input_value() == 'topic' and status.input_value() == 'all'
-    assert pagination.inner_text() == '7–9 of 9'
+    assert pagination.inner_text() == '13–19 of 19'
     assert rows.last.get_attribute('aria-pressed') != 'true'
     assert rows.filter(has_text='Topic 1').get_attribute('aria-pressed') == 'true'
     page.get_by_role('button', name='Fit graph').click()
