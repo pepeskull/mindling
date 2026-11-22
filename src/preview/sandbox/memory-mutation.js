@@ -1,4 +1,4 @@
-import { activityReward } from '../../economy/xp.js';
+import { activityReward, cappedXPAward } from '../../economy/xp.js';
 import { recordPathwayLearning } from '../../pathways/pathways.js';
 import { capturedContent } from '../../memory/content-integrity.js';
 import { energyAt, spendEnergy } from '../../economy/energy.js';
@@ -12,7 +12,7 @@ import { formationAssociations, recordMemory, decomposeLegacy, reinforceMemory, 
 
 // All operations run synchronously in the caller's ONE IndexedDB transaction.
 // Normal and Stage Preview Teach share this operation-aware service path.
-export function applyMemoryDecision(state,event,assessment,{XP}) {
+export function applyMemoryDecision(state,event,assessment) {
   if(!['TALK','TEACH','DEEP_TRAINING'].includes(event.activity))throw Error('Unsupported learning activity');
   const statements=atomicStatements(event.text);
   const operations=assessment.version===3?assessment.operations:compatibilityOperations(assessment,statements);
@@ -59,12 +59,11 @@ export function applyMemoryDecision(state,event,assessment,{XP}) {
   const cost=changed?LIFE_RULES.activity[event.activity].energyCost:0;
   const energy=energyAt(state.mind.energy,state.now);
   if(energy.remaining<cost)throw Error('Not enough Energy; wait for regeneration');
-  const award=event.activity==='TALK'?0:updated||formed?activityReward(event.activity):0;
-  const day=Math.floor(state.now/86400000),earned=state.mind.history.filter(entry=>entry.day===day).reduce((sum,entry)=>sum+entry.xp,0);
-  if(award>0&&earned+award>XP.daily)throw Error('Daily XP limit reached');
+  const nominalAward=event.activity!=='TALK'&&(updated||formed)?activityReward(event.activity):0;
+  const day=Math.floor(state.now/86400000),award=cappedXPAward(nominalAward,state.mind.history,state.now);
   mind.energy=cost?spendEnergy(energy,cost,state.now):energy;
   if(cost){stimulatePreviewLife(mind.life,event.activity,state.now);mind.lastLearning=state.now;}
-  mind.stageXP+=award;mind.lifetimeXP+=award;if(formed&&award)mind.milestones.push(formed.concept);
+  mind.stageXP+=award;mind.lifetimeXP+=award;if(formed&&nominalAward)mind.milestones.push(formed.concept);
   mind.processed.push(event.id);
   const operation=results.length===1?results[0]:'BATCH';
   const stored=operations.filter(item=>['CREATE_NEW','LINK_TO_EXISTING','UPDATE_EXISTING','FLAG_CONTRADICTION'].includes(item.decision.operation));

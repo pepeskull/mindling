@@ -43,9 +43,9 @@ test('actual Teach service contract creates Veloria canonically without storing 
 }));
 test('Deep reinforces the known definition and links a distinct claim to that same target without 502 or overwrite',async()=>mocked(async c=>{
  const a=app();await teachMemory(a,{id:'teach',text:TEACH,activity:'TEACH'});const original=a.state.mind.memories[0].content;
- await teachMemory(a,{id:'deep',text:DEEP,activity:'DEEP_TRAINING'});assert.equal(c.lastResponse.code,200);assert.equal(a.state.mind.memories.length,2);assert.equal(a.state.mind.memories[0].content,original);assert.equal(a.state.mind.memories[1].content,atomicStatements(DEEP)[1]);assert.ok(a.state.mind.memories[1].relatedMemoryIds.includes('teach'));assert.ok(a.state.mind.memories[0].relatedMemoryIds.includes('deep'));assert.equal(a.state.mind.energy.remaining,5);assert.equal(a.state.mind.lifetimeXP,XP.concept*2);
+ await teachMemory(a,{id:'deep',text:DEEP,activity:'DEEP_TRAINING'});assert.equal(c.lastResponse.code,200);assert.equal(a.state.mind.memories.length,2);assert.equal(a.state.mind.memories[0].content,original);assert.equal(a.state.mind.memories[1].content,atomicStatements(DEEP)[1]);assert.ok(a.state.mind.memories[1].relatedMemoryIds.includes('teach'));assert.ok(a.state.mind.memories[0].relatedMemoryIds.includes('deep'));assert.equal(a.state.mind.energy.remaining,5);assert.equal(a.state.mind.lifetimeXP,XP.concept+XP.understanding);
  const before=c.calls.length;await assert.rejects(teachMemory(a,{id:'deep',text:DEEP,activity:'DEEP_TRAINING'}),/already processed/);assert.equal(c.calls.length,before);
- await teachMemory(a,{id:'deep-again',text:DEEP,activity:'DEEP_TRAINING'});assert.equal(a.state.mind.memories.length,2);assert.equal(a.state.mind.energy.remaining,5);assert.equal(a.state.mind.lifetimeXP,XP.concept*2);
+ await teachMemory(a,{id:'deep-again',text:DEEP,activity:'DEEP_TRAINING'});assert.equal(a.state.mind.memories.length,2);assert.equal(a.state.mind.energy.remaining,5);assert.equal(a.state.mind.lifetimeXP,XP.concept+XP.understanding);
 }));
 test('target reuse remains restrictive for duplicate reinforcement, overwrites, unknown targets and repeated new claims',()=>{
  const a=app(),target={id:'known',content:'A saved claim about Veloria.',category:'fictional worldbuilding',categoryId:'fiction',topic:'Veloria',kind:'claim',current:true};

@@ -48,12 +48,12 @@ test('real case 3: legacy claim compound update preserves Alex, JavaScript histo
   assert.equal(name.content,'Jag heter Alex');assert.equal(name.intelligence.current,true);
   assert.match(preference.content,/nu Python istället för JavaScript/);assert.equal(preference.valueHistory[0].content,'mitt favoritprogrammeringsspråk är JavaScript.');
   assert.deepEqual(preference.neuronIds,original.neuronIds);assert.deepEqual(preference.synapseIds,original.synapseIds);assert.equal(preference.strength,original.strength);assert.equal(preference.activations,original.activations);
-  assert.ok(parent.componentMemoryIds.includes(preference.id));assert.equal(n.mind.energy.remaining,8);assert.equal(n.mind.lifetimeXP,XP.correction);
+  assert.ok(parent.componentMemoryIds.includes(preference.id));assert.equal(n.mind.energy.remaining,8);assert.equal(n.mind.lifetimeXP,XP.concept);
 });
 test('real case 3 also succeeds as a strictly validated v3 preamble plus targeted operation',()=>{
   const s=legacy(),assessment=batch(CHANGE,[decision({operation:'NO_MEMORY_CHANGE'}),update()]);assessment.operations[1].targetPart=1;
   const n=apply(s,CHANGE,assessment);
-  assert.equal(n.mind.memories.length,3);assert.equal(n.mind.energy.remaining,8);assert.equal(n.mind.history.length,1);assert.equal(n.mind.lifetimeXP,60);
+  assert.equal(n.mind.memories.length,3);assert.equal(n.mind.energy.remaining,8);assert.equal(n.mind.history.length,1);assert.equal(n.mind.lifetimeXP,XP.concept);
 });
 test('real case 4: finance preference keeps its category, starting strength, activations and cost',()=>{
   const s=fresh();s.mind.categories=[{id:CATEGORY,name:'personal profile'}];
@@ -61,7 +61,7 @@ test('real case 4: finance preference keeps its category, starting strength, act
   const n=apply(s,'Jag tycker om finans',d,'aaad0828-8e0d-4240-b790-ed9d8b827b54');
   const m=n.mind.memories[0];assert.equal(m.id,'aaad0828-8e0d-4240-b790-ed9d8b827b54');assert.equal(m.intelligence.kind,'preference');assert.equal(m.categoryId,CATEGORY);assert.equal(m.strength,.3);assert.equal(m.activations,1);assert.equal(m.neuronIds.length,2);assert.equal(m.synapseIds.length,1);assert.equal(n.mind.energy.remaining,8);
 });
-for(const [activity,cost,xp] of [['TALK',1,0],['TEACH',2,50],['DEEP_TRAINING',3,50]])test(`${activity} charges exactly ${cost} for committed new learning; XP stays ${xp}`,()=>{
+for(const [activity,cost,xp] of [['TALK',1,0],['TEACH',2,5],['DEEP_TRAINING',3,10]])test(`${activity} charges exactly ${cost} for committed new learning and awards ${xp} XP`,()=>{
   const n=apply(fresh(),'Jag tycker om finans',decision({kind:'preference'}),'paid',activity);
   assert.equal(n.mind.energy.remaining,10-cost);assert.equal(n.mind.history[0].energySpent,cost);assert.equal(n.mind.lifetimeXP,xp);
 });
@@ -91,11 +91,11 @@ test('invalid/invented/conflicting multi-operation references never partially mu
   const conflict=batch('I prefer light interfaces now. I prefer blue interfaces now.',[update(),update()]);
   assert.throws(()=>validateAssessment(conflict,learningContext('I prefer light interfaces now. I prefer blue interfaces now.',s.mind)));
 });
-test('two independent preference updates on one legacy compound are one transaction and one correction reward',()=>{
+test('two independent preference updates on one legacy compound are one transaction and one Teach reward',()=>{
   const s=legacy('My favorite programming language is JavaScript and my favorite color is blue.');
   const input='My favorite programming language is now Python. My favorite color is now green.';
   const d=batch(input,[update(),update()]);d.operations[0].targetPart=0;d.operations[1].targetPart=1;
-  const n=apply(s,input,d);assert.equal(n.mind.memories.length,3);assert.equal(n.mind.energy.remaining,8);assert.equal(n.mind.lifetimeXP,60);assert.equal(n.mind.history.length,1);
+  const n=apply(s,input,d);assert.equal(n.mind.memories.length,3);assert.equal(n.mind.energy.remaining,8);assert.equal(n.mind.lifetimeXP,XP.concept);assert.equal(n.mind.history.length,1);
   assert.equal(n.mind.memories.filter(m=>m.parentMemoryId===LEGACY_ID&&m.valueHistory.length===1).length,2);
 });
 test('free operations remain available at zero; failed chargeable batches preserve all state',()=>{
@@ -110,10 +110,14 @@ test('duplicates accept repeated submissions but reinforcement is bounded per va
   for(let i=0;i<30;i++)s=apply(s,i<10?DUPLICATE:`Mitt favoritprogrammeringsspråk är JavaScript, variant ${i}.`,duplicate(),`repeat-${i}`);
   assert.equal(s.mind.memories.length,1);assert.equal(s.mind.energy.remaining,0);assert.equal(s.mind.lifetimeXP,0);assert.ok(s.mind.memories[0].strength<=startStrength+.151);assert.equal(s.mind.memories[0].activations,4);assert.equal(s.mind.memories[0].reinforcementVariants.length,3);assert.equal(s.mind.processed.length,30);
 });
-test('request replay, daily XP limit and insufficient Energy cannot create double rewards or half-decompositions',()=>{
+test('request replay and insufficient Energy fail atomically; capped XP still commits a complete update',()=>{
   const s=legacy(),n=apply(s,CHANGE,update());assert.throws(()=>apply(n,CHANGE,update()),/processed/);
   for(const energy of [0,1]){const failed=legacy();failed.mind.energy.remaining=energy;const before=structuredClone(failed);assert.throws(()=>apply(failed,CHANGE,update()),/Energy/);assert.deepEqual(failed,before);}
-  const capped=legacy();capped.mind.history=[{day:Math.floor(capped.now/86400000),xp:500}];assert.throws(()=>apply(capped,CHANGE,update()),/XP limit/);
+  const capped=legacy();capped.mind.history=[{day:Math.floor(capped.now/86400000),xp:100}];capped.mind.stageXP=capped.mind.lifetimeXP=100;
+  const updated=apply(capped,CHANGE,update());
+  assert.equal(updated.mind.memories.length,3);assert.equal(updated.mind.energy.remaining,8);
+  assert.equal(updated.mind.stageXP,100);assert.equal(updated.mind.lifetimeXP,100);assert.equal(updated.mind.history.at(-1).xp,0);
+  assert.throws(()=>apply(updated,CHANGE,update()),/processed/);
 });
 test('contradictions charge only for a newly committed meaningful record, never an identical flag twice',()=>{
   const s=legacy('Earth orbits the Sun.');const d=decision({relationship:'CONTRADICTION',operation:'FLAG_CONTRADICTION',relatedMemoryId:LEGACY_ID});

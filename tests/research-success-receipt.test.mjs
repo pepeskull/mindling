@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scenario} from './support/research-success-harness.mjs';
 import {canRetryResearch} from '../src/autonomous/service-diagnostics.js';
-import {XP,activityReward} from '../src/economy/xp.js';
+import {XP,dailyXPEarned} from '../src/economy/xp.js';
 
 test('23-second server success with three sources/accepted claims reaches canonical integration',async()=>scenario(async c=>{
  await c.run();const task=c.saved();assert.equal(c.server.code,200);assert.ok(c.server.body.execution.durationMs>=23087);assert.equal(c.server.body.execution.validation.accepted,3);assert.equal(task.status,'COMPLETED');assert.equal(task.sourceReferences.length,3);assert.equal(c.app.state.mind.memories.length,3);assert.equal(task.researchExecution.outcomeUnknown,false);assert.equal(task.sourceRequests,4);assert.equal(task.modelCalls,3);assert.equal(c.app.state.mind.lifetimeXP,0);assert.equal(c.app.state.mind.energy.remaining,10);
@@ -21,23 +21,38 @@ for(const [fault,code,pending] of [['receipt','CHECKPOINT_PERSISTENCE_FAILED',fa
  if(pending){const calls=c.calls.length;await c.run();assert.equal(c.saved().status,'COMPLETED');assert.equal(c.app.state.mind.memories.length,3);assert.equal(c.calls.length,calls);}
  assert.doesNotMatch(JSON.stringify(c.logs),/Private|synthetic-received-secret|opaque-model|https:/);
 },{fault}));
-test('daily XP limit has a safe diagnostic, rolls back all candidates and permits a local retry on a later day',async()=>scenario(async c=>{
+for(const [earned,award] of [[0,10],[95,5],[99,1],[100,0]])test(`Deep Research at ${earned} daily XP saves all candidates and awards ${award} XP once`,async()=>scenario(async c=>{
  const dayLength=86400000,day=Math.floor(c.app.state.now/dayLength);
- c.app.state.mind.history.push({id:'fixture-xp',day,xp:XP.daily});
- c.app.state.mind.lifetimeXP=XP.daily;
- const energy=structuredClone(c.app.state.mind.energy),history=structuredClone(c.app.state.mind.history);
+ c.app.state.mind.history.push({id:'previous-day',day:day-1,xp:XP.daily},{id:'fixture-xp',day,xp:earned});
+ c.app.state.mind.lifetimeXP=XP.daily+earned;
+ c.app.state.mind.stageXP=earned;
  await c.run();
- const blocked=c.saved(),calls=c.calls.length;
- assert.equal(blocked.clientDiagnostic.integrationReason,'DAILY_XP_LIMIT');
- assert.equal(blocked.clientDiagnostic.correlationId,blocked.serviceDiagnostic.correlationId);
- assert.equal(blocked.pendingEvidence.length,3);assert.equal(c.app.state.mind.memories.length,0);
- assert.deepEqual(c.app.state.mind.history,history);assert.deepEqual(c.app.state.mind.energy,energy);
- assert.equal(c.app.state.mind.lifetimeXP,XP.daily);
+ const completed=c.saved(),mind=c.app.state.mind,calls=c.calls.length;
+ assert.equal(completed.status,'COMPLETED');assert.equal(completed.learningRewarded,true);
+ assert.equal(completed.pendingEvidence,undefined);assert.equal(completed.clientDiagnostic,undefined);
+ assert.equal(mind.memories.length,3);assert.equal(new Set(completed.knowledgeIds).size,3);
+ assert.equal(mind.history.filter(event=>event.requestId===completed.requestId).length,1);
+ assert.equal(mind.history.find(event=>event.requestId===completed.requestId).xp,award);
+ assert.equal(mind.stageXP,earned+award);assert.equal(mind.lifetimeXP,XP.daily+earned+award);
+ assert.equal(dailyXPEarned(mind.history,c.app.state.now),earned+award);
+ assert.equal(mind.energy.remaining,7);
+ const snapshot=structuredClone(mind);
  c.app.state.now+=dayLength;
+ assert.equal(dailyXPEarned(mind.history,c.app.state.now),0);
+ await c.run();assert.equal(c.calls.length,calls);assert.deepEqual(c.app.state.mind,snapshot);
+},{autonomous:false,activity:'DEEP_TRAINING'}));
+test('a failed transaction at the cap recovers locally, with exactly one Energy charge and no XP',async()=>scenario(async c=>{
+ const mind=c.app.state.mind,day=Math.floor(c.app.state.now/86400000);
+ mind.history.push({id:'fixture-xp',day,xp:100});mind.stageXP=mind.lifetimeXP=100;
+ await c.run();const blocked=c.saved(),calls=c.calls.length;
+ assert.equal(blocked.status,'BLOCKED');assert.equal(blocked.pendingEvidence.length,3);
+ assert.equal(c.app.state.mind.memories.length,0);assert.equal(c.app.state.mind.energy.remaining,10);
+ assert.equal(c.app.state.mind.lifetimeXP,100);
  await c.run();assert.equal(c.calls.length,calls);assert.equal(c.saved().status,'COMPLETED');
- assert.equal(c.app.state.mind.memories.length,3);
- assert.equal(c.app.state.mind.lifetimeXP,XP.daily+activityReward('TEACH'));
-},{autonomous:false}));
+ assert.equal(c.app.state.mind.memories.length,3);assert.equal(c.app.state.mind.energy.remaining,7);
+ assert.equal(c.app.state.mind.lifetimeXP,100);
+ assert.equal(c.app.state.mind.history.find(event=>event.requestId===c.saved().requestId).xp,0);
+},{autonomous:false,activity:'DEEP_TRAINING',fault:'integration'}));
 for(const [fault,followUp] of [['post-commit','STATE_REFRESH_FAILED'],['notification','COMPLETION_NOTIFICATION_FAILED']])test(`${fault} failure preserves the committed result and never resubmits it`,async()=>scenario(async c=>{
  if(fault==='notification')c.app.dashboard={showResearchResult(){throw Error('Private dashboard failure');}};
  await c.run();

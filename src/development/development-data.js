@@ -1,4 +1,5 @@
 import { energyCapacityForStage } from '../economy/energy.js';
+import { XP, dailyXPEarned } from '../economy/xp.js';
 import { canonicalBrain } from '../renderer/canonical-brain.js';
 import { graphData } from '../memory/graph-data.js';
 import { livePathways } from '../pathways/live-pathways.js';
@@ -38,6 +39,7 @@ export function developmentData(state = {}, life = null) {
     areaCount: memories.areas.length,
     energyText:state.energy?`${state.energy.remaining-(state.energy.bonus||0)} / ${energyCapacityForStage(stageNumber)}${state.energy.bonus?` + ${state.energy.bonus} bonus`:''}`:'—',
     stageXP: number(state.stageXP), lifetimeXP: number(state.lifetimeXP),
+    dailyXP: Math.min(XP.daily,dailyXPEarned(list(state.history),timestamp(state.developmentNow)??Date.now())),
     targetXP: stage && stage.number < 7 ? RULES[stage.number - 1].xp : null,
     milestones: Array.isArray(state.milestones) ? new Set(state.milestones).size : null,
     pathways: [...new Set(list(state.pathways).filter(value => typeof value === 'string' && value.trim()))],

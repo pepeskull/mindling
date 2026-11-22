@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {energyAt,energyCapacityForStage,setEnergyStage,creditEnergy,spendEnergy,energyProjection,energyLabel,ENERGY_INTERVAL} from '../src/economy/energy.js';
-import {createSandbox,newMindling,learn,evolve,XP,RULES,learningReward,upgradeGrowth} from '../src/preview/sandbox/engine.js';
+import {createSandbox,newMindling,learn,talk,evolve,XP,RULES,learningReward,upgradeGrowth} from '../src/preview/sandbox/engine.js';
+import {dailyXPEarned} from '../src/economy/xp.js';
 import {growCanonical,repairCanonicalPositions,NEURAL_CAPACITY} from '../src/brain/canonical-growth.js';
 import {classifyPathway,recordPathwayLearning,reclassifyPathwayEvidence,pathwayProfile} from '../src/pathways/pathways.js';
 import {canonicalBrain} from '../src/renderer/canonical-brain.js';
@@ -19,14 +20,27 @@ test('exact stage capacities, no refill, bonus separation, offline ticks and rol
  assert.equal(e.remaining,52);assert.equal(e.bonus,20);assert.equal(spendEnergy(e,2,22*ENERGY_INTERVAL).bonus,20);assert.match(energyLabel(e,22*ENERGY_INTERVAL).value,/32 \/ 32/);
 });
 test('new rewards and anti-farming preserve old history',()=>{
- assert.deepEqual(XP,{concept:5,understanding:12,correction:3,daily:100});assert.equal(learningReward('correction'),3);
- assert.equal(learningReward('understanding'),5);assert.equal(learningReward('understanding',{independentlyVerified:true}),12);
+ assert.deepEqual(XP,{concept:5,understanding:10,correction:3,daily:100});assert.equal(learningReward('correction'),3);
+ assert.equal(learningReward('understanding'),5);assert.equal(learningReward('understanding',{independentlyVerified:true}),10);
  let s=fresh();const text='Programming uses functions to organize reusable source code.';
  s=learn(s,{id:'first',text,activity:'TEACH'});assert.equal(s.mind.stageXP,5);assert.equal(s.mind.energy.remaining,8);assert.equal(s.mind.memories[0].content,text);
  s=learn(s,{id:'repeat',text,activity:'TEACH'});assert.equal(s.mind.stageXP,5);assert.equal(s.mind.milestones.length,1);
  assert.throws(()=>learn(s,{id:'first',text,activity:'TEACH'}));
- const capped=fresh();capped.mind.history=[{id:'old',day:0,xp:150}];capped.mind.stageXP=150;const history=JSON.stringify(capped.mind.history);
- assert.throws(()=>learn(capped,{id:'new',text,activity:'TEACH'}),/Daily XP/);upgradeGrowth(capped.mind,0);assert.equal(capped.mind.stageXP,150);assert.equal(JSON.stringify(capped.mind.history),history);
+ const capped=fresh();capped.mind.history=[{id:'old',day:0,xp:150}];capped.mind.stageXP=150;const history=structuredClone(capped.mind.history);
+ const learned=learn(capped,{id:'new',text,activity:'TEACH'});upgradeGrowth(learned.mind,0);
+ assert.equal(learned.mind.stageXP,150);assert.equal(learned.mind.memories.length,1);
+ assert.deepEqual(learned.mind.history.slice(0,-1),history);assert.equal(learned.mind.history.at(-1).xp,0);
+});
+test('Talk clips eligible XP and resumes its nominal award on the next UTC day',()=>{
+ const s=fresh();s.mind.history.push({id:'prior',day:0,xp:99});s.mind.stageXP=s.mind.lifetimeXP=99;
+ let next=talk(s,'Today I am exploring how the brain learns.',{id:'first-talk',rewardEligible:true});
+ assert.equal(next.mind.history.at(-1).xp,1);assert.equal(next.mind.stageXP,100);
+ next=talk(next,'I want to understand the stages of learning.',{id:'second-talk',rewardEligible:true});
+ assert.equal(next.mind.history.at(-1).xp,0);assert.equal(next.mind.energy.remaining,8);
+ next.now=86400000;
+ assert.equal(dailyXPEarned(next.mind.history,next.now),0);
+ next=talk(next,'Now I am exploring independent memory updates.',{id:'next-day-talk',rewardEligible:true});
+ assert.equal(next.mind.stageXP,103);assert.equal(dailyXPEarned(next.mind.history,next.now),3);
 });
 test('six attainable transitions preserve depleted/full/zero and bonus balances',()=>{
  for(let stage=1;stage<7;stage++)for(const base of [0,7,energyCapacityForStage(stage)]){

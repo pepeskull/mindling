@@ -79,8 +79,13 @@ test('generic or insufficient assessments fail atomically rather than invoking N
   const a=app(correctionState()),before=structuredClone(a.state);await assert.rejects(correctMemory(a,{memoryId:'original',text:fixture.corrected}));assert.deepEqual(a.state,before);assert.equal(a.changes,0);
  },{outcome:kind==='failure'?'failure':'success',mutate:value=>{if(kind==='Notes')value.decision.category='Notes: genres';if(kind==='low')value.decision.confidence=.3;if(kind==='clarify')Object.assign(value.decision,{operation:'ASK_FOR_CLARIFICATION',responseAction:'CLARIFY'});}});
 });
-test('concurrent submissions create one correction, one charge and one evidence record',async()=>mocked(async()=>{
- const a=app(correctionState()),results=await Promise.all([correctMemory(a,{memoryId:'original',text:fixture.corrected}),correctMemory(a,{memoryId:'original',text:fixture.corrected})]);assert.equal(results.filter(r=>r.changed).length,1);assert.equal(a.state.mind.memories.length,4);assert.equal(a.state.mind.energy.remaining,8);assert.equal(a.state.mind.lifetimeXP,XP.correction);assert.equal(a.state.mind.pathwayEvidence.length,1);
+for(const [earned,award] of [[0,XP.correction],[99,1],[100,0]])test(`concurrent corrections at ${earned} daily XP commit one version and award ${award} XP`,async()=>mocked(async()=>{
+ const a=app(correctionState());
+ a.state.mind.history.push({id:'prior',day:Math.floor(a.state.now/86400000),xp:earned});
+ a.state.mind.stageXP=a.state.mind.lifetimeXP=earned;
+ const results=await Promise.all([correctMemory(a,{memoryId:'original',text:fixture.corrected}),correctMemory(a,{memoryId:'original',text:fixture.corrected})]);
+ assert.equal(results.filter(r=>r.changed).length,1);assert.equal(a.state.mind.memories.length,4);assert.equal(a.state.mind.energy.remaining,8);
+ assert.equal(a.state.mind.history.at(-1).xp,award);assert.equal(a.state.mind.stageXP,earned+award);assert.equal(a.state.mind.lifetimeXP,earned+award);assert.equal(a.state.mind.pathwayEvidence.length,1);
 }));
 test('native insufficient classification is neutral, never Notes or a first-words topic',()=>{
  const a=analyzeNative(fixture.claim,{memories:[],categories:[]});assert.equal(a.category,'Unclassified claims');assert.equal(a.topic,'Unclassified claim');assert.equal(a.native.confidence.classification,.35);

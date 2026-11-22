@@ -7,7 +7,7 @@ import {defaultPermissions,assertResearchGrant} from '../../src/autonomous/resea
 import {understandInput} from '../../src/learning/input-understanding.js';
 const require=createRequire(import.meta.url),{handler}=require('../../src/server/mindling-reasoning.cjs'),fixture=require('./research-success-fixture.cjs');
 let sequence=0;
-export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,beforeAcquisition=null,mutate=null,evaluate=fixture.evaluation,acquisitionPayload=fixture.searchPayload,hypotheses=[],topic='Gaming',autonomous=true}={}){
+export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,beforeAcquisition=null,mutate=null,evaluate=fixture.evaluation,acquisitionPayload=fixture.searchPayload,hypotheses=[],topic='Gaming',autonomous=true,activity='TEACH'}={}){
  const originals={fetch:globalThis.fetch,warn:console.warn,now:Date.now,timer:globalThis.setTimeout,document:Object.getOwnPropertyDescriptor(globalThis,'document'),window:Object.getOwnPropertyDescriptor(globalThis,'window'),navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),key:process.env.SERVICE_API,model:process.env.SERVICE_MODEL,web:process.env.MINDLING_WEB_SEARCH};
  const control={kind,fault,afterBody,mutate,calls:[],logs:[],server:null,elapsed:0};Date.now=()=>originals.now()+control.elapsed;
  for(const [name,value] of [['window',new EventTarget()],['document',Object.assign(new EventTarget(),{hidden:false})],['navigator',{onLine:true}]])Object.defineProperty(globalThis,name,{configurable:true,value});
@@ -57,7 +57,7 @@ export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='s
  };
  try{
   await store.saveResearchPermissions('received-node',{enabled:true});await engine.loadPermissions();
-  const task=await engine.prepare(understandInput('Learn about '+topic,'TEACH'),'received-request',{autonomous});
+  const task=await engine.prepare(understandInput('Learn about '+topic,activity),'received-request',{autonomous});
   control.task=task;control.run=()=>engine.run(app.state.mind.learningTasks.find(t=>t.id===task.id),topic);
   control.tick=async()=>{
    await engine.tick();
