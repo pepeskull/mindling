@@ -15,8 +15,9 @@ async function integrate(app,quotes,{limitations=[],timeSensitive=false,mutate=(
  const id=sha('task'+(++sequence)),observedAt=Date.now()+sequence;
  const claims=quotes.map(([quote,sourceURL])=>({quote,quoteHash:sha(quote),sourceURL,sourceHash:sha(quote),observedAt,validAt:null,category:'Gaming',topic:'Chessboard structure'}));
  const task={id,version:1,engineVersion:4,mindlingId:app.state.mind.id,requestId:id,run:'run',mode:'FOUNDATION',topic:'Chessboard structure',objective:'Learn about chessboard structure',autonomous:true,energyCharged:true,status:'EVALUATING',code:'EVALUATING',message:'Evaluating evidence.',createdAt:observedAt,updatedAt:observedAt,attempts:1,sourceRequests:2,completedWork:['understanding','retrieval','plan','source','evidence'],referenceIds:[],knowledgeIds:[],plan:[],timeSensitive,limitations,pendingEvidence:claims,sourceReferences:claims.map(c=>({url:c.sourceURL,hash:c.sourceHash,authorizedAt:observedAt,observedAt,type:'web-search-synthesis'}))};
+ task.sourcePlan={request:AutonomousLearningEngine.prototype.context(task,task.topic),queries:[task.topic],sourceCategory:'web',available:true};
  app.state.mind.learningTasks||=[];app.state.mind.learningTasks.push(task);mutate(app.state,task);
- const engine={app,async loadPermissions(){return {enabled:true};},grant(){return null;},assertLive(){},notify(){},async patch(id,run,reducer){await app.change(s=>{reducer(s.mind.learningTasks.find(t=>t.id===id));return s;});return app.state.mind.learningTasks.find(t=>t.id===id);}};
+ const engine={app,async loadPermissions(){return {enabled:true};},grant(){return null;},assertLive(){},notify(){},recover(){},async patch(id,run,reducer){await app.change(s=>{reducer(s.mind.learningTasks.find(t=>t.id===id));return s;});return app.state.mind.learningTasks.find(t=>t.id===id);}};
  return AutonomousLearningEngine.prototype.integrate.call(engine,task,'run',new AbortController(),{enabled:true});
 }
 test('compact labels come only from safe semantic metadata, never raw source content',()=>{

@@ -23,6 +23,7 @@ export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='s
   if(control.fault==='evidence'&&task?.pendingEvidence?.length&&before?.pendingSourceEvaluation){control.fault=null;throw Error('Private evidence transaction details');}
   if(control.fault==='integration'&&task?.status==='COMPLETED'){control.fault=null;throw Error('Private integration transaction details');}
   this.state=next;
+  if(control.fault==='post-commit'&&task?.status==='COMPLETED'){control.fault=null;throw Error('Private renderer failure after commit');}
  }};
  let engine=new Engine(app);control.app=app;control.engine=engine;
  if(kind==='timeout')globalThis.setTimeout=(callback,ms,...args)=>originals.timer(callback,ms===55000&&app.state.mind.learningTasks?.[0]?.status==='RESEARCHING'?1:ms,...args);

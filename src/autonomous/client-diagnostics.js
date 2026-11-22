@@ -15,12 +15,15 @@ export const CLIENT_RESEARCH_CODES=Object.freeze({
 });
 const phases=['TRANSPORT','RESPONSE_PARSE','RECEIPT_VALIDATION','CHECKPOINT_VALIDATION','CHECKPOINT_PERSISTENCE','EVIDENCE_VALIDATION','EVIDENCE_PERSISTENCE','INTEGRATION'];
 const reasons=['HIDDEN','PAGEHIDE','OFFLINE','CANCELLED','DISPOSED','ACCESS_CHANGED','CLIENT_DEADLINE','RUN_DEADLINE'];
-export function clientResearchFailure(code,{id,mode,phase,received=false,validated=false,status=null,reason=null}){
+const integrationReasons=['PERMISSION_UNAVAILABLE','EVIDENCE_CHANGED','SUBJECT_MISMATCH','TASK_CHANGED','CLAIM_AUTHORIZATION_FAILED','ACTIVITY_CHARGE_UNAVAILABLE','ENERGY_UNAVAILABLE','DAILY_XP_LIMIT','REWARD_EVENT_MISSING','COMPLETION_INVALID','COMMIT_UNCONFIRMED','STORAGE_QUOTA','STORAGE_ABORTED','LOCAL_COMMIT_FAILED'];
+export function clientResearchFailure(code,{id,mode,phase,received=false,validated=false,status=null,reason=null,integrationReason}){
   const clientDiagnostic={version:1,correlationId:id,operation:mode,phase,code,received,validated,httpStatus:status,abortReason:reasons.includes(reason)?reason:null};
+  if(integrationReason!==undefined)clientDiagnostic.integrationReason=integrationReason;
   validateClientDiagnostic(clientDiagnostic);
   return Object.assign(Error(CLIENT_RESEARCH_CODES[code]),{code,clientDiagnostic});
 }
 export function validateClientDiagnostic(value){
-  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).sort().join(',')!=='abortReason,code,correlationId,httpStatus,operation,phase,received,validated,version'||value.version!==1||!/^[a-f0-9]{64}$/.test(value.correlationId)||!['research-acquire','research-evaluate'].includes(value.operation)||!phases.includes(value.phase)||!Object.hasOwn(CLIENT_RESEARCH_CODES,value.code)||typeof value.received!=='boolean'||typeof value.validated!=='boolean'||value.validated&&!value.received||!(value.httpStatus===null||Number.isSafeInteger(value.httpStatus)&&value.httpStatus>=100&&value.httpStatus<=599)||!(value.abortReason===null||reasons.includes(value.abortReason)))throw Error('Invalid client research diagnostic');
+  if(!value||typeof value!=='object'||Array.isArray(value)||Object.keys(value).filter(key=>key!=='integrationReason').sort().join(',')!=='abortReason,code,correlationId,httpStatus,operation,phase,received,validated,version'||value.version!==1||!/^[a-f0-9]{64}$/.test(value.correlationId)||!['research-acquire','research-evaluate'].includes(value.operation)||!phases.includes(value.phase)||!Object.hasOwn(CLIENT_RESEARCH_CODES,value.code)||typeof value.received!=='boolean'||typeof value.validated!=='boolean'||value.validated&&!value.received||!(value.httpStatus===null||Number.isSafeInteger(value.httpStatus)&&value.httpStatus>=100&&value.httpStatus<=599)||!(value.abortReason===null||reasons.includes(value.abortReason)))throw Error('Invalid client research diagnostic');
+  if(Object.hasOwn(value,'integrationReason')&&(value.phase!=='INTEGRATION'||value.code!=='INTEGRATION_FAILED'||!integrationReasons.includes(value.integrationReason)))throw Error('Invalid integration diagnostic');
   return value;
 }

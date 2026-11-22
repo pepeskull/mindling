@@ -15,8 +15,9 @@ SETUP = """async () => {
   const state={
     id:'sidebar-fixture',learningSession:'fixture-session',
     memories:[{id:'saturn',content:'Saturn has rings.',category:'Science',topic:'Saturn',
-      research:{taskId:taskId(1),sourceURL:source.url}},...Array.from({length:18},(_,i)=>({
-        id:'observation-'+String(i).padStart(2,'0'),content:'Observation '+i,topic:'Observation '+i,category:i%2?'Astronomy':'Science'
+      research:{taskId:taskId(1),sourceURL:source.url}},...Array.from({length:44},(_,i)=>({
+        id:'observation-'+String(i).padStart(2,'0'),content:'Observation '+i,topic:'Observation '+i,category:i%2?'Astronomy':'Science',
+        ...(i===0&&{supersededBy:'saturn'})
       }))],
     learningTasks:Array.from({length:20},(_,i)=>({
       version:1,engineVersion:4,id:taskId(i),mindlingId:'sidebar-fixture',
@@ -84,6 +85,7 @@ def check_sidebar(page, touch):
     assert tasks_panel.count() == memories_panel.count() == page.locator('.memory-browser').count() == 1
     assert tasks_tab.get_attribute('aria-selected') == 'true'
     assert tasks_panel.is_visible() and not memories_panel.is_visible()
+    assert sidebar.locator('.sidebar-tabs').evaluate('(el) => getComputedStyle(el).margin') == '10px 16px'
     assert page.locator('.neural-memory-grid .memory-eyebrow').all_text_contents() == [
         '01 / LEARNING & MEMORY', '02 / EXPLORE', '03 / PERSPECTIVE', '04 / CONNECTION DETAIL'
     ]
@@ -172,17 +174,22 @@ def check_sidebar(page, touch):
     memory_page = memories_panel.locator('[data-memory-page-label]')
     memory_previous = memories_panel.locator('[data-memory-page=prev]')
     memory_next = memories_panel.locator('[data-memory-page=next]')
-    assert memory_rows.count() == 14 and memory_page.inner_text() == '1–14 of 19' and memory_previous.is_disabled()
+    assert memory_rows.count() == 14 and memory_page.inner_text() == '1–14 of 45' and memory_previous.is_disabled()
+    assert memory_rows.first.locator('.memory-entry-state').inner_text() == 'Historical'
     assert memories_panel.locator('ul').evaluate('(el) => el.scrollHeight > el.clientHeight')
     assert memory_rows.first.evaluate('''el => {
       const style=getComputedStyle(el);
       return style.borderLeftWidth==='2px' && style.backgroundImage.startsWith('linear-gradient') && !!style.getPropertyValue('--memory-area-color');
     }''')
     memory_next.click()
-    assert memory_rows.count() == 5 and memory_page.inner_text() == '15–19 of 19' and memory_next.is_disabled()
+    assert memory_rows.count() == 14 and memory_page.inner_text() == '15–28 of 45'
     memory_previous.click()
-    assert memory_page.inner_text() == '1–14 of 19'
+    assert memory_page.inner_text() == '1–14 of 45'
     memory_next.click()
+    memory_next.click()
+    assert memory_rows.count() == 14 and memory_page.inner_text() == '29–42 of 45'
+    memory_next.click()
+    assert memory_rows.count() == 3 and memory_page.inner_text() == '43–45 of 45' and memory_next.is_disabled()
     memory_rows.last.press('Enter')
     assert memory_rows.last.get_attribute('aria-pressed') == 'true'
     assert memory_rows.last.evaluate('(el) => getComputedStyle(el).backgroundImage') == 'none'
@@ -196,7 +203,7 @@ def check_sidebar(page, touch):
       mountSidebarView();
     }''')
     page.wait_for_function('view.taskNodes.size === 19 && !view.loadingView')
-    assert memories_panel.is_visible() and memory_page.inner_text() == '15–19 of 19'
+    assert memories_panel.is_visible() and memory_page.inner_text() == '43–45 of 45'
     assert memory_rows.last.get_attribute('aria-pressed') == 'true'
     memories_tab.press('Home')
     assert tasks_panel.is_visible() and not memories_panel.is_visible()
@@ -214,6 +221,19 @@ def check_sidebar(page, touch):
     page.get_by_role('button', name='Reset view').click()
     assert page.evaluate('view.autoFit && view.zoom === view.fitZoom')
     assert page.evaluate('JSON.stringify(sidebarState) === initialState')
+
+    page.evaluate('''() => {
+      const updated=structuredClone(sidebarState),previous=updated.learningTasks.at(-1);
+      updated.learningTasks.push({...previous,id:'a'.repeat(64),requestId:'new-request',topic:'Topic 20',status:'COMPLETED',updatedAt:99});
+      updated.memories.push({id:'zz-new',content:'A newly saved observation.',topic:'New observation',category:'Science'});
+      view.update(updated);
+    }''')
+    page.wait_for_function('view.taskNodes.size === 20 && view.graph.memories.length === 46')
+    assert rows.count() == 6 and pagination.inner_text() == '15–20 of 20'
+    memories_tab.click()
+    assert memory_rows.count() == 4 and memory_page.inner_text() == '43–46 of 46'
+    assert memory_rows.last.locator('.memory-entry-title').inner_text() == 'New observation'
+    assert page.locator('#memory-inspector-title').inner_text() == 'Saturn'
 
 with sync_playwright() as playwright:
     browser = playwright.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox'])
