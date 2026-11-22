@@ -4,6 +4,10 @@ import os
 from playwright.sync_api import expect, sync_playwright
 
 BASE = os.environ.get('MINDLING_TEST_URL', 'http://127.0.0.1:8771')
+DERBY_PASSAGES = [
+    'The **Madrid derby** is distinct from other rivalries and pits **Real Madrid** against **Atlético de Madrid**.',
+    'The **Seville derby**, also called *El Gran Derbi*, is played by **Sevilla FC** and **Real Betis**.',
+]
 BOOTSTRAP = """
 const preview=new URLSearchParams(location.search).has('stage-preview');
 const {MindlingApp}=await import('/src/app/app.js');
@@ -141,6 +145,51 @@ with sync_playwright() as playwright:
         page.evaluate("""()=>{const id='plain-talk';app.dashboard.beginInteraction(id,'TALK');
           app.dashboard.presentInteraction(id,{accepted:true,talkResponse:{answer:'A plain answer.'}});}""")
         expect(body).to_have_text('A plain answer.')
+
+        task_id = page.evaluate("""async passages=>{
+          const {learningEngine}=await import('/src/autonomous/learning-engine.js');
+          const {understandInput}=await import('/src/learning/input-understanding.js');
+          const {digest}=await import('/src/autonomous/tasks.js');
+          const requestId='derby-talk',engine=learningEngine(app);
+          app.dashboard.beginInteraction(requestId,'TALK');
+          const task=await engine.prepare(understandInput('What are the main La Liga football derbies in Spain?','TALK'),requestId);
+          app.dashboard.presentInteraction(requestId,{accepted:true,talkResponse:{researchTaskId:task.id,insufficientInformation:true}});
+          const at=Date.now(),url='https://example.com/derbies',hash=await digest(passages.join(''));
+          const saved=await Promise.all(passages.map(async (text,i)=>({
+            id:'derby-'+i,content:`Source observation (${new Date(at).toISOString()}) from ${url}: ${text}`,
+            category:'Spanish football',source:'AUTONOMOUS',neuronIds:['origin'],synapseIds:[],relatedMemoryIds:[],
+            research:{taskId:task.id,sourceURL:url,observedAt:at,sourceHash:hash,quoteHash:await digest(text),evidenceText:text}
+          })));
+          // Simulate the successful, source-backed state emitted by the Research engine.
+          const completed=await engine.patch(task.id,null,(current,state)=>{
+            state.mind.memories.push(...saved);
+            Object.assign(current,{status:'COMPLETED',code:'SOURCE_BACKED',knowledgeIds:saved.map(m=>m.id),
+              completedWork:['understanding','plan','source','evidence','knowledge','answer'],
+              sourceReferences:[{url,title:'Synthetic derby coverage',authorizedAt:at,observedAt:at,hash}]});
+          });
+          engine.notify(completed);
+          return completed.id;
+        }""", DERBY_PASSAGES)
+        expect(body.locator('p')).to_have_count(2)
+        expect(body.locator('strong')).to_have_text(['Madrid derby', 'Real Madrid', 'Atlético de Madrid', 'Seville derby', 'Sevilla FC', 'Real Betis'])
+        expect(body.locator('em')).to_have_text('El Gran Derbi')
+        expect(body).not_to_contain_text('**')
+
+        page.reload()
+        page.wait_for_function('window.fixtureReady')
+        if preview:
+            page.locator('.sandbox-controls > summary').click()
+        page.evaluate("""async id=>{
+          const {learningEngine}=await import('/src/autonomous/learning-engine.js');
+          const task=app.state.mind.learningTasks.find(t=>t.id===id),reply=learningEngine(app).reply(task);
+          app.dashboard.beginInteraction('reopen-derby','TALK');
+          app.dashboard.presentInteraction('reopen-derby',{accepted:true,talkResponse:reply});
+        }""", task_id)
+        expect(body.locator('p')).to_have_count(2)
+        expect(body.locator('strong')).to_have_text(['Madrid derby', 'Real Madrid', 'Atlético de Madrid', 'Seville derby', 'Sevilla FC', 'Real Betis'])
+        expect(body.locator('em')).to_have_text('El Gran Derbi')
+        assert page.evaluate("""passages=>app.state.mind.memories.filter(m=>m.id.startsWith('derby-')).every((m,i)=>
+          m.research.evidenceText===passages[i]&&m.content.endsWith(passages[i]))""", DERBY_PASSAGES)
 
         page.locator('[data-view=memories]').click()
         page.wait_for_function('memoryView.layout && !memoryView.loadingView')

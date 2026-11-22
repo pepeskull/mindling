@@ -54,6 +54,52 @@ test('Talk renders the actual answer without a source list or an empty citation 
   assert.equal(activityResult('TALK',{accepted:true,talkResponse:{insufficientInformation:true,memoryIds:[]}}),"I don't know that yet.");
 });
 
+const derbyPassages=[
+  'The **Madrid derby** is distinct from other rivalries and pits **Real Madrid** against **Atlético de Madrid**.',
+  'The **Seville derby**, also called *El Gran Derbi*, is played by **Sevilla FC** and **Real Betis**.'
+];
+const emphasisTags=paragraph=>paragraph.children.filter(child=>typeof child!=='string').map(child=>[child.tag,child.textContent]);
+
+test('live and restored Talk research excerpts format both La Liga derby passages',t=>{
+  replaceGlobal(t,'document',documentFixture());
+  const task=researchTask({status:'COMPLETED',knowledgeIds:['madrid','seville']});
+  const memories=derbyPassages.map((content,index)=>({content,id:task.knowledgeIds[index],research:{taskId:task.id}}));
+  const saved=JSON.stringify({task,memories});
+  for(const state of [{task,memories},JSON.parse(saved)]){
+    const view=panel(),model=researchPresentation(state.task,state.memories);
+    renderResponseContent(view.host,model);
+    assert.equal(view.status.textContent,'I learned something new!');
+    assert.equal(view.content.children.length,2);
+    assert.deepEqual(emphasisTags(view.content.children[0]),[['strong','Madrid derby'],['strong','Real Madrid'],['strong','Atlético de Madrid']]);
+    assert.deepEqual(emphasisTags(view.content.children[1]),[['strong','Seville derby'],['em','El Gran Derbi'],['strong','Sevilla FC'],['strong','Real Betis']]);
+    assert(!view.content.textContent.includes('*'));
+    assert.equal(JSON.stringify(state),saved);
+  }
+});
+
+test('Talk preserves literal asterisks and malformed spans and treats HTML as text',t=>{
+  replaceGlobal(t,'document',documentFixture());
+  const view=panel(),answer='Use 3*4*5 or 2 * 3, and keep `*glob*`. **Unclosed\n\n**Atlético** — *El Gran Derbi*\n<img src=x onerror="alert(1)">';
+  renderResponseContent(view.host,{answer,message:''});
+  assert.equal(view.content.children[0].textContent,'Use 3*4*5 or 2 * 3, and keep `*glob*`. **Unclosed');
+  assert.equal(view.content.children[1].textContent,'Atlético — El Gran Derbi\n<img src=x onerror="alert(1)">');
+  assert.deepEqual(emphasisTags(view.content.children[1]),[['strong','Atlético'],['em','El Gran Derbi']]);
+});
+
+test('Talk formats nested emphasis and falls back to clean text if emphasis elements cannot be created',t=>{
+  const doc=documentFixture();
+  replaceGlobal(t,'document',doc);
+  const view=panel(),answer='**The derby is called *El Gran Derbi***. ***Atlético***.';
+  renderResponseContent(view.host,{message:'',answer});
+  const strong=view.content.children[0].children.find(child=>child.tag==='strong');
+  assert.deepEqual(emphasisTags(strong),[['em','El Gran Derbi']]);
+  assert.equal(view.content.textContent,'The derby is called El Gran Derbi. Atlético.');
+  doc.createElement=tag=>{if(tag==='em')throw Error('emphasis unavailable');return new Element(tag);};
+  renderResponseContent(view.host,{message:'',excerpts:[answer]});
+  assert.equal(view.content.textContent,'The derby is called El Gran Derbi. Atlético.');
+  assert.deepEqual(emphasisTags(view.content.children[0]),[]);
+});
+
 test('Teach and Deep report saved changes, including mixed and no-change decisions',()=>{
   const existing={id:'existing',submissionId:'previous'},created={id:'new:1',submissionId:'new'};
   const result=learningEvent=>({accepted:true,learningEvent});
