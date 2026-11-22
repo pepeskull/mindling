@@ -35,9 +35,10 @@ export class EvolutionPreview {
     this.originalLabel = this.host.getAttribute('aria-label');
     document.querySelector('#app').classList.add('dashboard-preview');
     document.querySelector('#app').classList.toggle('original-preview-framing', this.originalFraming);
+    const memoryViewStore=this.db||this.store;
     this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged,
       onLearningTask:typeof this.change==='function'?async(action,id,payload)=>{const result=await learningEngine(this).act(action,id,payload);if(result?.needsClarification)this.dashboard.showClarification(result.talkResponse);return result;}:null,
-      onMemoryView:this.interactive?(id,value)=>{if(value)this.external?.assertWritable();return (this.db||this.store).memoryView(id,value);}:null,
+      onMemoryView:memoryViewStore?.memoryView?(id,value)=>{if(value)this.external?.assertWritable();return memoryViewStore.memoryView(id,value);}:null,
       onConnectAreas:this.interactive&&typeof this.change==='function'?(ids,identity,progress)=>connectAreas(this,ids,identity,progress):null,
       onConnectMemories:this.interactive&&typeof this.change==='function'?(ids,identity)=>connectMemories(this,ids,identity):null,
       onMergeAreas:typeof this.change==='function'?async(proposal,identity)=>{await this.change(s=>{if(s.mind.id!==identity)throw Error('Mindling changed.');return {...s,mind:commitHierarchy(s.mind,graphData(s.mind),proposal)};},{preserveGameplay:true});}:null,

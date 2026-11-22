@@ -2,10 +2,14 @@ import test from 'node:test';import assert from 'node:assert/strict';
 import {graphData,filterGraph,layoutGraph} from '../src/memory/graph-data.js';
 import {mergeProposal,commitHierarchy,areaRadius} from '../src/memory/knowledge-hierarchy.js';
 import {clusterPositions} from '../src/memory/cluster-drag.js';
+import {reconcileAreaEvidence} from '../src/semantic/reconcile-area-evidence.js';
 import {readFileSync} from 'node:fs';
 const fixture=()=>({id:'fixture',memories:['Sport','Association football','Association football','Science'].map((category,i)=>({id:'m'+i,content:'Stored claim '+i,category,topic:'Topic '+i,source:'SERVICE',relatedMemoryIds:i===1?['m2']:[]}))});
 test('merged render root contains every incoming memory; child remains addressable without a second large cell',()=>{
- const m=fixture(),before=structuredClone(m),g=graphData(m),a=g.areas.find(a=>a.label==='Sport'),b=g.areas.find(a=>a.label==='Association football');
+ const m=fixture(),content='Association football is a type of sport.';
+ Object.assign(m.memories[1],{content,contentIntegrity:{version:1,status:'captured',length:content.length},analysis:{name:'mindling-learning-service',verification:'unverified-player-claim'},intelligence:{kind:'claim',current:true}});
+ reconcileAreaEvidence({mind:m});
+ const before=structuredClone(m),g=graphData(m),a=g.areas.find(a=>a.label==='Sport'),b=g.areas.find(a=>a.label==='Association football');
  const p=mergeProposal(g,null,a.id,b.id);assert.deepEqual(p,mergeProposal(g,null,b.id,a.id));const next=commitHierarchy(m,g,p),graph=graphData(next),layout=layoutGraph(filterGraph(graph)),preview=layoutGraph(filterGraph(graph,{area:a.id}));
  assert.deepEqual(m,before);assert.deepEqual(next.memories,before.memories);assert.equal(layout.nodes.filter(n=>n.kind==='area').length,2);const root=layout.nodes.find(n=>n.id===a.id),child=layout.nodes.find(n=>n.id===b.id);
  assert.equal(child.kind,'topic');assert(child.hierarchyArea);assert(root.r>areaRadius(a));assert(root.r>child.r*2);
