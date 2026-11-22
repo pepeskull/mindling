@@ -68,16 +68,20 @@ export function advancePreviewLife(state) {
   return state;
 }
 
+export function basicCareNeeded(life, type) {
+  const target = type === 'NOURISH' ? 'nutrition' : type === 'REST' ? 'rest' : 'health';
+  return !(life.attributes[target] >= 100) || (type === 'CARE' && life.attributes.wellbeing < 100);
+}
+
 export function carePreview(input, type) {
   const s = structuredClone(input), m = s.mind, rule = LIFE_RULES.care[type];
   if (!m || m.life.lifeState !== 'ALIVE' || s.tombstones.some(t => t.id === m.id)) throw Error('A deceased identity cannot be revived');
   if (!rule) throw Error('Unknown care action');
   const life = upgradePreviewLife(m.life);
   if (life.care[type] != null && s.now - life.care[type] < rule.cooldownHours * HOUR) throw Error('Care cooldown is still active');
-  const target = type === 'NOURISH' ? 'nutrition' : type === 'REST' ? 'rest' : 'health';
   // Preventive sandbox care below 100%; production retains its 85/80/90 gates.
   // Existing gains and 6/8/12-hour cooldowns are shared without changing production.
-  if (life.attributes[target] >= 100 && !(type === 'CARE' && life.attributes.wellbeing < 100)) throw Error('No care needed');
+  if (!basicCareNeeded(life, type)) throw Error('No care needed');
   for (const [key, gain] of [['nutrition', rule.nutritionGain], ['rest', rule.restGain], ['health', rule.healthGain], ['wellbeing', rule.wellbeingGain]]) if (gain) life.attributes[key] = clamp(life.attributes[key] + gain);
   life.care[type] = s.now;
   return s;
