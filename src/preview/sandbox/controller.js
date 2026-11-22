@@ -55,7 +55,7 @@ export class SandboxPreview extends EvolutionPreview {
         case 'fixture':await this.runFixture();break;
       }
     });});
-    this.listen(document.querySelector('#interaction-form'),'submit',e=>{e.preventDefault();this.action(()=>this.submitLearning());});
+    this.listen(document.querySelector('#interaction-form'),'submit',e=>{e.preventDefault();this.action(()=>this.presentLearning(),{feedback:false});});
     for(const button of document.querySelectorAll('[data-care]')){
       const detail=button.querySelector('small');
       this.careLabels??=[];this.careLabels.push([detail,detail.textContent]);
@@ -87,7 +87,20 @@ export class SandboxPreview extends EvolutionPreview {
     this.listen(document,'visibilitychange',()=>{if(!document.hidden&&!this.busy)this.change(s=>s).catch(error=>this.status(error.message));});
   }
   listen(node,type,fn){node.addEventListener(type,event=>{if(!this.external?.locked)fn(event);},{signal:this.listeners.signal});}
-  async action(fn){if(this.busy||this.external?.locked)return;this.busy=true;document.querySelector('#interaction-form').classList.add('processing');this.updateInputAvailability();this.status('Working…');try{const result=await fn();if(this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');return result;}catch(e){this.status(e.message||'Preview operation failed; state unchanged.');}finally{this.busy=false;document.querySelector('#interaction-form').classList.remove('processing');this.updateInputAvailability();}}
+  async action(fn,{feedback=true}={}){
+    if(this.busy||this.external?.locked)return;
+    this.busy=true;document.querySelector('#interaction-form').classList.add('processing');this.updateInputAvailability();
+    if(feedback)this.status('Working…');
+    try{
+      const result=await fn();
+      if(feedback&&this.panel?.querySelector('[data-sandbox-status]').textContent==='Working…')this.status('Preview state saved.');
+      return result;
+    }catch(error){
+      const message=error.message||'Preview operation failed; state unchanged.';
+      if(feedback)this.status(message);
+      else{const diagnostics=this.panel?.querySelector('[data-sandbox-status]');if(diagnostics)diagnostics.textContent=message;}
+    }finally{this.busy=false;document.querySelector('#interaction-form').classList.remove('processing');this.updateInputAvailability();}
+  }
   status(text){if(this.disposed)return;const el=this.panel?.querySelector('[data-sandbox-status]');if(el)el.textContent=text;const inline=document.querySelector('#interaction-form .interaction-status');if(inline){inline.textContent=text;inline.classList.add('visible');}}
   async change(reducer,{preserveGameplay=false,researchGrant=null}={}) {
     this.external?.assertWritable();
@@ -104,6 +117,21 @@ export class SandboxPreview extends EvolutionPreview {
       }
     } finally { this.pendingMutations--; }
   }
+  async presentLearning(){
+    const input=document.querySelector('#mindling-input'),text=input.value,activity=this.activity;
+    if(!text.trim())return;
+    if(text.length>LEARNING_INPUT_LIMIT){this.status('Use at most 2,000 characters. Your text has not been submitted.');return;}
+    const id=crypto.randomUUID(),interaction=this.dashboard.beginInteraction(id,activity,{inputValue:text});
+    try{
+      const result=await this.submitLearning({id,text,activity});
+      if(this.dashboard.interactionToken!==interaction)return;
+      this.dashboard.presentInteraction(id,result);
+      if(result.accepted&&input.value===text&&!interaction.clarification)input.value='';
+    }catch(error){
+      if(this.dashboard.interactionToken===interaction)this.dashboard.presentInteraction(id,{accepted:false});
+      throw error;
+    }
+  }
   async submitLearning(request=null){
     this.external?.assertWritable();
     let text=request?.text??document.querySelector('#mindling-input').value;
@@ -112,11 +140,9 @@ export class SandboxPreview extends EvolutionPreview {
     const m=this.state.mind;if(!m||m.life.lifeState!=='ALIVE')throw Error('Create a living test Mindling first');
     const activity=request?.activity??this.activity;
     const id=request?.id??crypto.randomUUID();
-    if(!request)this.dashboard.beginInteraction(id);
-    if(!request&&activity==='TALK')this.dashboard.showTalkResponse({id,state:'processing'});
     try {
       const input=interpretInteraction(this,text,activity,id,request?.continuation),{interpretation}=input;
-      if(input.result){if(!request)this.dashboard.showTalkResponse({id,state:'clarification',reply:input.result.talkResponse});return input.result;}
+      if(input.result)return input.result;
       input.guard();
       if(input.taskId&&input.paid){
         const task=await learningEngine(this).prepare(interpretation,id,{taskId:input.taskId,guard:input.guard});learningEngine(this).follow(task,id);learningEngine(this).startIfAuthorized(task);
@@ -125,25 +151,18 @@ export class SandboxPreview extends EvolutionPreview {
       if(interpretation.requiresResearch){
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
         const task=await learningEngine(this).prepare(interpretation,id,{taskId:input.taskId,guard:input.guard});learningEngine(this).startIfAuthorized(task);
-        this.status(`${task.message} Rewards apply only after qualifying learning is saved.`);
-        document.querySelector('#mindling-input').value='';
-        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return {accepted:true,message:task.message};
+        this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return {accepted:true,learningTaskId:task.id,message:task.message};
       }
       if(activity==='TALK'){
         const reply=await knowledgeTalk(this,text,id,{interpretation,guard:input.guard});
-        if(!request)this.dashboard.showTalkResponse({id,state:'ready',reply});
-        this.status(reply.energySpent===0?'Existing research task reused · no Energy spent.':'Talk completed · 1 Energy spent.');
-        document.querySelector('#mindling-input').value='';
         this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'accepted',activity});return {accepted:true,talkResponse:reply};
       }
       text=interpretation.factText||text;
       this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity});
       const {event,message,refused}=await teachMemory(this,{id,text,activity,taskId:input.taskId},{guard:input.guard});
-      this.status(`${message} ${event?.energySpent?`${event.energySpent} Energy spent.`:'No Energy spent.'}${event?.xp?'':' No XP awarded.'}`);
-      document.querySelector('#mindling-input').value='';
       this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:refused?'cancel':'accepted',activity});
-      return {accepted:true,message};
-    } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});if(!request&&activity==='TALK')this.dashboard.showTalkResponse({id,state:'error',message:error.message});throw error;}
+      return {accepted:true,message,learningEvent:event};
+    } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});throw error;}
   }
   async care(type){await this.change(s=>carePreview(s,type));}
   setActivity(type){

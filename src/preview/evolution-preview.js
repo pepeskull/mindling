@@ -37,7 +37,7 @@ export class EvolutionPreview {
     document.querySelector('#app').classList.toggle('original-preview-framing', this.originalFraming);
     const memoryViewStore=this.db||this.store;
     this.dashboard = new Dashboard(this.events, { readOnly: !this.interactive, ...this.dashboardOptions, onViewChange: this.primaryViewChanged,
-      onLearningTask:typeof this.change==='function'?async(action,id,payload)=>{const result=await learningEngine(this).act(action,id,payload);if(result?.needsClarification)this.dashboard.showClarification(result.talkResponse);return result;}:null,
+      onLearningTask:typeof this.change==='function'?async(action,id,payload)=>{const previous=this.dashboard.interactionToken,result=await learningEngine(this).act(action,id,payload);if(result?.needsClarification)this.dashboard.showClarification(result.talkResponse,previous);return result;}:null,
       onMemoryView:memoryViewStore?.memoryView?(id,value)=>{if(value)this.external?.assertWritable();return memoryViewStore.memoryView(id,value);}:null,
       onConnectAreas:this.interactive&&typeof this.change==='function'?(ids,identity,progress)=>connectAreas(this,ids,identity,progress):null,
       onConnectMemories:this.interactive&&typeof this.change==='function'?(ids,identity)=>connectMemories(this,ids,identity):null,

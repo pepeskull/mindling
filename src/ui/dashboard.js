@@ -1,3 +1,4 @@
+import {activityResult, isCurrentInteraction, processingMessage, renderClarificationContent, renderResponseContent, researchPresentation} from './player-communication.js';
 import {IntegrationView} from '../integration/integration-view.js';
 import {NetworkView} from '../network/network-view.js';
 import {ClarificationNotifications} from './clarification-notifications.js';
@@ -42,6 +43,7 @@ export class Dashboard {
   #onClarification;
   #onResearchAccess;
   #onCancelClarification;
+  #interaction = null;
 
   constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onMemoryView=null, onMergeAreas=null, onConnectMemories=null, onConnectAreas=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, readOnly = false } = {}) {
     for(const node of document.querySelectorAll('[data-activity-mode], [data-input-mode]')){
@@ -66,17 +68,13 @@ export class Dashboard {
     this.#unsubscribe = events.on(EVENTS.STATE_READY, (state) => this.render(state));
     this.#eventUnsubscribes = [
       events.on(EVENTS.NEURAL_INPUT, event => this.#network.ingest(event)),
-      events.on(EVENTS.MEMORY_CREATED, () => this.#showStatus("Memory formed")),
-      events.on(EVENTS.MEMORY_REINFORCED, () => this.#showStatus("Memory reinforced")),
-      events.on(EVENTS.LEARNING_FAILED, () => this.#showStatus("Learning could not be saved")),
-      events.on(EVENTS.EVENT_HANDLER_FAILED, () => this.#showStatus("A dashboard update could not be completed")),
       events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
     this.notifications=new ClarificationNotifications(document.querySelector('.header-status'),{canAct:()=>!this.locked,onTask:!readOnly&&onLearningTask?async id=>{
       if(this.#pending||!pendingClarifications(this.#state).some(task=>task.id===id))throw Error('Clarification unavailable.');
-      const identity=this.#state.mindlingId,result=await this.onLearningTask('clarify',id);
+      const identity=this.#state.mindlingId,previous=this.interactionToken,result=await this.onLearningTask('clarify',id);
       if(identity!==this.#state?.mindlingId||this.#listeners.signal.aborted)return;
-      if(result?.needsClarification){this.showClarification(result.talkResponse);document.querySelector('[data-talk-content] button')?.focus();}
+      if(result?.needsClarification)this.showClarification(result.talkResponse,previous);
     }:null});
     if(!readOnly&&onResearchAccess)this.researchAccess=new ResearchAccess(document.querySelector('.footer-links'),{getState:()=>this.#state,onSave:enabled=>this.#onResearchAccess(enabled),canAct:()=>!this.locked});
     this.#form = document.querySelector("#interaction-form");
@@ -95,7 +93,7 @@ export class Dashboard {
     this.#listen(document.querySelector("[data-view=network]"), "click", () => this.#setPrimaryView("network"));
     document.querySelectorAll("[data-mobile-view]").forEach(button => this.#listen(button, "click", () => this.#openMobileView(button.dataset.mobileView)));
     this.#listen(document.querySelector("[data-download-profile]"), "click", () => { if (this.#state) downloadMindlingProfile(this.#state, this.#life); });
-    this.#listen(document.querySelector('[data-dismiss-talk]'),'click',()=>{this.#onCancelClarification?.();this.talkDismissed=true;document.querySelector('[data-talk-response]').hidden=true;if(this.talkOpenedPanel)document.querySelector('.right-panel').classList.remove('mobile-open');this.talkOpenedPanel=false;});
+    this.#listen(document.querySelector('[data-dismiss-talk]'),'click',()=>{this.#onCancelClarification?.();this.#interaction=null;document.querySelector('[data-talk-response]').hidden=true;this.#refreshNotifications();if(this.talkOpenedPanel)document.querySelector('.right-panel').classList.remove('mobile-open');this.talkOpenedPanel=false;});
     this.#listen(document.querySelector("#mindling-input"), "focus", () => document.documentElement.classList.add("input-active"));
     this.#listen(document.querySelector("#mindling-input"), "blur", () => document.documentElement.classList.remove("input-active"));
     const restore=()=>{const view=location.hash.slice(1)||'dashboard';if(['dashboard','development','memories','network','integration'].includes(view))this.#setPrimaryView(view,false);};
@@ -134,10 +132,10 @@ export class Dashboard {
   }
 
   render(state) {
-    if(this.#state?.mindlingId!==state.mindlingId){this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.talkRequest=null;this.talkDismissed=false;}
+    if(this.#state?.mindlingId!==state.mindlingId){this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.#interaction=null;}
     this.#state = state;
     this.stageChip.setName(state.name);
-    this.researchAccess?.refresh();this.notifications?.update(state);
+    this.researchAccess?.refresh();this.#refreshNotifications();this.#refreshResearch();
     const brain=stageMorphologyCounts(state.stage);
     const stats = {
       neurons: brain.neurons ?? '—',
@@ -192,6 +190,7 @@ export class Dashboard {
     document.querySelectorAll("[data-view]").forEach(item => { const active = item.dataset.view === view; item.classList.toggle("active", active); if (active) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current"); });
     document.querySelectorAll("[data-mobile-view]").forEach(item => item.classList.toggle("active", item.dataset.mobileView === view));
     this.#onViewChange?.(view);
+    this.#refreshNotifications();this.#refreshResearch();
   }
 
   #openMobileView(view) {
@@ -263,81 +262,151 @@ export class Dashboard {
 
   async #submitInteraction(event) {
     event.preventDefault();
-    const input = document.querySelector("#mindling-input");
-    if (input.value.length > LEARNING_INPUT_LIMIT) { this.#showStatus('Use at most 2,000 characters. Your text has not been submitted.'); return; }
-    const text = input.value.trim();
-    if (!text || this.#pending) return;
-    this.#pending = true; const submit = this.#form.querySelector("button[type='submit']"); submit.disabled = true;
-    const id=crypto.randomUUID();this.beginInteraction(id);
+    const input=document.querySelector('#mindling-input');
+    if(input.value.length>LEARNING_INPUT_LIMIT){this.#showStatus('Use at most 2,000 characters. Your text has not been submitted.');return;}
+    const text=input.value.trim();
+    if(!text||this.#pending)return;
+    const id=crypto.randomUUID(),activity=this.#mode,submitted=input.value;
+    this.#pending=true;
+    const submit=this.#form.querySelector("button[type='submit']");
+    submit.disabled=true;
+    const interaction=this.beginInteraction(id,activity,{inputValue:submitted});
     this.#form.classList.add('processing');
-    if(this.#mode==='TALK')this.showTalkResponse({id,state:'processing'});
-    this.#showStatus("Understanding request");
-    try {
-      const result = await this.#onInput(text, this.#mode, id);
-      this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:result.accepted?'accepted':'cancel',activity:this.#mode});
-      if(result.needsClarification)this.showTalkResponse({id,state:'clarification',reply:result.talkResponse});
-      else if(this.#mode==='TALK')this.showTalkResponse({id,state:result.accepted?'ready':'error',reply:result.talkResponse,message:result.message||'Talk was not accepted. No Energy was spent.'});
-      if (result.accepted) { input.value = ""; this.#showStatus(result.message || `${LIFE_RULES.activity[this.#mode].label} completed`); }
-      else this.#showStatus(result.message || (result.reason === "OUT_OF_ENERGY" ? "Out of energy" : result.reason === "MINDLING_DECEASED" ? "This Mindling is deceased" : "Activity was not accepted"));
-    } catch { if(this.#mode==='TALK')this.showTalkResponse({id,state:'error',message:'Talk could not complete. No response was generated.'});this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});this.#showStatus("Activity could not be saved"); }
-    finally { this.#form.classList.remove('processing');this.#pending = false; submit.disabled = this.#life?.lifeState === 'DECEASED'; if (!input.disabled) input.focus(); }
+    try{
+      const result=await this.#onInput(text,activity,id);
+      this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:result.accepted?'accepted':'cancel',activity});
+      if(this.interactionToken!==interaction)return;
+      this.presentInteraction(id,result);
+      if(result.accepted&&input.value===submitted&&!interaction.clarification)input.value='';
+    }catch{
+      this.#events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel',activity});
+      if(this.interactionToken===interaction)this.presentInteraction(id,{accepted:false});
+    }finally{
+      this.#form.classList.remove('processing');this.#pending=false;submit.disabled=this.#life?.lifeState==='DECEASED';
+      if(this.interactionToken===interaction&&!interaction.clarification&&!input.disabled)input.focus();
+    }
   }
 
-  showTalkResponse({id,state,reply,message}) {
-    if(this.#listeners.signal.aborted)return;
-    if(state==='processing'||state==='clarification'){this.talkRequest=id;this.talkDismissed=false;}
-    if(this.talkRequest!==id||this.talkDismissed)return;
-    const panel=document.querySelector('[data-talk-response]'),status=panel.querySelector('[data-talk-status]'),content=panel.querySelector('[data-talk-content]');
-    panel.hidden=false;panel.dataset.state=state;content.replaceChildren();
+  get interactionToken(){return this.#interaction;}
+  #current(id){return !this.#listeners.signal.aborted&&isCurrentInteraction(this.#interaction,id,this.#state?.mindlingId);}
+  openDashboard(){this.#setPrimaryView('dashboard');}
+  beginInteraction(id,activity,{processing=true,inputValue}={}){
+    const interaction={id,activity,inputValue,identity:this.#state?.mindlingId};
+    this.#interaction=interaction;
+    clearTimeout(this.#messageTimer);
+    this.#form?.querySelector('.interaction-status')?.classList.remove('visible');
+    if(processing)this.#showResponse(id,{state:'processing',message:processingMessage(activity,this.#state?.name)});
+    return interaction;
+  }
+  presentInteraction(id,result){
+    if(!this.#current(id))return;
+    const interaction=this.#interaction,reply=result?.talkResponse;
+    if(result?.needsClarification&&reply?.clarification){this.#showQuestion(id,reply.clarification);return;}
+    if(interaction.clarification)return;
+    const taskId=result?.learningTaskId||reply?.researchTaskId;
+    if(taskId){
+      interaction.taskId=taskId;
+      interaction.unanswered=interaction.activity==='TALK'&&reply?.insufficientInformation===true;
+      if(interaction.activity==='TALK'&&reply?.conversationalAnswer)interaction.priorAnswer=reply.conversationalAnswer;
+      this.#refreshResearch();
+    }else this.#showResponse(id,{state:result?.accepted?'ready':'error',message:activityResult(interaction.activity,result,this.#state?.memories),sources:reply?.sources});
+  }
+  canContinueResearch(id){return this.#current(id)&&this.primaryView==='dashboard';}
+  showResearchResult(task,id){
+    if(!this.canContinueResearch(id)||this.#state?.mindlingId!==task.mindlingId)return;
+    this.#interaction.taskId=task.id;
+    this.#refreshResearch(task);
+  }
+  #refreshResearch(latest){
+    const interaction=this.#interaction;
+    if(!interaction?.taskId||interaction.clarification||!this.canContinueResearch(interaction.id))return;
+    const task=this.#state?.learningTasks?.find(item=>item.id===interaction.taskId)||latest;
+    if(!task)return;
+    if(task.code==='QUERY_REVIEW'&&interaction.reviewing)return;
+    const model=researchPresentation(task,this.#state?.memories,{enabled:this.#state?.researchPermissions?.enabled,unanswered:interaction.unanswered});
+    if(model.status==='Waiting'&&task.code==='PERMISSION_REQUIRED'&&this.#state?.researchPermissions?.enabled)return;
+    const excerpts=interaction.activity==='TALK'?(model.excerpts.length?model.excerpts:interaction.priorAnswer?[interaction.priorAnswer]:[]):[];
+    const message=interaction.activity==='DEEP_TRAINING'&&model.learned?'Training complete!':model.message;
+    this.#showResponse(interaction.id,{state:model.active?'processing':'ready',message,excerpts,sources:model.sources});
+  }
+  #responsePanel(state){
+    const panel=document.querySelector('[data-talk-response]');
+    panel.hidden=false;panel.dataset.state=state;
+    panel.querySelector('h2').textContent=this.#state?.name||'Mindling';
     const container=panel.closest('.right-panel');
     if(this.primaryView==='dashboard'&&matchMedia('(max-width:800px)').matches&&container&&!container.classList.contains('mobile-open')){container.classList.add('mobile-open');this.talkOpenedPanel=true;}
     if(container)container.scrollTop=Math.max(0,panel.offsetTop-container.clientHeight/2);
-    if(state==='processing'){status.textContent='Preparing a response from your stored knowledge…';return;}
-    if(state==='error'){status.textContent=message||'A valid Talk response is unavailable. No Energy was spent.';return;}
-    if(!reply){status.textContent='No validated response was returned.';return;}
-    if(reply.researchAccess){this.#renderResearchAccess(content,status,reply.researchAccess);return;}
-    if(reply.clarification){
-      const model=reply.clarification;status.textContent='';const question=document.createElement('p');question.textContent=model.question;content.append(question);
-      const choices=document.createElement('div');choices.className='clarification-choices';choices.setAttribute('role','group');choices.setAttribute('aria-label',model.question);
-      for(const option of model.options){const button=document.createElement('button');button.type='button';button.textContent=option.label;button.disabled=!this.#onClarification;button.addEventListener('click',()=>this.#resumeClarification(model,option.id));choices.append(button);}content.append(choices);
-      if(!model.options.length){const note=document.createElement('p');note.textContent='Mindling cannot safely resolve this request from the available information. No research will start.';content.append(note);}
-      this.clarificationInputValue=document.querySelector('#mindling-input').value;return;
-    }
-    status.textContent=reply.memoryIds.length?`${reply.memoryIds.length} stored memories referenced · ${reply.uncertainty} uncertainty${reply.insufficientInformation?' · Limited supporting knowledge':''}`:'No relevant stored knowledge available';
-    const answer=document.createElement('p');answer.textContent=reply.answer;content.append(answer);
-    if(reply.sources?.length){const list=document.createElement('ol');list.className='research-citations';for(const source of reply.sources.slice(0,3)){let url;try{url=new URL(source.url);}catch{continue;}if(url.protocol!=='https:'||url.username||url.password)continue;const item=document.createElement('li'),link=document.createElement('a');link.href=url.href;link.textContent=source.title||url.hostname;link.target='_blank';link.rel='noopener noreferrer';item.append(link);if(source.publishedAt)item.append(document.createTextNode(` · ${source.publishedAt}`));list.append(item);}content.append(list);}
+    return panel;
   }
-
-  openDashboard(){this.#setPrimaryView('dashboard');}
-  beginInteraction(id){this.latestInteraction=id;this.talkDismissed=false;}
-  canContinueResearch(id){return !this.#listeners.signal.aborted&&this.latestInteraction===id&&this.primaryView==='dashboard'&&!this.talkDismissed;}
-  showResearchResult(task,id,reply){if(!this.canContinueResearch(id)||this.#state?.mindlingId!==task.mindlingId)return;this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply});}
+  #showResponse(id,{state,message,excerpts=[],sources=[]}){
+    if(!this.#current(id))return;
+    const key=JSON.stringify([state,message,excerpts,sources.map(s=>[s.url,s.title,s.publishedAt])]);
+    if(this.#interaction.viewKey===key)return;
+    this.#interaction.viewKey=key;
+    renderResponseContent(this.#responsePanel(state),{message,excerpts,sources});
+    this.#refreshNotifications();
+  }
+  #showQuestion(id,model){
+    if(!this.#current(id)||this.#interaction.clarification?.id===model.id)return;
+    this.#interaction.clarification=model;this.#interaction.viewKey=null;
+    renderClarificationContent(this.#responsePanel('clarification'),model,this.#onClarification?choice=>this.#resumeClarification(model,choice):null);
+    this.#refreshNotifications();
+  }
+  #refreshNotifications(){
+    if(!this.#state)return;
+    const activeTaskId=this.primaryView==='dashboard'?this.#interaction?.clarification?.taskId:null;
+    this.notifications?.update(this.#state,{activeTaskId});
+  }
   showResearchAccess(task,id,topic){
     if(!this.canContinueResearch(id)||this.#state?.mindlingId!==task.mindlingId)return;
-    this.talkRequest=id;this.showTalkResponse({id,state:'ready',reply:{researchAccess:{taskId:task.id,requestId:id,topic},memoryIds:[]}});
-  }
-  #renderResearchAccess(content,status,access){
-    status.textContent=(this.#state?.name||'Your agent')+' could not safely confirm a public research subject.';
-    const copy=document.createElement('p');copy.textContent='The original request is preserved. Private or ambiguous information will not be sent automatically.';content.append(copy);
-    if(access.topic){const button=document.createElement('button');button.type='button';button.textContent=`Confirm public subject: ${access.topic}`;content.append(button);button.addEventListener('click',async()=>{if(this.#pending)return;button.disabled=true;try{const result=await this.onLearningTask('review-topic',access.taskId,{choice:'confirm-subject'});status.textContent=result.message;content.replaceChildren();}catch(error){status.textContent=error.message;}finally{button.disabled=false;}});}
+    const interaction=this.#interaction;
+    interaction.taskId=task.id;interaction.reviewing=true;
+    this.#showResponse(id,{state:'ready',message:topic?'Is this a public topic I can research?':'I can only look up public topics. Can you tell me a little more?'});
+    if(!topic)return;
+    const panel=document.querySelector('[data-talk-response]'),content=panel.querySelector('[data-talk-content]');
+    if(content.querySelector('button'))return;
+    const button=document.createElement('button');button.type='button';button.textContent=`Confirm public topic: ${topic}`;content.append(button);
+    button.addEventListener('click',async()=>{
+      if(this.#pending||!this.onLearningTask||this.interactionToken!==interaction)return;
+      button.disabled=true;
+      try{
+        await this.onLearningTask('review-topic',task.id,{choice:'confirm-subject'});
+        if(this.interactionToken===interaction){interaction.reviewing=false;this.#refreshResearch();}
+      }catch{
+        if(this.interactionToken===interaction)panel.querySelector('[data-talk-status]').textContent=this.#state?.researchPermissions?.enabled?"I couldn't use that topic.":'Turn on Research first if you’d like me to explore this.';
+      }finally{button.disabled=false;}
+    });
   }
 
-  async #resumeClarification(model,choice,detail=''){
-    if(this.#pending||this.talkDismissed||this.talkRequest!==model.requestId||!this.#onClarification)return;
-    this.#pending=true;const identity=this.#state?.mindlingId,panel=document.querySelector('[data-talk-response]'),controls=[...panel.querySelectorAll('button:not([data-dismiss-talk]),input')];controls.forEach(node=>node.disabled=true);this.#form.classList.add('processing');
-    const current=()=>!this.#listeners.signal.aborted&&!this.talkDismissed&&this.talkRequest===model.requestId&&this.#state?.mindlingId===identity;
+  async #resumeClarification(model,choice){
+    if(this.#pending||!this.#current(model.requestId)||this.#interaction.clarification!==model||!this.#onClarification)return;
+    const interaction=this.#interaction,panel=document.querySelector('[data-talk-response]');
+    const status=panel.querySelector('[data-talk-status]'),controls=[...panel.querySelectorAll('button:not([data-dismiss-talk])')];
+    this.#pending=true;controls.forEach(button=>button.disabled=true);this.#form.classList.add('processing');
+    status.textContent=processingMessage(model.activity,this.#state?.name);
+    const current=()=>this.interactionToken===interaction&&this.#current(model.requestId);
     try{
-      const result=await this.#onClarification(model.id,choice,detail);
+      const result=await this.#onClarification(model.id,choice);
       if(!current())return;
-      if(result?.needsClarification)this.showTalkResponse({id:model.requestId,state:'clarification',reply:result.talkResponse});
-      else if(result?.accepted&&result.talkResponse)this.showTalkResponse({id:model.requestId,state:'ready',reply:result.talkResponse});
-      else if(result?.accepted){panel.hidden=true;this.#showStatus(result.message||'Request continued.');}
-      else panel.querySelector('[data-talk-status]').textContent=result?.message||'The request could not continue. No clarification charge was made.';
-      const input=document.querySelector('#mindling-input');if(result?.accepted&&input.value===this.clarificationInputValue)input.value='';
-    }catch(error){if(current())panel.querySelector('[data-talk-status]').textContent=error.message||'Clarification could not continue.';}
-    finally{this.#pending=false;this.#form.classList.remove('processing');controls.forEach(node=>node.disabled=false);}
+      if(result?.needsClarification||result?.accepted){
+        interaction.clarification=null;
+        this.presentInteraction(model.requestId,result);
+        const input=document.querySelector('#mindling-input');
+        if(result.accepted&&input.value===interaction.inputValue)input.value='';
+      }else status.textContent=activityResult(model.activity,result);
+    }catch{if(current())status.textContent="I couldn't continue with that answer.";}
+    finally{
+      this.#pending=false;this.#form.classList.remove('processing');controls.forEach(button=>button.disabled=false);
+      if(current()&&interaction.clarification===model)controls[0]?.focus();
+    }
   }
-  showClarification(reply){this.beginInteraction(reply.clarification.requestId);this.#setPrimaryView('dashboard');this.showTalkResponse({id:reply.clarification.requestId,state:'clarification',reply});}
+  showClarification(reply,previous=this.#interaction){
+    if(previous!==this.#interaction||this.#listeners.signal.aborted)return;
+    const model=reply?.clarification;if(!model)return;
+    if(!this.#current(model.requestId))this.beginInteraction(model.requestId,model.activity,{processing:false});
+    this.#setPrimaryView('dashboard');
+    this.#showQuestion(model.requestId,model);
+  }
 
   destroy() {
     if (this.#listeners.signal.aborted) return;

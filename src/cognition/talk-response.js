@@ -4,7 +4,6 @@ import { requestTalkReasoning } from './reasoning-client.js';
 import { EVENTS } from '../app/events.js';
 import { understandInput, knowledgeGap } from '../learning/input-understanding.js';
 import { learningEngine } from '../autonomous/learning-engine.js';
-import { graphData } from '../memory/graph-data.js';
 
 // Thin explicit Talk orchestration over existing retrieval/transport/gameplay.
 // This is neither a second cognitive engine nor an evaluation/training session.
@@ -35,12 +34,12 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
     app.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity:'TALK'});
     let reasoning;
     if(interpretation.intent==='CONVERSATION'&&interpretation.selfInquiry){
-      reasoning={answer:`Hello. I’m ${app.state.mind.name}. I have ${graphData(app.state.mind).stats.current} current stored memories. Teaching and care shape my development.`,memoryIds:[],uncertainty:'low',insufficientInformation:false};
+      reasoning={answer:`Hi, I’m ${app.state.mind.name}. I’m learning as we spend time together.`,memoryIds:[],uncertainty:'low',insufficientInformation:false};
     }else if(interpretation.intent==='QUESTION'&&(initialGap.needsResearch||interpretation.clarification)){
-      reasoning={answer:interpretation.clarification||'I need additional source-backed information to answer this question reliably.',memoryIds:[],uncertainty:'high',insufficientInformation:true};
+      reasoning={answer:interpretation.clarification||"I don't know that yet.",memoryIds:[],uncertainty:'high',insufficientInformation:true};
     }else if(!context.candidates.length){
       // An honest empty-knowledge state, not a simulated provider answer.
-      reasoning={answer:'I do not have any current stored knowledge to answer that yet. Teach me the relevant information first.',memoryIds:[],uncertainty:'high',insufficientInformation:true};
+      reasoning={answer:"I don't know that yet.",memoryIds:[],uncertainty:'high',insufficientInformation:true};
     }else{
       const bytes=new TextEncoder().encode(JSON.stringify({mode:'talk',identity,id,context}));
       const digest=await crypto.subtle.digest('SHA-256',bytes);
@@ -64,8 +63,8 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
         const task=await learningEngine(app).prepare(interpretation,id,{reply:reasoning,guard});
         learningEngine(app).follow(task,id);
         learningEngine(app).startIfAuthorized(task);
-        reply={...reply,answer:task.message===reply.answer?reply.answer:`${reply.answer}\n\n${task.message}`,researchTaskId:task.id};
-      }catch{reply.answer+='\n\nResearch could not be prepared safely. The accepted Talk used 1 Energy; no research knowledge was saved.';}
+        reply={...reply,researchTaskId:task.id,...(reply.memoryIds.length?{conversationalAnswer:reply.answer}:{})};
+      }catch{reply.researchPreparationFailed=true;}
     }
     return reply;
   });
