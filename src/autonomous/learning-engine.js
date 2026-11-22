@@ -39,6 +39,26 @@ export function learningSession(app){return engines.get(app)?.session||null;}
 export function researchPermissions(app){const engine=engines.get(app),id=app.state?.mind?.id||'';return {...(engine?.preferences||defaultPermissions(id)),loaded:Boolean(engine?.preferences&&engine.permissionIdentity===id&&!engine.permissionLoading)};}
 export function syncResearchPermissions(app){const engine=learningEngine(app),id=app.state?.mind?.id;if(id&&engine.permissionIdentity!==id)engine.loadPermissions().then(()=>{if(!app.disposed&&app.state.mind?.id===id){app.renderState();engine.recover();}}).catch(()=>{});}
 const activityFor=mode=>mode===LEARNING_MODES.DEEP?'DEEP_TRAINING':mode===LEARNING_MODES.TALK_RESEARCH?'TALK':'TEACH';
+const integrationIssue=(reason,message=reason)=>Object.assign(Error(message),{integrationReason:reason});
+function integrationFailure(task,controller,error){
+  if(error.clientDiagnostic||!task.researchExecution)return error;
+  const paused=controller.signal.aborted||document.hidden||navigator.onLine===false;
+  const {correlationId:id,operation:mode}=task.researchExecution;
+  const integrationReason=paused?undefined:error.integrationReason||({QuotaExceededError:'STORAGE_QUOTA',AbortError:'STORAGE_ABORTED'}[error.name]||'LOCAL_COMMIT_FAILED');
+  return Object.assign(clientResearchFailure(paused?'INTEGRATION_PAUSED':'INTEGRATION_FAILED',{
+    id,mode,phase:'INTEGRATION',received:true,validated:true,status:200,reason:controller.signal.reason,integrationReason
+  }),{execution:task.serviceDiagnostic});
+}
+function committedIntegration(state,task,run){
+  const mind=state?.mind;
+  if(mind?.id!==task.mindlingId)return null;
+  const saved=tasksFor(mind).find(item=>item.id===task.id&&item.run===run&&item.researchExecution?.correlationId===task.researchExecution?.correlationId);
+  return saved&&!saved.pendingEvidence&&(saved.status==='COMPLETED'&&saved.code==='SOURCE_BACKED'||saved.status==='BLOCKED'&&saved.code==='NO_EVIDENCE')?saved:null;
+}
+function reportIntegrationFollowUp(task,code){
+  console.warn(JSON.stringify({event:'mindling.research.client.follow-up',phase:'POST_COMMIT',code,
+    correlationId:task.researchExecution?.correlationId,operation:task.researchExecution?.operation}));
+}
 
 export class AutonomousLearningEngine {
   constructor(app){
@@ -314,7 +334,7 @@ export class AutonomousLearningEngine {
     }
     let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
     if(task.pendingEvidence?.length&&!refining&&!task.pendingSourceEvaluation){
-      try{return await this.integrate(task,run,controller,prefs);}catch(error){throw Object.assign(clientResearchFailure(controller.signal.aborted||document.hidden?'INTEGRATION_PAUSED':'INTEGRATION_FAILED',{id:task.researchExecution.correlationId,mode:task.researchExecution.operation,phase:'INTEGRATION',received:true,validated:true,status:200,reason:controller.signal.reason}),{execution:task.serviceDiagnostic});}
+      try{return await this.integrate(task,run,controller,prefs);}catch(error){throw integrationFailure(task,controller,error);}
     }
     let authorizedAt=Date.now(),observedAt=Date.now(),current=task,result;
     if(task.pendingSourceEvaluation){
@@ -430,7 +450,7 @@ export class AutonomousLearningEngine {
       }
     },{researchGrant:this.grant(prefs)});}catch(error){if(error.clientDiagnostic)throw error;throw clientFailure('EVIDENCE_PERSISTENCE_FAILED','EVIDENCE_PERSISTENCE');}
     if(!current.pendingEvidence?.length||refinementWaiting(current)){this.notify(current);return current;}
-    try{return await this.integrate(current,run,controller,prefs);}catch(error){if(error.clientDiagnostic)throw error;throw clientFailure(controller.signal.aborted||document.hidden?'INTEGRATION_PAUSED':'INTEGRATION_FAILED','INTEGRATION');}
+    try{return await this.integrate(current,run,controller,prefs);}catch(error){throw integrationFailure(current,controller,error);}
   }
   recordExecution(task,diagnostic){
     const receipt=task.researchExecution;if(!receipt)return;
@@ -440,20 +460,21 @@ export class AutonomousLearningEngine {
     if(diagnostic.searchCompleted)task.completedWork=[...new Set([...task.completedWork,'retrieval'])];
   }
   async integrate(task,run,controller,prefs){
-    prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
-    const evidence=task.pendingEvidence||[];for(const claim of evidence)if(await digest(claim.quote)!==claim.quoteHash)throw Error('Saved evidence changed.');
-    if(!task.sourcePlan||!subjectMatches(task,task.sourcePlan.request.topic))throw Error('SUBJECT_MISMATCH');
+    try{prefs=await this.loadPermissions(true);}catch{throw integrationIssue('PERMISSION_UNAVAILABLE');}
+    if(!prefs.enabled||controller.signal.aborted)throw integrationIssue('PERMISSION_UNAVAILABLE');
+    const evidence=task.pendingEvidence||[];for(const claim of evidence)if(await digest(claim.quote)!==claim.quoteHash)throw integrationIssue('EVIDENCE_CHANGED','Saved evidence changed.');
+    if(!task.sourcePlan||!subjectMatches(task,task.sourcePlan.request.topic))throw integrationIssue('SUBJECT_MISMATCH');
     await this.patch(task.id,run,item=>{item.status='COMMITTING';item.code='INTEGRATING';item.message='Integrating accepted source-backed knowledge.';item.acceptedQuotes=evidence.map(item=>item.quoteHash);});
     const activity=activityFor(task.mode),grant=this.grant(prefs);
-    await this.app.change(state=>{
+    const stored=await this.app.change(state=>{
       this.assertLive(task.mindlingId);if(controller.signal.aborted||state.mind?.id!==task.mindlingId||state.mind.life.lifeState!=='ALIVE'||state.tombstones.some(item=>item.id===task.mindlingId))throw Error('Research was cancelled.');
-      let next=structuredClone(state),current=writableTasks(next.mind).find(item=>item.id===task.id);if(!current||current.run!==run||current.status!=='COMMITTING')throw Error('Task authorization changed.');
+      let next=structuredClone(state),current=writableTasks(next.mind).find(item=>item.id===task.id);if(!current||current.run!==run||current.status!=='COMMITTING')throw integrationIssue('TASK_CHANGED');
       const knowledge=[],memoryRejections=[];let formed=0;
       for(const claim of evidence){
         if((next.mind.researchExclusions||[]).includes(claim.quoteHash)){memoryRejections.push({code:'EXCLUDED_BY_USER',quoteHash:claim.quoteHash});continue;}
         const id=`${task.id.slice(0,40)}:${claim.quoteHash.slice(0,40)}`,content=`Source observation (${new Date(claim.observedAt).toISOString()}) from ${claim.sourceURL}: ${claim.quote}`;
         const authorization={taskId:task.id,run,url:claim.sourceURL,sourceHash:claim.sourceHash,observedAt:claim.observedAt,validAt:claim.validAt,quote:claim.quote,quoteHash:claim.quoteHash,content,classification:{category:claim.category,topic:claim.topic}};
-        validateResearchClaim(next,authorization);
+        try{validateResearchClaim(next,authorization);}catch{throw integrationIssue('CLAIM_AUTHORIZATION_FAILED');}
         const relation=researchRelation(next.mind,claim),support=claimEvidence(claim,current);
         if(relation.kind==='support'){if(addSupportingEvidence(relation.target,support)==='capacity')memoryRejections.push({code:'SUPPORT_CAPACITY',quoteHash:claim.quoteHash});else knowledge.push(relation.target.id);continue;}
         if(relation.kind==='uncertain'){memoryRejections.push({code:'CANONICAL_DUPLICATE_OR_UNCERTAIN',quoteHash:claim.quoteHash});continue;}
@@ -469,14 +490,19 @@ export class AutonomousLearningEngine {
           knowledge.push(id);formed++;}else memoryRejections.push({code:'CANONICAL_DUPLICATE_OR_UNCERTAIN',quoteHash:claim.quoteHash});}catch(error){memoryRejections.push({code:canonicalRejection(error),quoteHash:claim.quoteHash});}
       }
       current=writableTasks(next.mind).find(item=>item.id===task.id);
-      if(formed&&!current.autonomous&&!current.energyCharged){if(activity==='TALK'||next.mind.processed.includes(current.requestId))throw Error('The original activity charge is unavailable.');next.mind.energy=spendEnergy(energyAt(next.mind.energy,next.now),LIFE_RULES.activity[activity].energyCost,next.now);stimulatePreviewLife(next.mind.life,activity,next.now);next.mind.processed.push(current.requestId);current.energyCharged=true;}
+      if(formed&&!current.autonomous&&!current.energyCharged){
+        if(activity==='TALK'||next.mind.processed.includes(current.requestId))throw integrationIssue('ACTIVITY_CHARGE_UNAVAILABLE');
+        const energy=energyAt(next.mind.energy,next.now),cost=LIFE_RULES.activity[activity].energyCost;
+        if(energy.remaining<cost)throw integrationIssue('ENERGY_UNAVAILABLE');
+        next.mind.energy=spendEnergy(energy,cost,next.now);stimulatePreviewLife(next.mind.life,activity,next.now);next.mind.processed.push(current.requestId);current.energyCharged=true;
+      }
       // Directly requested Teach/Deep research has the same one-activity
       // activity reward as supplied teaching. Background research remains 0 XP.
       if(formed&&current.autonomous===false&&activity!=='TALK'&&!current.learningRewarded&&!next.mind.history.some(e=>e.requestId===current.requestId&&e.xp>0)){
         const award=activityReward(activity),day=Math.floor(next.now/86400000),earned=next.mind.history.filter(e=>e.day===day).reduce((sum,e)=>sum+e.xp,0);
-        if(earned+award>XP.daily)throw Error('Daily XP limit reached.');
+        if(earned+award>XP.daily)throw integrationIssue('DAILY_XP_LIMIT');
         const event=next.mind.history.find(e=>e.taskId===current.id&&e.memoryIds===undefined&&e.kind==='research'&&knowledge.includes(e.id));
-        if(!event)throw Error('Committed learning reward event is unavailable.');
+        if(!event)throw integrationIssue('REWARD_EVENT_MISSING');
         event.xp=award;event.activity=activity;event.requestId=current.requestId;event.rewardBasis='user-directed-learning';
         next.mind.stageXP+=award;next.mind.lifetimeXP+=award;next.mind.milestones.push(event.concept);current.learningRewarded=true;
       }
@@ -484,9 +510,25 @@ export class AutonomousLearningEngine {
       current.knowledgeIds=[...new Set(knowledge)];delete current.pendingEvidence;delete current.acceptedQuotes;current.updatedAt=Math.max(current.createdAt,Date.now());
       if(knowledge.length){current.completedWork=[...new Set([...current.completedWork,'knowledge','answer'])];current.status='COMPLETED';current.code='SOURCE_BACKED';current.message=`Research completed: ${formed} new source-attributed ${formed===1?'memory':'memories'} retained. This is bounded evidence, not complete topic coverage or independent verification.`;}else{current.status='BLOCKED';current.code='NO_EVIDENCE';current.message=`Research paused — Insufficient evidence. ${rejectionExplanation(memoryRejections[0]?.code)} Existing knowledge was preserved.`;}
       recordTaskActivity({status:'COMMITTING',semanticWork:current.semanticWork},current,current.updatedAt);
-      if(!validTask(current,task.mindlingId))throw Error('Research completion was invalid.');return next;
-    },{preserveGameplay:true,researchGrant:grant,...(activity==='TALK'||task.autonomous?{}:{journal:{id:`research:${task.id}:${run}`,type:activity}})});
-    const completed=tasksFor(this.app.state.mind).find(item=>item.id===task.id);this.notify(completed);this.recover();if(completed.knowledgeIds.length){const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity:activityFor(task.mode),autonomous:!!task.autonomous});}return completed;
+      if(!validTask(current,task.mindlingId))throw integrationIssue('COMPLETION_INVALID');return next;
+    },{preserveGameplay:true,researchGrant:grant,...(activity==='TALK'||task.autonomous?{}:{journal:{id:`research:${task.id}:${run}`,type:activity}})}).catch(error=>{
+      // Both app controllers publish the saved state before calling the renderer.
+      // A matching committed task distinguishes a renderer fault from rollback.
+      const completed=committedIntegration(this.app.state,task,run);
+      if(!completed)throw error;
+      reportIntegrationFollowUp(completed,'STATE_REFRESH_FAILED');
+      return this.app.state;
+    });
+    const completed=committedIntegration(stored??this.app.state,task,run);
+    if(!completed)throw integrationIssue('COMMIT_UNCONFIRMED');
+    if(this.disposed||this.app.disposed||this.app.state.mind?.id!==task.mindlingId)return completed;
+    try{
+      this.notify(completed);this.recover();
+      const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);
+      if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});
+      if(completed.knowledgeIds.length)this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity,autonomous:!!task.autonomous});
+    }catch{reportIntegrationFollowUp(completed,'COMPLETION_NOTIFICATION_FAILED');}
+    return completed;
   }
   reply(task){
     const sv=/[åäö]|\b(?:vilket|sverige|lär)\b/iu.test(task.objective),completed=task.status==='COMPLETED';

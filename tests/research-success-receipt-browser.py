@@ -4,7 +4,7 @@ The first normal-store success uses an actual 23.087-second hosted-tool fixture 
 import os
 from playwright.sync_api import sync_playwright
 BASE=os.environ.get('MINDLING_TEST_URL','http://127.0.0.1:8765')
-CASES=os.environ.get('MINDLING_RECEIPT_CASES','').split(',') if os.environ.get('MINDLING_RECEIPT_CASES') else ['success','hidden_inflight','visibility_cycles','abort_after_body','hidden_after_body','offline_after_body','missing','body_abort','parse','stale','checkpoint','receipt_store','evidence_store','integration','cancel','changed_run','revoked','storage_unavailable','navigation']
+CASES=os.environ.get('MINDLING_RECEIPT_CASES','').split(',') if os.environ.get('MINDLING_RECEIPT_CASES') else ['success','hidden_inflight','visibility_cycles','abort_after_body','hidden_after_body','offline_after_body','missing','body_abort','parse','stale','checkpoint','receipt_store','evidence_store','integration','post_commit','cancel','changed_run','revoked','storage_unavailable','navigation']
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
     for preview in [False,True]:
@@ -36,6 +36,9 @@ with sync_playwright() as p:
               if((match&&!injected)||(kind==='storage_unavailable'&&window.__bodyRead)){injected=true;throw new DOMException('Private transaction details','QuotaExceededError');}
               return next;
             },options);
+            if(kind==='post_commit'&&!injected&&this.state.mind.learningTasks?.[0]?.status==='COMPLETED'){
+              injected=true;throw Error('Private render error after the IndexedDB transaction completed');
+            }
           }};
           let engine=new AutonomousLearningEngine(app);await engine.loadPermissions();await engine.setAccess(true);
           const task=await engine.prepare(understandInput('Learn about Gaming','TEACH'),'received-browser',{autonomous:true});
@@ -79,12 +82,19 @@ with sync_playwright() as p:
           }
           await running;const elapsed=performance.now()-start;let value=saved();
           delete document.hidden;delete navigator.onLine;
-          if(kind==='success'){
-            check(value.status==='COMPLETED'&&app.state.mind.memories.length===3,'valid receipt not integrated');
+          if(kind==='success'||kind==='post_commit'){
+            const count=kind==='success'?3:4;
+            check(value.status==='COMPLETED'&&app.state.mind.memories.length===count,'valid receipt not integrated');
+            if(kind==='post_commit'){
+              const committed=await read();
+              check(injected&&!engine.clientFailure&&committed.mind.learningTasks[0].status==='COMPLETED','post-commit error reported as failed integration');
+              check(committed.mind.memories.length===count&&new Set(committed.mind.memories.map(m=>m.id)).size===count,'canonical result was incomplete or duplicated');
+            }
             if(delayed)check(elapsed>=23000&&window.__serverResult.execution.durationMs>=23000,'actual 23-second delay missing');
           }else if(['abort_after_body','hidden_after_body','hidden_inflight','visibility_cycles','offline_after_body','evidence_store','integration'].includes(kind)){
             const expected=kind==='evidence_store'?'EVIDENCE_PERSISTENCE_FAILED':kind==='integration'?'INTEGRATION_FAILED':'INTEGRATION_PAUSED';
             check(value.code===expected&&!value.researchExecution.outcomeUnknown&&value.sourceReferences.length===3,'received success became unknown: '+value.code);
+            if(kind==='integration')check(value.clientDiagnostic.integrationReason==='STORAGE_QUOTA'&&value.clientDiagnostic.correlationId===value.serviceDiagnostic.correlationId,'integration failure lost its cause or correlation');
             check(value.pendingSourceEvaluation||value.pendingEvidence?.length,'received evidence was not durable');
             check(JSON.stringify(app.state.mind.memories)===initial.memories,'failed stage mutated canonical knowledge');
             const before=networkCalls;globalThis.fetch=async()=>{networkCalls++;throw Error('Local recovery must not use the network');};

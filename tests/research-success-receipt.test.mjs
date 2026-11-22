@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {scenario} from './support/research-success-harness.mjs';
 import {canRetryResearch} from '../src/autonomous/service-diagnostics.js';
+import {XP,activityReward} from '../src/economy/xp.js';
 
 test('23-second server success with three sources/accepted claims reaches canonical integration',async()=>scenario(async c=>{
  await c.run();const task=c.saved();assert.equal(c.server.code,200);assert.ok(c.server.body.execution.durationMs>=23087);assert.equal(c.server.body.execution.validation.accepted,3);assert.equal(task.status,'COMPLETED');assert.equal(task.sourceReferences.length,3);assert.equal(c.app.state.mind.memories.length,3);assert.equal(task.researchExecution.outcomeUnknown,false);assert.equal(task.sourceRequests,4);assert.equal(task.modelCalls,3);assert.equal(c.app.state.mind.lifetimeXP,0);assert.equal(c.app.state.mind.energy.remaining,10);
@@ -16,9 +17,39 @@ test('fully received response followed by abort saves evidence instead of becomi
 },{afterBody:c=>c.engine.active.controller.abort('HIDDEN')}));
 for(const [fault,code,pending] of [['receipt','CHECKPOINT_PERSISTENCE_FAILED',false],['evidence','EVIDENCE_PERSISTENCE_FAILED',true],['integration','INTEGRATION_FAILED',true]])test(`${fault} transaction failure preserves the known server outcome`,async()=>scenario(async c=>{
  await c.run();const task=c.saved();assert.equal(task.code,code);assert.equal(task.clientDiagnostic.validated,true);assert.equal(task.serviceDiagnostic.detail,'COMPLETED');assert.equal(task.researchExecution.outcomeUnknown,false);assert.equal(task.completedToolCalls,1);assert.equal(c.app.state.mind.memories.length,0);assert.equal(c.app.state.mind.lifetimeXP,0);assert.equal(c.app.state.mind.energy.remaining,10);assert.equal(canRetryResearch(task),pending);
+ if(fault==='integration'){assert.equal(task.clientDiagnostic.integrationReason,'LOCAL_COMMIT_FAILED');assert.equal(task.pendingEvidence.length,3);assert.equal(task.clientDiagnostic.correlationId,task.serviceDiagnostic.correlationId);}
  if(pending){const calls=c.calls.length;await c.run();assert.equal(c.saved().status,'COMPLETED');assert.equal(c.app.state.mind.memories.length,3);assert.equal(c.calls.length,calls);}
  assert.doesNotMatch(JSON.stringify(c.logs),/Private|synthetic-received-secret|opaque-model|https:/);
 },{fault}));
+test('daily XP limit has a safe diagnostic, rolls back all candidates and permits a local retry on a later day',async()=>scenario(async c=>{
+ const dayLength=86400000,day=Math.floor(c.app.state.now/dayLength);
+ c.app.state.mind.history.push({id:'fixture-xp',day,xp:XP.daily});
+ c.app.state.mind.lifetimeXP=XP.daily;
+ const energy=structuredClone(c.app.state.mind.energy),history=structuredClone(c.app.state.mind.history);
+ await c.run();
+ const blocked=c.saved(),calls=c.calls.length;
+ assert.equal(blocked.clientDiagnostic.integrationReason,'DAILY_XP_LIMIT');
+ assert.equal(blocked.clientDiagnostic.correlationId,blocked.serviceDiagnostic.correlationId);
+ assert.equal(blocked.pendingEvidence.length,3);assert.equal(c.app.state.mind.memories.length,0);
+ assert.deepEqual(c.app.state.mind.history,history);assert.deepEqual(c.app.state.mind.energy,energy);
+ assert.equal(c.app.state.mind.lifetimeXP,XP.daily);
+ c.app.state.now+=dayLength;
+ await c.run();assert.equal(c.calls.length,calls);assert.equal(c.saved().status,'COMPLETED');
+ assert.equal(c.app.state.mind.memories.length,3);
+ assert.equal(c.app.state.mind.lifetimeXP,XP.daily+activityReward('TEACH'));
+},{autonomous:false}));
+for(const [fault,followUp] of [['post-commit','STATE_REFRESH_FAILED'],['notification','COMPLETION_NOTIFICATION_FAILED']])test(`${fault} failure preserves the committed result and never resubmits it`,async()=>scenario(async c=>{
+ if(fault==='notification')c.app.dashboard={showResearchResult(){throw Error('Private dashboard failure');}};
+ await c.run();
+ const task=c.saved(),snapshot=structuredClone(c.app.state.mind.memories),calls=c.calls.length;
+ assert.equal(c.server.body.execution.validation.accepted,3);
+ assert.equal(task.status,'COMPLETED');assert.equal(task.pendingEvidence,undefined);
+ assert.equal(task.knowledgeIds.length,3);assert.equal(new Set(snapshot.map(memory=>memory.id)).size,3);
+ assert.equal(c.engine.clientFailure,undefined);
+ assert(c.logs.some(log=>log.phase==='POST_COMMIT'&&log.code===followUp&&log.correlationId===task.researchExecution.correlationId));
+ assert.doesNotMatch(JSON.stringify(c.logs),/Private|INTEGRATION_FAILED/);
+ await c.run();assert.equal(c.calls.length,calls);assert.deepEqual(c.app.state.mind.memories,snapshot);
+},{fault,autonomous:fault!=='notification'}));
 for(const [name,mutate,code] of [
  ['stale ID',r=>r.execution.correlationId='f'.repeat(64),'RECEIPT_VALIDATION_FAILED'],
  ['missing receipt',r=>delete r.execution,'RECEIPT_VALIDATION_FAILED'],
