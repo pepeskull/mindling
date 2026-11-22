@@ -17,7 +17,7 @@ import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindlin
 import { LIFE_RULES, lifeStageFor, neuralCycles, warningFor } from "../life/life-system.js";
 import { formatCareCooldown, formatLifePercentage } from './life-format.js';
 import { STAGES } from '../preview/evolution-model.js';
-import { previewWarning } from '../preview/sandbox/life.js';
+import { basicCareNeeded, previewWarning } from '../preview/sandbox/life.js';
 
 export class Dashboard {
   #unsubscribe;
@@ -65,6 +65,10 @@ export class Dashboard {
     this.#onCare = onCare;
     this.#careClock = careClock;
     this.#careButtons = [...document.querySelectorAll('[data-care]')];
+    for(const button of this.#careButtons){
+      const hours=LIFE_RULES.care[button.dataset.care].cooldownHours;
+      button.querySelector('[data-care-duration]').textContent=` · ${hours}h`;
+    }
     this.#onNewMindling = onNewMindling;
     this.#unsubscribe = events.on(EVENTS.STATE_READY, (state) => this.render(state));
     this.#eventUnsubscribes = [
@@ -231,6 +235,7 @@ export class Dashboard {
     document.querySelector("[data-life-warning] span").textContent = warning.message;
     document.querySelectorAll("[data-activity-mode]").forEach(button => { const rule = LIFE_RULES.activity[button.dataset.activityMode]; button.disabled = life.lifeState === "DECEASED" || life.energy.remaining < rule.energyCost; });
     document.querySelectorAll("[data-care]").forEach(button => { button.disabled = life.lifeState === "DECEASED"; });
+    this.tickCareCooldowns();
     document.querySelector("#mindling-input").disabled = life.lifeState === "DECEASED";
     this.#form.querySelector("button[type=submit]").disabled = this.#pending || life.lifeState === "DECEASED";
     if (life.version === 2) document.querySelectorAll('[data-input-mode]').forEach(button => { button.disabled = life.lifeState === 'DECEASED' || life.energy.remaining < LIFE_RULES.activity[button.dataset.inputMode].energyCost; });
@@ -264,14 +269,21 @@ export class Dashboard {
       const output=button.querySelector('[data-care-cooldown]'),type=button.dataset.care;
       const last=life?.care?.[type];
       const expiresAt=last==null?now:Number.isFinite(last)?last+LIFE_RULES.care[type].cooldownHours*3600000:NaN;
-      const label=life?.lifeState==='ALIVE'?formatCareCooldown(expiresAt,now):'',available=label==='Ready!';
-      if(available&&output.dataset.ready==='false')ready.push(button.getAttribute('aria-label').split(',')[0]);
-      if(output.textContent!==label){
-        output.textContent=label;
-        if(label)output.dataset.ready=String(available);
-        else delete output.dataset.ready;
+      const label=life?.lifeState==='ALIVE'?formatCareCooldown(expiresAt,now):'',cooldownComplete=label==='Ready!';
+      const availability=button.querySelector('[data-care-availability]');
+      let state='unavailable',status='Unavailable';
+      if(label&&!button.disabled){
+        if(!cooldownComplete){state='cooling';status='Cooling down';}
+        else if(basicCareNeeded(life,type)){state='available';status='Available';}
+        else status='No care needed';
       }
-      output.hidden=!label;
+      if(cooldownComplete&&button.dataset.careState==='cooling')ready.push(button.querySelector('.care-name').textContent);
+      if(button.dataset.careState!==state)button.dataset.careState=state;
+      if(availability.textContent!==status)availability.textContent=status;
+      if(output.textContent!==(label||'—')){
+        output.textContent=label||'—';
+        output.dataset.ready=String(cooldownComplete);
+      }
     }
     if(ready.length)document.querySelector('[data-care-announcement]').textContent=`${ready.join(', ')} cooldown complete.`;
   }

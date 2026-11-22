@@ -204,6 +204,7 @@ export class SandboxPreview extends EvolutionPreview {
     document.querySelector('#interaction-form button[type=submit]').disabled=!alive;
     document.querySelector('[data-download-profile]').disabled=true;
     document.querySelectorAll('[data-care]').forEach(b=>{b.disabled=!alive;b.title=`Free preventive care; ${LIFE_RULES.care[b.dataset.care].cooldownHours}-hour virtual cooldown`;});
+    this.dashboard.tickCareCooldowns();
     document.querySelectorAll('[data-input-mode],[data-activity-mode]').forEach(b=>{b.disabled=!alive;b.title='Uses available Energy; no activity cooldown';});
     this.dashboard.renderEnergy(m.energy,this.state.now);
     this.updateInputAvailability();

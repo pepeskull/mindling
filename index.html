@@ -91,7 +91,33 @@
           <button type="button" data-activity-mode="TEACH" title="Introduce new knowledge" aria-label="Teach Mindling, costs 2 Energy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5Zm0 0V5.5"/></svg><span><b>Teach Mindling</b><small>2 Energy</small></span></button>
           <button type="button" data-activity-mode="DEEP_TRAINING" title="Focused learning activity" aria-label="Deep Training, costs 3 Energy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 4.5A3.5 3.5 0 0 0 6 8v1a3 3 0 0 0-2 5.8V16a3 3 0 0 0 3 3h2.5m5-14.5A3.5 3.5 0 0 1 18 8v1a3 3 0 0 1 2 5.8V16a3 3 0 0 1-3 3h-2.5M12 3v18"/></svg><span><b>Deep Training</b><small>3 Energy</small></span></button>
         </div></section>
-        <section class="compact-section" aria-labelledby="care-title"><h2 id="care-title">Basic Care</h2><p class="sr-only" data-care-announcement role="status"></p><div class="care-grid"><button type="button" data-care="NOURISH" aria-label="Nourish, free" aria-describedby="nourish-cooldown"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v8a4 4 0 0 0 4 4V2m-2 0v20m9-20v8h5m0-8v20"/></svg><span>Nourish<small>Free<span id="nourish-cooldown" data-care-cooldown role="timer" hidden></span></small></span></button><button type="button" data-care="REST" aria-label="Rest, free" aria-describedby="rest-cooldown"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg><span>Rest<small>Free<span id="rest-cooldown" data-care-cooldown role="timer" hidden></span></small></span></button><button type="button" data-care="CARE" aria-label="Care, free" aria-describedby="care-cooldown"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg><span>Care<small>Free<span id="care-cooldown" data-care-cooldown role="timer" hidden></span></small></span></button></div></section>
+        <section class="compact-section" aria-labelledby="care-title">
+          <h2 id="care-title">Basic Care</h2>
+          <p class="sr-only" data-care-announcement role="status"></p>
+          <div class="care-grid">
+            <button type="button" data-care="NOURISH" aria-label="Nourish, free" aria-describedby="nourish-details nourish-cooldown nourish-availability">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 2v8a4 4 0 0 0 4 4V2m-2 0v20m9-20v8h5m0-8v20"/></svg>
+              <span class="care-name">Nourish</span>
+              <small id="nourish-details">Free<span data-care-duration></span></small>
+              <span id="nourish-cooldown" data-care-cooldown role="timer">—</span>
+              <span id="nourish-availability" data-care-availability>Unavailable</span>
+            </button>
+            <button type="button" data-care="REST" aria-label="Rest, free" aria-describedby="rest-details rest-cooldown rest-availability">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8Z"/></svg>
+              <span class="care-name">Rest</span>
+              <small id="rest-details">Free<span data-care-duration></span></small>
+              <span id="rest-cooldown" data-care-cooldown role="timer">—</span>
+              <span id="rest-availability" data-care-availability>Unavailable</span>
+            </button>
+            <button type="button" data-care="CARE" aria-label="Care, free" aria-describedby="care-details care-cooldown care-availability">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8Z"/></svg>
+              <span class="care-name">Care</span>
+              <small id="care-details">Free<span data-care-duration></span></small>
+              <span id="care-cooldown" data-care-cooldown role="timer">—</span>
+              <span id="care-availability" data-care-availability>Unavailable</span>
+            </button>
+          </div>
+        </section>
         <section class="compact-section social-status" aria-labelledby="social-title"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8m13 10v-2a4 4 0 0 0-3-3.9m0-11.2a4 4 0 0 1 0 7.8"/></svg><b id="social-title">Social Status</b></span><em>Not Connected</em></section>
         <section class="talk-response" data-talk-response aria-labelledby="talk-response-title" hidden><header><h2 id="talk-response-title">Mindling</h2><button type="button" data-dismiss-talk aria-label="Dismiss response">×</button></header><p data-talk-status role="status" aria-live="polite"></p><div data-talk-content aria-live="polite"></div></section>
         <section class="mindling-file" aria-labelledby="mindling-file-title"><p id="mindling-file-title">Mindling File</p><strong data-profile-filename>Mindling.md</strong><button type="button" data-download-profile>Download</button></section>

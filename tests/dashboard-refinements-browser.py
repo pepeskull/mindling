@@ -8,6 +8,9 @@ BOOTSTRAP = """
 const preview=new URLSearchParams(location.search).has('stage-preview');
 const {MindlingApp}=await import('/src/app/app.js');
 const {SandboxPreview}=await import('/src/preview/sandbox/controller.js');
+const {NeuralMemoryView}=await import('/src/memory/neural-memory-view.js');
+const update=NeuralMemoryView.prototype.update;
+NeuralMemoryView.prototype.update=function(state){window.memoryView=this;return update.call(this,state);};
 window.app=preview?new SandboxPreview({forceCanvas:true}):new MindlingApp();
 await app.start();
 window.fixtureReady=true;
@@ -16,11 +19,30 @@ SEED = """async preview=>{
   const {MindlingDatabase}=await import('/src/storage/database.js');
   const {PreviewStore}=await import('/src/preview/sandbox/storage.js');
   const {createSandbox,newMindling}=await import('/src/preview/sandbox/engine.js');
+  const {graphData}=await import('/src/memory/graph-data.js');
+  const {persistAreaRelations}=await import('/src/semantic/area-relations.js');
   const store=await (preview?new PreviewStore():new MindlingDatabase()).open();
   const now=Date.now()+(preview?3*86400000:0);
   const state=newMindling(createSandbox(now),{id:'dashboard-fixture',name:'Dashboard Fixture',confirmed:true});
   Object.assign(state.mind.life.attributes,{nutrition:65,rest:70,health:80,wellbeing:80});
   state.mind.life.care={NOURISH:now-6*3600000+31000,REST:now-3600000,CARE:now-3600000};
+  const categories=['Computing','Cryptocurrency','Video games','Interactive media systems and rendering techniques in large multiplayer environments'];
+  state.mind.memories=categories.map((category,i)=>{
+    const content=`${category} can involve shared computing systems.`;
+    return {id:'m'+i,categoryId:'area'+i,category,content,source:'SERVICE',contentIntegrity:{version:1,status:'captured',length:content.length},
+      analysis:{name:'mindling-learning-service',verification:'unverified-player-claim'},intelligence:{kind:'claim',current:true},
+      neuronIds:['origin'],synapseIds:[],relatedMemoryIds:[]};
+  });
+  const graph=graphData(state.mind),byLabel=label=>graph.areas.find(a=>a.label===label),origin=byLabel(categories[0]);
+  const evidence=memory=>({snapshot:{id:memory.id,text:memory.content,provenance:{verification:memory.analysis.verification,correctsMemoryId:null}},
+    span:{start:0,end:memory.content.length,quote:memory.content}});
+  const relations=categories.slice(1).map((category,i)=>{
+    const target=byLabel(category);
+    return {version:1,from:origin.id,to:target.id,type:'related-to',direction:'symmetric',reason:'Shared computing systems',
+      validation:'model-supported-not-independently-verified',areas:[origin,target].map(({id,label})=>({id,label})),
+      evidence:[evidence(state.mind.memories[0]),evidence(state.mind.memories[i+1])]};
+  });
+  if(persistAreaRelations(state.mind,relations,graph.areas,now).some(result=>result!=='AREA_PERSISTED'))throw Error('Fixture relations missing');
   if(preview)await store.change(()=>state);else await store.changeGameplay(()=>state);
   store.close();
 }"""
@@ -58,6 +80,16 @@ with sync_playwright() as playwright:
 
         for action, remaining in [('nourish', '00:00:31'), ('rest', '07:00:00'), ('care', '11:00:00')]:
             expect(page.locator(f'#{action}-cooldown')).to_have_text(remaining)
+            expect(page.locator(f'#{action}-availability')).to_have_text('Cooling down')
+        for action, duration in [('nourish', 6), ('rest', 8), ('care', 12)]:
+            expect(page.locator(f'#{action}-details')).to_have_text(f'Free · {duration}h')
+        assert page.locator('.care-grid').evaluate("""grid=>{
+          const cards=[...grid.children],sizes=cards.map(card=>card.getBoundingClientRect());
+          return sizes.every(rect=>Math.abs(rect.width-sizes[0].width)<1&&rect.height===sizes[0].height&&rect.top===sizes[0].top)
+            &&cards.every(card=>{const parts=[...card.children].map(part=>part.getBoundingClientRect()),box=card.getBoundingClientRect();
+              return parts.every((part,index)=>Math.abs(part.left+part.width/2-box.left-box.width/2)<1
+                &&part.left>=box.left&&part.right<=box.right&&(!index||parts[index-1].bottom<=part.top));});
+        }""")
         page.evaluate('advance(11000)')
         expect(page.locator('#nourish-cooldown')).to_have_text('00:00:20')
         page.reload()
@@ -73,6 +105,7 @@ with sync_playwright() as playwright:
         ready = page.locator('#nourish-cooldown')
         expect(ready).to_have_text('Ready!')
         expect(ready).to_have_css('color', 'rgb(53, 184, 123)')
+        expect(page.locator('#nourish-availability')).to_have_text('Available')
         expect(page.locator('[data-care-announcement]')).to_have_text('Nourish cooldown complete.')
         page.get_by_role('button', name='Nourish, free').click()
         expect(ready).to_have_text('06:00:00')
@@ -88,6 +121,12 @@ with sync_playwright() as playwright:
             expect(countdown).to_have_text('Ready!')
             page.get_by_role('button', name=f'{action}, free').click()
             expect(countdown).to_have_text(duration)
+        page.evaluate("""()=>app.change(s=>{s.mind.life.attributes.nutrition=100;s.mind.life.care.NOURISH=null;return s;})""")
+        expect(ready).to_have_text('Ready!')
+        expect(page.locator('#nourish-availability')).to_have_text('No care needed')
+        page.get_by_role('button', name='Nourish, free').click()
+        expect(page.locator('.interaction-status')).to_contain_text('No care needed')
+        assert page.evaluate('app.state.mind.life.care.NOURISH===null')
 
         page.evaluate("""answer=>{const id='synthetic-talk';app.dashboard.beginInteraction(id,'TALK');
           app.dashboard.presentInteraction(id,{accepted:true,talkResponse:{answer}});}""",
@@ -102,6 +141,42 @@ with sync_playwright() as playwright:
         page.evaluate("""()=>{const id='plain-talk';app.dashboard.beginInteraction(id,'TALK');
           app.dashboard.presentInteraction(id,{accepted:true,talkResponse:{answer:'A plain answer.'}});}""")
         expect(body).to_have_text('A plain answer.')
+
+        page.locator('[data-view=memories]').click()
+        page.wait_for_function('memoryView.layout && !memoryView.loadingView')
+        page.evaluate("""()=>{window.knowledgeBefore=JSON.stringify([app.state.mind.memories,app.state.mind.semanticAreaRelations]);
+          memoryView.select(memoryView.graph.areas.find(area=>area.label==='Computing').id);}""")
+        tags = page.locator('.connected-area-tag')
+        expect(tags).to_have_count(3)
+        assert tags.evaluate_all("""tags=>tags.every(tag=>{
+          const style=getComputedStyle(tag),color=memoryView.colors.get(tag.dataset.selectMemory),probe=document.createElement('span');
+          probe.style.color=color;document.body.append(probe);const expected=getComputedStyle(probe).color;probe.remove();
+          return style.color===expected&&style.borderRadius==='999px'&&tag.type==='button';
+        })""")
+        first = page.get_by_role('button', name='Cryptocurrency', exact=True)
+        before_hover = first.evaluate('tag=>getComputedStyle(tag).backgroundColor')
+        first.hover()
+        assert first.evaluate('tag=>getComputedStyle(tag).backgroundColor') != before_hover
+        first.focus()
+        page.keyboard.press('Tab')
+        following = tags.nth(1)
+        expect(following).to_be_focused()
+        expect(following).to_have_css('outline-style', 'solid')
+        selected_label = following.inner_text()
+        page.keyboard.press('Enter')
+        expect(page.locator('#memory-inspector-title')).to_have_text(selected_label)
+        assert page.evaluate('memoryView.positions.get(memoryView.selected).label') == selected_label
+        page.get_by_role('button', name='Computing', exact=True).click()
+        expect(page.locator('#memory-inspector-title')).to_have_text('Computing')
+        assert page.evaluate('knowledgeBefore===JSON.stringify([app.state.mind.memories,app.state.mind.semanticAreaRelations])')
+        page.set_viewport_size({'width': 390, 'height': 940})
+        assert tags.evaluate_all("""tags=>new Set(tags.map(tag=>tag.offsetTop)).size>1&&tags.every(tag=>{
+          const outer=tag.parentElement.getBoundingClientRect(),box=tag.getBoundingClientRect();
+          return box.right<=outer.right+1&&tag.scrollWidth<=tag.clientWidth+1;
+        })""")
+        page.locator('[data-mobile-view=dashboard]').click()
+        assert page.locator('.care-grid').evaluate('grid=>grid.clientWidth>=grid.scrollWidth')
+        page.set_viewport_size({'width': 1500, 'height': 940})
 
         page.evaluate("window.mainBrain=document.querySelector('#scene canvas')")
         page.locator('[data-view=network]').click()
@@ -131,5 +206,5 @@ with sync_playwright() as playwright:
         assert page.locator('canvas[data-cloud],canvas[data-fallback]').count() == 0
         assert not errors, errors
         context.close()
-        print(f'{"Stage Preview" if preview else "Normal"}: cooldowns, reload, care guard, Talk formatting, Network routes and layout passed')
+        print(f'{"Stage Preview" if preview else "Normal"}: care cards, cooldowns, area tags, keyboard selection, Talk and Network passed')
     browser.close()

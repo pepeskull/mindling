@@ -193,7 +193,18 @@ export class NeuralMemoryView {
     if(node.kind==='research'){title.textContent=node.root?'Learning task':node.label;renderTaskInspector(host,node,{onAction:this.onLearningTask,refresh:()=>this.renderInspector(),memories:this.graph.memories});return;}
     if(node.kind!=='memory'){title.textContent=node.displayLabel||node.label;host.append(el('p',`${(node.descendantMemoryIds||node.memoryIds).length} canonical memories · ${node.kind==='area'?'Knowledge area':'Topic'}`));const candidates=this.filtered.memories.filter(memory=>(node.kind==='area'||node.hierarchyArea)?(memory.areaId===node.id||memory.ancestorAreaIds?.includes(node.id)):memory.topicId===node.id);for(const memory of candidates.slice(0,8)){host.append(memoryButton(memory));}
       const relations=this.graph.edges.filter(e=>e.origin==='semantic-area'&&(e.from===node.id||e.to===node.id));
-      if(relations.length){host.append(el('h4','Connected areas'));for(const edge of relations){const target=this.graph.areas.find(a=>a.id===(edge.from===node.id?edge.to:edge.from));if(!target)continue;const button=el('button',target.label);button.type='button';button.dataset.selectMemory=target.id;host.append(button);}}
+      if(relations.length){
+        const tags=el('div',undefined,'connected-area-tags');
+        for(const edge of relations){
+          const target=this.graph.areas.find(area=>area.id===(edge.from===node.id?edge.to:edge.from));
+          if(!target)continue;
+          const button=el('button',undefined,'connected-area-tag');
+          button.type='button';button.dataset.selectMemory=target.id;
+          button.style.setProperty('--memory-area-color',this.colors.get(target.id)||NEUTRAL_COLOR);
+          button.append(el('span',target.label));tags.append(button);
+        }
+        if(tags.childElementCount)host.append(el('h4','Connected areas'),tags);
+      }
 
       return;}
     const memory=node.raw,byId=new Map(this.graph.nodes.map(item=>[item.id,item])),label=memoryLabel(node);title.textContent=label.title;
