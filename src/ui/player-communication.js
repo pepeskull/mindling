@@ -58,20 +58,56 @@ export function researchPresentation(task,memories=[],{enabled,unanswered=false}
   return {status,message,active,learned,known,excerpts:known.map(editableMemoryText)};
 }
 
-function renderTalkAnswer(content,answer){
-  const emphasis=/(?<![\\*])(\*{1,2})(?![\s*])([^\n*]+?)(?<!\s)\1(?!\*)/gu;
+function renderTalkParagraphs(content,answer,className){
   for(const text of answer.replace(/\r\n?/g,'\n').split(/\n[ \t]*\n/)){
-    const paragraph=document.createElement('p');paragraph.className='talk-answer';
-    let offset=0;
-    for(const match of text.matchAll(emphasis)){
-      paragraph.append(text.slice(offset,match.index));
-      const element=document.createElement(match[1]==='**'?'strong':'em');
-      element.textContent=match[2];
-      paragraph.append(element);
-      offset=match.index+match[0].length;
-    }
-    paragraph.append(text.slice(offset));
+    const paragraph=document.createElement('p');
+    if(className)paragraph.className=className;
+    appendTalkEmphasis(paragraph,text);
     content.append(paragraph);
+  }
+}
+
+function appendTalkEmphasis(paragraph,text){
+  // Pair only balanced runs. Skip escaped asterisks, inline code, and
+  // intraword asterisks such as the multiplication signs in 3*4*5.
+  const openings=[],markers=[],word=/[\p{L}\p{N}\p{M}_]/u;
+  for(const {0:token,index} of text.matchAll(/(`+)[^`]*\1|\\[\\*]|\*+/gu)){
+    if(token[0]!=='*'||token.length>3)continue;
+    const before=text[index-1]||'',after=text[index+token.length]||'';
+    const canClose=before&&!/\s/u.test(before)&&!word.test(after);
+    const canOpen=after&&!/\s/u.test(after)&&!word.test(before);
+    let offset=index,remaining=token.length;
+    while(canClose&&openings.length&&openings.at(-1).width<=remaining){
+      const opening=openings.pop(),{width}=opening;
+      markers.push(opening,{index:offset,width,open:false});
+      offset+=width;remaining-=width;
+    }
+    if(canOpen&&remaining)openings.push({index:offset,width:remaining,open:true});
+  }
+  markers.sort((a,b)=>a.index-b.index);
+  let offset=0;
+  const fragments=markers.map(marker=>{
+    const plain=text.slice(offset,marker.index);
+    offset=marker.index+marker.width;
+    return {plain,...marker};
+  });
+  const tail=text.slice(offset);
+  if(!fragments.length){paragraph.textContent=tail;return;}
+  const parents=[paragraph];
+  try{
+    for(const {plain,open,width} of fragments){
+      parents.at(-1).append(plain);
+      if(open){
+        const tags=width===3?['strong','em']:[width===2?'strong':'em'];
+        for(const tag of tags){
+          const element=document.createElement(tag);
+          parents.at(-1).append(element);parents.push(element);
+        }
+      }else parents.length-=width===3?2:1;
+    }
+    parents.at(-1).append(tail);
+  }catch{
+    paragraph.textContent=fragments.map(fragment=>fragment.plain).join('')+tail;
   }
 }
 
@@ -79,8 +115,8 @@ export function renderResponseContent(panel,{message,excerpts=[],answer}){
   panel.querySelector('[data-talk-status]').textContent=message;
   const content=panel.querySelector('[data-talk-content]');
   content.replaceChildren();
-  if(answer)renderTalkAnswer(content,answer);
-  for(const excerpt of excerpts){const paragraph=document.createElement('p');paragraph.textContent=excerpt;content.append(paragraph);}
+  if(answer)renderTalkParagraphs(content,answer,'talk-answer');
+  for(const excerpt of excerpts)renderTalkParagraphs(content,excerpt);
 }
 
 export function renderClarificationContent(panel,model,onChoice){
