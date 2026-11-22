@@ -1,7 +1,7 @@
 import {areaPairVisualState} from '../semantic/area-pair-contract.js';
 import {mergeProposal,commitHierarchy} from './knowledge-hierarchy.js';
 import {cleanView} from './view-state.js';
-import {clusterPositions,ElasticCluster} from './cluster-drag.js';
+import {areaSpringNeighbors,clusterPositions,ConnectedAreaDrag,moveCluster} from './cluster-drag.js';
 import {NEUTRAL_COLOR,colors,areaColor} from './area-colors.js';
 import { VIEW_ZOOM } from '../ui/view-zoom.js';
 import { memoryLabel, memoryButton } from './memory-label.js';
@@ -18,11 +18,11 @@ const PAGE_SIZE=6;
 
 export class NeuralMemoryView {
   constructor(root,{onLearningTask=null,onMergeAreas=null,onConnectMemories=null,onConnectAreas=null,onMemoryView=null}={}){
-    this.onConnectAreas=onConnectAreas;this.onConnectMemories=onConnectMemories;this.connectionBusy=false;this.onLearningTask=onLearningTask;this.onMergeAreas=onMergeAreas;this.onMemoryView=onMemoryView;this.taskQuery='';this.taskFilter='all';this.taskPage=0;this.savedPositions={};this.viewRevision=0;this.saveChain=Promise.resolve();
+    this.onConnectAreas=onConnectAreas;this.onConnectMemories=onConnectMemories;this.connectionBusy=false;this.onLearningTask=onLearningTask;this.onMergeAreas=onMergeAreas;this.onMemoryView=onMemoryView;this.taskQuery='';this.taskFilter='all';this.taskPage=0;this.savedPositions={};this.memoryOffsets={};this.viewRevision=0;this.saveChain=Promise.resolve();
     this.state=null;this.positions=new Map();this.colors=new Map();this.taskNodes=new Map();this.root=root;this.visible=false;this.autoFit=true;this.dirty=true;this.frame=null;this.selected=null;this.hover=null;this.area='all';this.query='';this.page=0;this.zoom=1;this.pan={x:0,y:0};this.abort=new AbortController();this.generation=0;
     root.innerHTML=`<div class="memory-stat-strip" aria-label="Memory statistics"></div>
       <div class="neural-memory-grid"><section class="knowledge-graph-panel" aria-labelledby="knowledge-areas-title"><div class="graph-panel-heading"><div><p class="memory-eyebrow">01 / EXPLORE</p><h3 id="knowledge-areas-title">Knowledge network</h3></div><span class="local-memory-tag"><i></i> LOCAL MEMORY</span></div>
-      <div class="memory-graph-stage"><canvas tabindex="0" role="img" aria-label="Interactive knowledge graph. Drag one current memory onto another to assess a semantic connection. Drag a knowledge area to move its cluster, or drag the background to pan; scroll to zoom. Arrow keys pan; plus and minus zoom. Use Browse memories for keyboard selection."></canvas><canvas class="memory-flow" aria-hidden="true"></canvas><div class="graph-empty" hidden><div class="empty-neural-seed" aria-hidden="true"><i></i><i></i><i></i><b></b></div><p>Your first connection starts here.</p><span>Teach your Mindling something worth remembering.</span></div><div class="memory-tooltip" role="tooltip" hidden></div><div class="graph-view-tools glass-line"><button type="button" data-graph-action="out" aria-label="Zoom out">−</button><span data-zoom-level>100%</span><button type="button" data-graph-action="in" aria-label="Zoom in">+</button><button type="button" data-graph-action="fit">Fit graph</button><button type="button" data-graph-action="reset">Reset view</button></div></div>
+      <div class="memory-graph-stage"><canvas tabindex="0" role="img" aria-label="Interactive knowledge graph. Drag a memory to move it, or onto another current memory to assess a connection. Drag a knowledge area to move its cluster, or drag the background to pan; scroll to zoom. Arrow keys pan; plus and minus zoom. Use Browse memories for keyboard selection."></canvas><canvas class="memory-flow" aria-hidden="true"></canvas><div class="graph-empty" hidden><div class="empty-neural-seed" aria-hidden="true"><i></i><i></i><i></i><b></b></div><p>Your first connection starts here.</p><span>Teach your Mindling something worth remembering.</span></div><div class="memory-tooltip" role="tooltip" hidden></div><div class="graph-view-tools glass-line"><button type="button" data-graph-action="out" aria-label="Zoom out">−</button><span data-zoom-level>100%</span><button type="button" data-graph-action="in" aria-label="Zoom in">+</button><button type="button" data-graph-action="fit">Fit graph</button><button type="button" data-graph-action="reset">Reset view</button></div></div>
       <div class="graph-legend"><span><i class="legend-hierarchy"></i> Organization</span><span><i class="legend-association"></i> Stored association</span><span><i class="legend-explicit"></i> History / parts</span><span><i class="legend-submission"></i> Same submission</span><span><i class="legend-research"></i> Learning task</span><span class="graph-gesture">Drag to explore · Scroll to zoom</span></div><p class="graph-message" role="status" aria-live="polite"></p>
       <details class="memory-browser"><summary>Browse memories <span>Keyboard-accessible index</span></summary><ul></ul><div><button type="button" data-memory-page="prev">Previous</button><span data-memory-page-label></span><button type="button" data-memory-page="next">Next</button></div></details><details class="research-task-browser"><summary>Learning tasks</summary><div class="task-browser-tools"><input type="search" data-task-search aria-label="Search learning tasks" placeholder="Find a learning task…"><select data-task-filter aria-label="Filter learning tasks"><option value="all">All tasks</option><option value="actionable">Clarification needed</option><option value="active">Unfinished</option><option value="completed">Completed</option></select></div><ul></ul><div><button type="button" data-task-page="prev">Previous</button><span data-task-page-label></span><button type="button" data-task-page="next">Next</button></div></details></section>
       <aside class="memory-side"><section class="knowledge-radar-panel" aria-labelledby="coverage-title"><p class="memory-eyebrow">02 / PERSPECTIVE</p><h3 id="coverage-title">Knowledge Distribution</h3><p class="radar-description">Where your current memories live.</p><div class="memory-radar"></div><ul class="coverage-values"></ul><p class="radar-method">Share of current canonical memories in each top-level area. Coverage, not measured skill or intelligence.</p><details class="radar-method-detail"><summary>How this is measured</summary><p>Each axis is the number of current memories in a top-level area divided by all current memories. Child areas retain their identity; each memory counts once under its root. Displayed percentages are rounded. Historical records are excluded. With more than six areas, the five largest are shown and the rest form Other areas. The outer ring is a labelled share scale rounded up to the next ten percentage points. No skill assessments are stored. Future measured skill proficiency requires evaluation data and is not inferred by this chart.</p></details></section>
@@ -30,7 +30,7 @@ export class NeuralMemoryView {
       `;
     this.canvas=root.querySelector('canvas');this.ctx=this.canvas.getContext('2d');this.stage=root.querySelector('.memory-graph-stage');this.tooltip=root.querySelector('.memory-tooltip');
     this.flowCanvas=root.querySelector('.memory-flow');this.flowCtx=this.flowCanvas.getContext('2d');this.flowFrame=null;this.flowPaths=[];this.motion=matchMedia('(prefers-reduced-motion: reduce)');
-    this.on(this.motion,'change',()=>{if(this.motion.matches)this.cancelDrag?.();this.stopFlow();this.startFlow();this.drawSoon();});
+    this.on(this.motion,'change',()=>{if(this.motion.matches)this.stopSettling();this.stopFlow();this.startFlow();this.drawSoon();});
     this.on(root,'click',event=>{
       const action=event.target.closest('[data-graph-action]')?.dataset.graphAction;
       if(action==='in'||action==='out')this.setZoom(this.zoom*(action==='in'?VIEW_ZOOM.step:1/VIEW_ZOOM.step));
@@ -44,29 +44,110 @@ export class NeuralMemoryView {
     this.on(root.querySelector('[data-task-filter]'),'change',e=>{this.taskFilter=e.target.value;this.taskPage=0;this.renderTaskIndex();this.scheduleSave();});
     for(const details of root.querySelectorAll('.research-task-browser,.memory-browser'))this.on(details,'toggle',()=>this.scheduleSave());
     this.on(this.canvas,'wheel',event=>{event.preventDefault();const bounds=this.canvas.getBoundingClientRect();this.setZoom(this.zoom*Math.exp(-event.deltaY*VIEW_ZOOM.wheel),event.clientX-bounds.left,event.clientY-bounds.top);},{passive:false});
-    this.on(this.canvas,'pointerdown',event=>{if(event.button!==0||this.drag||this.mergeBusy||this.connectionBusy||this.loadingView)return;const box=this.canvas.getBoundingClientRect(),hit=this.hit(event.clientX-box.left,event.clientY-box.top);clearTimeout(this.saveTimer);this.capturePositions();this.elastic=null;this.drag={id:event.pointerId,x:event.clientX,y:event.clientY,pan:{...this.pan},moved:false,memory:this.onConnectMemories&&hit?.kind==='memory'&&!hit.historical?hit:null,cluster:hit?.kind==='area'?new ElasticCluster(clusterPositions(this.layout,hit.id),hit.id):null};this.canvas.setPointerCapture(event.pointerId);});
+    this.on(this.canvas,'pointerdown',event=>this.beginDrag(event));
     this.on(this.canvas,'pointermove',event=>{
       const box=this.canvas.getBoundingClientRect(),x=event.clientX-box.left,y=event.clientY-box.top;
-      if(this.drag){if(event.pointerId!==this.drag.id)return;const dx=event.clientX-this.drag.x,dy=event.clientY-this.drag.y;if(Math.hypot(dx,dy)>5)this.drag.moved=true;if(this.drag.moved){this.autoFit=false;if(this.drag.memory){const target=this.hit(x,y);this.drag.target=target?.kind==='memory'&&!target.historical&&target.recordId!==this.drag.memory.recordId?target:null;this.root.querySelector('.graph-message').textContent=this.drag.target?'Release to assess this memory connection.':'Drag onto another current memory to assess a connection.';}else if(this.drag.cluster){this.elastic=this.drag.cluster;this.elastic.move(dx/this.zoom,dy/this.zoom,{left:(12-this.pan.x)/this.zoom,right:(box.width-12-this.pan.x)/this.zoom,top:(12-this.pan.y)/this.zoom,bottom:(box.height-12-this.pan.y)/this.zoom},this.motion.matches);this.previewMerge(x,y);}else this.pan={x:this.drag.pan.x+dx,y:this.drag.pan.y+dy};this.hideTooltip();this.drawSoon();}return;}
+      if(this.drag){this.moveDrag(event,box);return;}
       const hit=this.hit(x,y);this.hover=hit?.id||null;this.canvas.style.cursor=hit?'pointer':'grab';
       if(hit){this.tooltip.textContent=hit.kind==='memory'?memoryLabel(hit).title:(hit.displayLabel||hit.label);this.tooltip.hidden=false;this.tooltip.style.left=`${Math.min(x+14,Math.max(10,box.width-250))}px`;this.tooltip.style.top=`${Math.max(10,y-38)}px`;}else this.hideTooltip();this.drawSoon();
     });
-    this.on(this.canvas,'pointerup',event=>{if(!this.drag||event.pointerId!==this.drag.id)return;const drag=this.drag,moved=drag.moved,preview=this.mergePreview;this.drag=null;
-      if(drag.memory&&moved){if(drag.target)void this.connectMemoryPair(drag.memory.recordId,drag.target.recordId);else this.root.querySelector('.graph-message').textContent='No connection requested. Drop onto another current memory.';}else if(preview&&moved){for(const p of drag.cluster.points){p.node.x=p.x;p.node.y=p.y;}this.elastic=null;if(preview.proposal.valid&&performance.now()-preview.since>=600)this.commitMerge(preview.proposal,preview.targetId);else if(!preview.proposal.valid&&preview.proposal.code==='MISSING_CONTAINMENT'&&preview.state==='pending'&&this.onConnectAreas)void this.connectAreaPair(drag.cluster.root.node.id,preview.targetId);}
-      else{drag.cluster?.release();this.scheduleSave();}
-      this.mergePreview=null;if(this.canvas.hasPointerCapture(event.pointerId))this.canvas.releasePointerCapture(event.pointerId);this.drawSoon();
-      if(!moved){const box=this.canvas.getBoundingClientRect(),hit=this.hit(event.clientX-box.left,event.clientY-box.top);if(hit)this.select(hit.id);}});
-    const cancelDrag=()=>{if(this.mergePreview&&this.drag?.cluster)for(const p of this.drag.cluster.points){p.node.x=p.x;p.node.y=p.y;}const id=this.drag?.id;this.mergePreview=null;this.elastic=null;this.springTime=null;this.drag=null;if(id!==undefined&&this.canvas.hasPointerCapture(id))this.canvas.releasePointerCapture(id);this.hideTooltip();this.drawSoon();};this.cancelDrag=cancelDrag;this.on(this.canvas,'pointercancel',cancelDrag);this.on(this.canvas,'lostpointercapture',()=>{if(this.drag)cancelDrag();});this.on(this.canvas,'pointerleave',()=>{if(!this.drag){this.hover=null;this.hideTooltip();this.drawSoon();}});
-    this.on(this.canvas,'keydown',event=>{const move={ArrowLeft:[35,0],ArrowRight:[-35,0],ArrowUp:[0,35],ArrowDown:[0,-35]}[event.key];if(move){event.preventDefault();this.autoFit=false;this.pan.x+=move[0];this.pan.y+=move[1];this.drawSoon();}if(['+','=','-','0','Escape'].includes(event.key)){event.preventDefault();if(event.key==='0')this.fit();else if(event.key==='Escape'){this.selected=null;this.renderInspector();this.drawSoon();}else this.setZoom(this.zoom*(event.key==='-'?1/VIEW_ZOOM.step:VIEW_ZOOM.step));}});
-    this.visibility=()=>{if(document.hidden){this.cancelDrag?.();this.stopFlow();cancelAnimationFrame(this.frame);this.frame=null;this.hideTooltip();}else if(this.dirty)this.queueBuild();else this.drawSoon();};this.on(document,'visibilitychange',this.visibility);
-    this.observer=new ResizeObserver(()=>{if(this.visible){if(this.autoFit)this.fit();else this.drawSoon();}});this.observer.observe(this.stage);
+    this.on(this.canvas,'pointerup',event=>this.endDrag(event));
+    for(const type of ['pointercancel','lostpointercapture'])this.on(this.canvas,type,event=>{
+      if(event.pointerId===this.drag?.id)this.cancelDrag();
+    });
+    this.on(this.canvas,'pointerleave',()=>{if(!this.drag){this.hover=null;this.hideTooltip();this.drawSoon();}});
+    this.on(this.canvas,'keydown',event=>{if(this.drag){if(event.key==='Escape')this.cancelDrag();return;}const move={ArrowLeft:[35,0],ArrowRight:[-35,0],ArrowUp:[0,35],ArrowDown:[0,-35]}[event.key];if(move){event.preventDefault();this.autoFit=false;this.pan.x+=move[0];this.pan.y+=move[1];this.drawSoon();}if(['+','=','-','0','Escape'].includes(event.key)){event.preventDefault();if(event.key==='0')this.fit();else if(event.key==='Escape'){this.selected=null;this.renderInspector();this.drawSoon();}else this.setZoom(this.zoom*(event.key==='-'?1/VIEW_ZOOM.step:VIEW_ZOOM.step));}});
+    this.visibility=()=>{if(document.hidden){this.cancelDrag();this.stopSettling();this.stopFlow();cancelAnimationFrame(this.frame);this.frame=null;this.hideTooltip();}else if(this.dirty)this.queueBuild();else this.drawSoon();};this.on(document,'visibilitychange',this.visibility);
+    this.observer=new ResizeObserver(()=>{if(this.visible){if(this.autoFit&&!this.drag)this.fit();else this.drawSoon();}});this.observer.observe(this.stage);
+  }
+  beginDrag(event){
+    if(event.button!==0||this.drag||this.mergeBusy||this.connectionBusy||this.loadingView)return;
+    this.stopSettling();
+    const box=this.canvas.getBoundingClientRect(),x=event.clientX-box.left,y=event.clientY-box.top;
+    const hit=this.hit(x,y);
+    this.drag={
+      id:event.pointerId,x,y,pan:{...this.pan},autoFit:this.autoFit,moved:false,
+      message:this.root.querySelector('.graph-message').textContent,previousTarget:null,
+      memory:hit?.kind==='memory'?{node:hit,x:hit.x,y:hit.y}:null,
+      cluster:hit?.kind==='area'?new ConnectedAreaDrag(this.layout,this.positions,hit.id,this.springNeighbors.get(hit.id)):null
+    };
+    this.canvas.setPointerCapture(event.pointerId);
+  }
+  moveDrag(event,box){
+    const drag=this.drag;
+    if(event.pointerId!==drag.id)return;
+    const x=event.clientX-box.left,y=event.clientY-box.top,dx=x-drag.x,dy=y-drag.y;
+    if(!drag.moved&&Math.hypot(dx,dy)<=5)return;
+    drag.moved=true;this.autoFit=false;
+    const bounds={left:(12-this.pan.x)/this.zoom,right:(box.width-12-this.pan.x)/this.zoom,top:(12-this.pan.y)/this.zoom,bottom:(box.height-12-this.pan.y)/this.zoom};
+    if(drag.memory){
+      const {node}=drag.memory;
+      moveCluster([drag.memory],dx/this.zoom,dy/this.zoom,bounds);
+      const target=this.onConnectMemories&&!node.historical&&this.hit(x,y,node.id);
+      drag.target=target?.kind==='memory'&&!target.historical?target:null;
+      if(drag.target!==drag.previousTarget){
+        this.root.querySelector('.graph-message').textContent=drag.target?'Release to assess this memory connection.':drag.message;
+        drag.previousTarget=drag.target;
+      }
+    }else if(drag.cluster){
+      this.elastic=drag.cluster;
+      this.elastic.move(dx/this.zoom,dy/this.zoom,bounds,this.motion.matches);
+      this.previewMerge(x,y);
+    }else this.pan={x:drag.pan.x+dx,y:drag.pan.y+dy};
+    this.hideTooltip();this.drawSoon();
+  }
+  endDrag(event){
+    const drag=this.drag;
+    if(event.pointerId!==drag?.id)return;
+    const box=this.canvas.getBoundingClientRect();
+    this.moveDrag(event,box);
+    const preview=this.mergePreview;
+    this.drag=null;this.mergePreview=null;
+    if(this.canvas.hasPointerCapture(event.pointerId))this.canvas.releasePointerCapture(event.pointerId);
+    if(!drag.moved){
+      const hit=this.hit(event.clientX-box.left,event.clientY-box.top);
+      if(hit)this.select(hit.id);
+    }else if(drag.memory){
+      const {node,x,y}=drag.memory;
+      if(drag.target){
+        node.x=x;node.y=y;
+        this.root.querySelector('.graph-message').textContent=drag.message;
+        void this.connectMemoryPair(node.recordId,drag.target.recordId);
+      }else{
+        const owner=this.positions.get(node.areaId);
+        if(owner)this.memoryOffsets[node.id]={areaId:owner.id,x:node.x-owner.x,y:node.y-owner.y};
+      }
+      this.scheduleSave(0);
+    }else if(preview&&preview.proposal.code!=='ASSOCIATION_ONLY'){
+      drag.cluster.restore();this.elastic=null;this.springTime=null;
+      if(preview.proposal.valid&&performance.now()-preview.since>=600)this.commitMerge(preview.proposal,preview.targetId);
+      else if(!preview.proposal.valid&&preview.proposal.code==='MISSING_CONTAINMENT'&&preview.state==='pending'&&this.onConnectAreas)void this.connectAreaPair(drag.cluster.group.anchor.node.id,preview.targetId);
+      this.scheduleSave();
+    }else if(!this.elastic?.active)this.scheduleSave(drag.cluster?0:350);
+    if(this.dirty)this.queueBuild();
+    this.drawSoon();
+  }
+  cancelDrag(){
+    const drag=this.drag;
+    if(!drag)return;
+    this.drag=null;this.mergePreview=null;this.elastic=null;this.springTime=null;
+    drag.cluster?.restore();
+    if(drag.memory){const {node,x,y}=drag.memory;node.x=x;node.y=y;this.root.querySelector('.graph-message').textContent=drag.message;}
+    this.pan=drag.pan;this.autoFit=drag.autoFit;
+    if(this.canvas.hasPointerCapture(drag.id))this.canvas.releasePointerCapture(drag.id);
+    if(this.dirty)this.queueBuild();
+    this.hideTooltip();this.drawSoon();
+  }
+  stopSettling(){
+    if(this.drag||!this.elastic)return;
+    this.elastic=null;this.springTime=null;this.scheduleSave(0);
   }
   on(target,type,callback,options={}){target.addEventListener(type,callback,{...options,signal:this.abort.signal});}
   update(state){if(this.abort.signal.aborted)return;this.state=state||{};this.restoreView();const signature=memorySignature(this.state)+JSON.stringify([tasksFor(this.state),this.state.researchPermissions]);if(signature===this.signature)return;this.signature=signature;this.dirty=true;if(this.visible)this.queueBuild();}
-  setVisible(visible){if(this.abort.signal.aborted)return;this.visible=visible;if(visible){if(this.dirty)this.queueBuild();else this.drawSoon();}else{this.cancelDrag?.();this.capturePositions();this.scheduleSave();this.stopFlow();cancelAnimationFrame(this.frame);this.frame=null;this.hideTooltip();}}
-  queueBuild(){if(this.pending||!this.state||document.hidden||this.loadingView||this.abort.signal.aborted)return;this.pending=true;const token=this.generation;setTimeout(()=>{this.pending=false;if(token!==this.generation||!this.visible||document.hidden||this.loadingView||!this.state)return;this.graph=graphData(this.state);this.renderStats();this.rebuild(!this.fitted);this.renderRadar();this.dirty=false;},0);}
+  setVisible(visible){if(this.abort.signal.aborted)return;this.visible=visible;if(visible){if(this.dirty)this.queueBuild();else this.drawSoon();}else{this.cancelDrag();this.stopSettling();this.scheduleSave();this.stopFlow();cancelAnimationFrame(this.frame);this.frame=null;this.hideTooltip();}}
+  queueBuild(){if(this.pending||this.drag||!this.state||document.hidden||this.loadingView||this.abort.signal.aborted)return;this.pending=true;const token=this.generation;setTimeout(()=>{this.pending=false;if(token!==this.generation||this.drag||!this.visible||document.hidden||this.loadingView||!this.state)return;this.graph=graphData(this.state);this.renderStats();this.rebuild(!this.fitted);this.renderRadar();this.dirty=false;},0);}
   renderStats(){const strip=this.root.querySelector('.memory-stat-strip');strip.replaceChildren();for(const [value,name] of [[this.graph.stats.canonical,'Canonical memories'],[this.graph.stats.areas,'Knowledge areas'],[this.graph.stats.associations,'Stored associations']]){const item=el('div');if(name==='Stored associations')item.title='Unique undirected persisted memory associations. Reciprocal links count once; organization, history and submission groups are excluded.';item.append(el('strong',value),el('span',name));strip.append(item);}}
-  rebuild(fit=false){if(!this.graph||!this.state||this.loadingView||this.abort.signal.aborted)return;this.cancelDrag?.();this.hover=null;this.hideTooltip();this.filtered=withResearch(filterGraph(this.graph,{area:this.area,query:this.query}),this.state,this.graph);this.taskNodes=new Map(learningNodes(this.state,this.graph).map(node=>[node.id,node]));this.capturePositions();this.layout=layoutResearch(layoutGraph(this.filtered),this.filtered);this.applyPositions();this.layoutHierarchyRevision=this.state.knowledgeHierarchy?.revision||0;this.positions=new Map(this.layout.nodes.map(node=>[node.id,node]));this.colors=new Map(this.graph.areas.map(area=>[area.id,area.label==='Uncategorized'?NEUTRAL_COLOR:areaColor(area.id)]));if(this.selected&&!this.positions.has(this.selected)&&!this.taskNodes.has(this.selected))this.selected=null;
+  rebuild(fit=false){if(!this.graph||!this.state||this.loadingView||this.abort.signal.aborted)return;this.cancelDrag();this.stopSettling();this.hover=null;this.hideTooltip();this.filtered=withResearch(filterGraph(this.graph,{area:this.area,query:this.query}),this.state,this.graph);this.taskNodes=new Map(learningNodes(this.state,this.graph).map(node=>[node.id,node]));this.capturePositions();this.layout=layoutResearch(layoutGraph(this.filtered),this.filtered);this.positions=new Map(this.layout.nodes.map(node=>[node.id,node]));this.springNeighbors=areaSpringNeighbors(this.layout,this.positions);this.applyPositions();this.areaNodes=this.layout.nodes.filter(node=>node.kind==='area');this.layoutHierarchyRevision=this.state.knowledgeHierarchy?.revision||0;this.colors=new Map(this.graph.areas.map(area=>[area.id,area.label==='Uncategorized'?NEUTRAL_COLOR:areaColor(area.id)]));if(this.selected&&!this.positions.has(this.selected)&&!this.taskNodes.has(this.selected))this.selected=null;
     const empty=this.root.querySelector('.graph-empty');empty.hidden=Boolean(this.filtered.memories.length||this.filtered.nodes.some(node=>node.kind==='research'));empty.querySelector('p').textContent=this.graph.stats.canonical?'No memories in this view.':'Your first connection starts here.';empty.querySelector('span').textContent=this.graph.stats.canonical?'Try another area or a different search.':'Teach your Mindling something worth remembering.';
     this.root.querySelector('.graph-message').textContent=`${this.filtered.memories.length} of ${this.graph.stats.canonical} canonical memories in view${this.layout.nodes.length>400?' · Zoom in for fine edges; select a memory to highlight stored associations.':''}${this.graph.stats.ignoredRecords?` · ${this.graph.stats.ignoredRecords} records without unique IDs were not plotted.`:''}`;
     this.renderIndex();this.renderTaskIndex();this.renderInspector();if(fit||this.autoFit)this.fit();else this.drawSoon();}
@@ -85,14 +166,45 @@ export class NeuralMemoryView {
   selectTask(id){if(!this.taskNodes?.has(id))return;this.selected=id;this.scheduleSave();this.renderInspector();if(this.positions.has(id))this.focus(id);else this.drawSoon();this.renderTaskIndex();}
   select(id,focus=false){if(!this.positions.has(id)&&this.graph.nodes.some(node=>node.id===id)){this.area='all';this.query='';this.rebuild();}if(!this.positions.has(id))return;this.selected=id;this.scheduleSave();this.renderInspector();this.root.querySelector('.memory-inspector').scrollTop=0;this.renderIndex();if(focus)this.focus(id);else this.drawSoon();}
   focus(id){const node=this.positions?.get(id);if(!node)return;this.autoFit=false;this.zoom=Math.max(this.zoom,.8);this.pan={x:this.stage.clientWidth/2-node.x*this.zoom,y:this.stage.clientHeight/2-node.y*this.zoom};this.drawSoon();}
-  fit(){if(!this.layout||!this.stage.clientWidth)return;this.autoFit=true;this.zoom=Math.min(1.4,(this.stage.clientWidth-100)/this.layout.width,(this.stage.clientHeight-100)/this.layout.height);this.fitZoom=this.zoom;this.pan={x:(this.stage.clientWidth-this.layout.width*this.zoom)/2,y:(this.stage.clientHeight-this.layout.height*this.zoom)/2};this.fitted=true;this.drawSoon();}
-  setZoom(zoom,x=this.stage.clientWidth/2,y=this.stage.clientHeight/2){this.autoFit=false;const next=Math.max(Math.min(VIEW_ZOOM.min,(this.fitZoom||.06)/4),Math.min(VIEW_ZOOM.max,zoom)),ratio=next/this.zoom;this.pan={x:x-(x-this.pan.x)*ratio,y:y-(y-this.pan.y)*ratio};this.zoom=next;this.scheduleSave();this.drawSoon();}
-  hit(x,y){if(!this.layout)return null;const world={x:(x-this.pan.x)/this.zoom,y:(y-this.pan.y)/this.zoom};return [...this.layout.nodes].reverse().find(node=>Math.hypot(node.x-world.x,node.y-world.y)<=Math.max(node.r+4,8/this.zoom));}
+  fit(){
+    if(this.drag||!this.layout||!this.stage.clientWidth)return;
+    let left=0,top=0,right=this.layout.width,bottom=this.layout.height;
+    for(const node of this.layout.nodes){
+      left=Math.min(left,node.x-node.r);top=Math.min(top,node.y-node.r);
+      right=Math.max(right,node.x+node.r);bottom=Math.max(bottom,node.y+node.r);
+    }
+    const width=right-left,height=bottom-top,viewportWidth=this.stage.clientWidth,viewportHeight=this.stage.clientHeight;
+    this.autoFit=true;this.zoom=Math.max(.025,Math.min(1.4,(viewportWidth-100)/width,(viewportHeight-100)/height));
+    this.fitZoom=this.zoom;
+    this.pan={x:(viewportWidth-width*this.zoom)/2-left*this.zoom,y:(viewportHeight-height*this.zoom)/2-top*this.zoom};
+    this.fitted=true;this.drawSoon();
+  }
+  setZoom(zoom,x=this.stage.clientWidth/2,y=this.stage.clientHeight/2){if(this.drag)return;this.autoFit=false;const next=Math.max(Math.min(VIEW_ZOOM.min,(this.fitZoom||.06)/4),Math.min(VIEW_ZOOM.max,zoom)),ratio=next/this.zoom;this.pan={x:x-(x-this.pan.x)*ratio,y:y-(y-this.pan.y)*ratio};this.zoom=next;this.scheduleSave();this.drawSoon();}
+  hit(x,y,excluded){
+    if(!this.layout)return null;
+    const worldX=(x-this.pan.x)/this.zoom,worldY=(y-this.pan.y)/this.zoom;
+    const {nodes}=this.layout;
+    for(let i=nodes.length-1;i>=0;i--){
+      const node=nodes[i];
+      if(node.id!==excluded&&Math.hypot(node.x-worldX,node.y-worldY)<=Math.max(node.r+4,8/this.zoom))return node;
+    }
+    return null;
+  }
   hideTooltip(){this.tooltip.hidden=true;}
-  drawSoon(){if(!this.visible||document.hidden||this.frame!==null||this.abort.signal.aborted)return;this.frame=requestAnimationFrame(now=>{this.frame=null;const moving=this.elastic?.step(this.springTime===null||this.springTime===undefined?1/60:(now-this.springTime)/1000);this.springTime=now;this.draw();if(moving&&!this.motion.matches)this.drawSoon();else{this.springTime=null;if(this.elastic&&!this.drag){this.elastic=null;this.capturePositions();this.scheduleSave();}}});}
+  drawSoon(){
+    if(!this.visible||document.hidden||this.frame!==null||this.abort.signal.aborted)return;
+    this.frame=requestAnimationFrame(now=>{
+      this.frame=null;
+      const moving=!this.motion.matches&&this.elastic?.step(this.springTime==null?1/60:(now-this.springTime)/1000);
+      this.springTime=moving?now:null;
+      this.draw();
+      if(moving)this.drawSoon();
+      else if(this.elastic&&!this.drag){this.elastic=null;this.scheduleSave(0);}
+    });
+  }
   draw(){if(!this.layout||!this.visible||this.loadingView||this.abort.signal.aborted)return;const w=this.stage.clientWidth,h=this.stage.clientHeight,dpr=Math.min(devicePixelRatio||1,2);if(!w||!h)return;if(this.canvas.width!==Math.round(w*dpr)||this.canvas.height!==Math.round(h*dpr)){this.canvas.width=Math.round(w*dpr);this.canvas.height=Math.round(h*dpr);}const ctx=this.ctx;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);ctx.save();ctx.translate(this.pan.x,this.pan.y);ctx.scale(this.zoom,this.zoom);
     this.flowPaths=[];
-    const preview=this.mergePreview,muted=preview?.involved||new Set(),activeLayout=preview?.proposal.valid?{...this.layout,nodes:this.layout.nodes.filter(n=>!muted.has(n.id)).concat(preview.layout.nodes),edges:this.layout.edges.filter(e=>!muted.has(e.from)||!muted.has(e.to)).concat(preview.layout.edges)}:this.layout;const displayPositions=new Map(activeLayout.nodes.map(n=>[n.id,n]));
+    const preview=this.mergePreview,muted=preview?.involved||new Set(),activeLayout=preview?.proposal.valid?{...this.layout,nodes:this.layout.nodes.filter(n=>!muted.has(n.id)).concat(preview.layout.nodes),edges:this.layout.edges.filter(e=>!muted.has(e.from)||!muted.has(e.to)).concat(preview.layout.edges)}:this.layout;const displayPositions=activeLayout===this.layout?this.positions:new Map(activeLayout.nodes.map(n=>[n.id,n]));
     const overview=this.layout.nodes.length>400&&this.zoom<.35,dotBatches=new Map();
     const selected=this.positions.get(this.selected),hover=this.positions.get(this.hover),neighbors=new Set([this.selected,this.hover]);
     for(const edge of activeLayout.edges)if(edge.from===this.selected||edge.to===this.selected){neighbors.add(edge.from);neighbors.add(edge.to);}
@@ -197,8 +309,8 @@ export class NeuralMemoryView {
   }
   previewMerge(x,y){
     if(!this.onMergeAreas||!this.drag?.cluster)return;
-    const root=this.drag.cluster.root.node,excluded=new Set(this.drag.cluster.points.map(p=>p.node.id)),wx=(x-this.pan.x)/this.zoom,wy=(y-this.pan.y)/this.zoom;
-    const target=this.layout.nodes.find(n=>n.kind==='area'&&!excluded.has(n.id)&&Math.hypot(n.x-wx,n.y-wy)<=n.r+10/this.zoom);
+    const root=this.drag.cluster.group.anchor.node,excluded=this.drag.cluster.group.ids,wx=(x-this.pan.x)/this.zoom,wy=(y-this.pan.y)/this.zoom;
+    const target=this.areaNodes.find(n=>!excluded.has(n.id)&&Math.hypot(n.x-wx,n.y-wy)<=n.r+10/this.zoom);
     if(!target){this.mergePreview=null;return;}if(this.mergePreview?.targetId===target.id)return;
     const proposal=mergeProposal(this.graph,this.state.knowledgeHierarchy,root.id,target.id);
     const association=proposal.code==='ASSOCIATION_ONLY';
@@ -219,22 +331,30 @@ export class NeuralMemoryView {
     finally{this.mergeBusy=false;this.scheduleSave();this.drawSoon();}
   }
   capturePositions(){if(!this.layout||this.loadingView||this.mergeBusy||this.layoutHierarchyRevision!==(this.state?.knowledgeHierarchy?.revision||0))return;const known=new Set(this.graph?.areas.map(a=>a.id)||[]);this.savedPositions=Object.fromEntries([...Object.entries(this.savedPositions).filter(([id])=>known.has(id)),...this.layout.nodes.filter(n=>n.kind==='area').map(n=>[n.id,{x:n.x,y:n.y}])]);this.positionsHierarchyRevision=this.layoutHierarchyRevision;}
-  applyPositions(){for(const area of this.layout.nodes.filter(n=>n.kind==='area').sort((a,b)=>(a.ancestorIds?.length||0)-(b.ancestorIds?.length||0))){if(area.parentId&&this.positionsHierarchyRevision!==(this.state.knowledgeHierarchy?.revision||0))continue;const saved=this.savedPositions[area.id];if(!saved)continue;const dx=saved.x-area.x,dy=saved.y-area.y;for(const p of clusterPositions(this.layout,area.id)){p.node.x+=dx;p.node.y+=dy;}}}
+  applyPositions(){for(const area of this.layout.nodes.filter(n=>n.kind==='area').sort((a,b)=>(a.ancestorIds?.length||0)-(b.ancestorIds?.length||0))){if(area.parentId&&this.positionsHierarchyRevision!==(this.state.knowledgeHierarchy?.revision||0))continue;const saved=this.savedPositions[area.id];if(!saved)continue;const dx=saved.x-area.x,dy=saved.y-area.y;for(const p of clusterPositions(this.layout,area.id)){p.node.x+=dx;p.node.y+=dy;}}
+    for(const node of this.layout.nodes){
+      if(node.kind!=='memory')continue;
+      const offset=this.memoryOffsets[node.id],owner=this.positions.get(node.areaId);
+      if(offset&&owner?.id===offset.areaId){node.x=owner.x+offset.x;node.y=owner.y+offset.y;}
+    }
+  }
   async restoreView(){
     const identity=this.state.mindlingId||this.state.id;if(!identity||identity===this.viewIdentity)return;
-    this.connectionVisual=null;this.viewIdentity=identity;this.autoFit=true;this.fitted=false;this.zoom=1;this.pan={x:0,y:0};this.root.querySelector('.research-task-browser').open=false;this.root.querySelector('.memory-browser').open=false;this.savedPositions={};this.viewRevision=0;this.layout=null;this.selected=null;this.taskQuery='';this.taskFilter='all';this.taskPage=this.page=0;this.loadingView=true;
+    this.cancelDrag();this.elastic=null;this.springTime=null;clearTimeout(this.saveTimer);
+    this.connectionVisual=null;this.viewIdentity=identity;this.autoFit=true;this.fitted=false;this.zoom=1;this.pan={x:0,y:0};this.root.querySelector('.research-task-browser').open=false;this.root.querySelector('.memory-browser').open=false;this.savedPositions={};this.memoryOffsets={};this.viewRevision=0;this.layout=null;this.selected=null;this.taskQuery='';this.taskFilter='all';this.taskPage=this.page=0;this.loadingView=true;
     try{const saved=await this.onMemoryView?.(identity);if(this.abort.signal.aborted||identity!==this.viewIdentity)return;
       if(saved?.version===1){this.viewRevision=saved.revision;this.positionsHierarchyRevision=saved.hierarchyRevision;const view=cleanView(saved);const {positions,...preferences}=view;Object.assign(this,{...preferences,savedPositions:positions});this.root.querySelector('.research-task-browser').open=view.tasksOpen;this.root.querySelector('.memory-browser').open=view.browseOpen;this.fitted=!view.autoFit;}
       this.root.querySelector('[data-task-search]').value=this.taskQuery;this.root.querySelector('[data-task-filter]').value=this.taskFilter;
     }catch{if(!this.abort.signal.aborted)this.root.querySelector('.graph-message').textContent='Saved layout is unavailable.';}
     finally{if(identity===this.viewIdentity){this.loadingView=false;this.dirty=true;if(!this.abort.signal.aborted&&this.visible)this.queueBuild();}}
   }
-  scheduleSave(){
-    if(!this.onMemoryView||this.loadingView||this.mergeBusy||!this.viewIdentity)return;clearTimeout(this.saveTimer);
+  scheduleSave(delay=350){
+    if(!this.onMemoryView||this.loadingView||this.drag||this.elastic?.active||this.mergeBusy||!this.viewIdentity)return;clearTimeout(this.saveTimer);
     const identity=this.viewIdentity;
     // Capture now, including before teardown. Actual writes are bounded and serialized.
     this.capturePositions();const value=cleanView({...this,positions:this.savedPositions,tasksOpen:this.root.querySelector('.research-task-browser')?.open,browseOpen:this.root.querySelector('.memory-browser')?.open}),hierarchyRevision=this.state?.knowledgeHierarchy?.revision||0;
-    this.saveTimer=setTimeout(()=>{this.saveChain=this.saveChain.catch(()=>{}).then(async()=>{if(identity!==this.viewIdentity)return;const result=await this.onMemoryView(identity,{...value,revision:this.viewRevision,hierarchyRevision});this.viewRevision=result.revision;}).catch(()=>{if(!this.abort.signal.aborted)this.root.querySelector('.graph-message').textContent='Layout was not saved because local state changed. Reload to use the saved view.';});},350);
+    const save=()=>{this.saveChain=this.saveChain.catch(()=>{}).then(async()=>{if(identity!==this.viewIdentity)return;const result=await this.onMemoryView(identity,{...value,revision:this.viewRevision,hierarchyRevision});if(identity===this.viewIdentity)this.viewRevision=result.revision;}).catch(()=>{if(identity===this.viewIdentity&&!this.abort.signal.aborted)this.root.querySelector('.graph-message').textContent='Layout was not saved because local state changed. Reload to use the saved view.';});};
+    if(delay)this.saveTimer=setTimeout(save,delay);else save();
   }
-  destroy(){if(this.abort.signal.aborted)return;this.cancelDrag?.();this.capturePositions();this.scheduleSave();this.visible=false;this.stopFlow();this.flowPaths=[];this.generation++;document.removeEventListener('visibilitychange',this.visibility);this.abort.abort();this.observer.disconnect();cancelAnimationFrame(this.frame);this.frame=null;this.layout=null;this.graph=null;this.state=null;this.taskNodes=null;this.onLearningTask=null;this.filtered=null;this.positions=null;this.signature=null;this.colors=null;this.drag=null;this.canvas.width=0;this.canvas.height=0;this.ctx=null;this.root.replaceChildren();}
+  destroy(){if(this.abort.signal.aborted)return;this.cancelDrag();this.stopSettling();this.scheduleSave();this.visible=false;this.stopFlow();this.flowPaths=[];this.generation++;document.removeEventListener('visibilitychange',this.visibility);this.abort.abort();this.observer.disconnect();cancelAnimationFrame(this.frame);this.frame=null;this.layout=null;this.graph=null;this.state=null;this.taskNodes=null;this.onLearningTask=null;this.filtered=null;this.positions=null;this.signature=null;this.colors=null;this.drag=null;this.canvas.width=0;this.canvas.height=0;this.ctx=null;this.root.replaceChildren();}
 }

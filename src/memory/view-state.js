@@ -1,7 +1,11 @@
 // Separate, identity-scoped UI preferences. Never writes gameplay or memories.
 export function cleanView(value={}){
  const finite=n=>Number.isFinite(n)&&Math.abs(n)<1e7;
- return {positions:Object.fromEntries(Object.entries(value.positions||{}).slice(0,5000).filter(([id,p])=>id.startsWith('area:')&&finite(p?.x)&&finite(p?.y)).map(([id,p])=>[id,{x:p.x,y:p.y}])),zoom:finite(value.zoom)&&value.zoom>0?Math.min(8,value.zoom):1,pan:finite(value.pan?.x)&&finite(value.pan?.y)?value.pan:{x:0,y:0},autoFit:value.autoFit!==false,taskQuery:String(value.taskQuery||'').slice(0,160),taskFilter:['all','actionable','active','completed'].includes(value.taskFilter)?value.taskFilter:'all',taskPage:Math.max(0,Math.min(10000,Math.floor(value.taskPage)||0)),page:Math.max(0,Math.min(10000,Math.floor(value.page)||0)),selected:typeof value.selected==='string'?value.selected.slice(0,512):null,tasksOpen:value.tasksOpen===true,browseOpen:value.browseOpen===true};
+ const positions=Object.fromEntries(Object.entries(value.positions||{}).slice(0,5000).filter(([id,p])=>id.startsWith('area:')&&finite(p?.x)&&finite(p?.y)).map(([id,p])=>[id,{x:p.x,y:p.y}]));
+ const memoryOffsets=Object.fromEntries(Object.entries(value.memoryOffsets||{}).slice(0,5000)
+  .filter(([id,p])=>id.startsWith('memory:')&&typeof p?.areaId==='string'&&p.areaId.startsWith('area:')&&finite(p.x)&&finite(p.y))
+  .map(([id,{areaId,x,y}])=>[id,{areaId,x,y}]));
+ return {positions,memoryOffsets,zoom:finite(value.zoom)&&value.zoom>0?Math.min(8,value.zoom):1,pan:finite(value.pan?.x)&&finite(value.pan?.y)?value.pan:{x:0,y:0},autoFit:value.autoFit!==false,taskQuery:String(value.taskQuery||'').slice(0,160),taskFilter:['all','actionable','active','completed'].includes(value.taskFilter)?value.taskFilter:'all',taskPage:Math.max(0,Math.min(10000,Math.floor(value.taskPage)||0)),page:Math.max(0,Math.min(10000,Math.floor(value.page)||0)),selected:typeof value.selected==='string'?value.selected.slice(0,512):null,tasksOpen:value.tasksOpen===true,browseOpen:value.browseOpen===true};
 }
 export function memoryViewStore(db,preview,id,value){
  const table=preview?'sandbox':'settings',key=`memory-view:${id}`;

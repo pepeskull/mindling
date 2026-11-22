@@ -1,6 +1,8 @@
-// Only organization descendants move. Semantic bridges must not pull unrelated areas.
+const isAreaNode=node=>node?.kind==='area'||node?.hierarchyArea===true;
+
+// Organization defines the rigid layout group, including areas nested in it.
 export function clusterPositions(layout,areaId){
-  const areas=new Set([areaId,...layout.nodes.filter(node=>(node.kind==='area'||node.hierarchyArea)&&node.ancestorIds?.includes(areaId)).map(n=>n.id)]);
+  const areas=new Set([areaId,...layout.nodes.filter(node=>isAreaNode(node)&&node.ancestorIds?.includes(areaId)).map(n=>n.id)]);
   const ids=new Set(layout.nodes.filter(node=>areas.has(node.id)||areas.has(node.areaId)||node.ancestorAreaIds?.includes(areaId)).map(n=>n.id));
   // Display-only task groups anchored to this area belong to its layout cluster.
   for(const node of layout.nodes)if(node.kind==='research'&&areas.has(node.anchor))ids.add(node.id);
@@ -16,43 +18,105 @@ export function moveCluster(points,dx,dy,bounds){
   for(const p of points){p.node.x=p.x+dx;p.node.y=p.y+dy;}
 }
 
-// Critically damped, analytical spring integration: stable across frame rates.
-// Positions/velocities are view-local. No canonical graph fields are touched.
-export class ElasticCluster {
-  constructor(points,rootId){this.points=points.map(p=>({...p,vx:0,vy:0}));this.root=this.points.find(p=>p.node.id===rootId);this.dx=0;this.dy=0;this.held=true;this.active=false;}
-  move(dx,dy,bounds,reduced=false){
-    // Reuse the existing cluster bounds without moving the displayed children.
-    const ghosts=this.points.map(p=>({...p,node:{...p.node}}));moveCluster(ghosts,dx,dy,bounds);
-    this.dx=ghosts[0].node.x-ghosts[0].x;this.dy=ghosts[0].node.y-ghosts[0].y;this.bounds=bounds;
-    if(reduced){for(const p of this.points){p.node.x=p.x+this.dx;p.node.y=p.y+this.dy;p.vx=p.vy=0;}this.active=false;return;}
-    this.root.node.x=this.root.x+this.dx;this.root.node.y=this.root.y+this.dy;this.active=true;
+const FOLLOW_RATIO=.55;
+const FOLLOW_LIMIT=4;
+const LINK_SLACK=120;
+
+export function areaSpringNeighbors(layout, positions){
+  const neighbors=new Map();
+  for(const edge of layout.edges){
+    if(edge.kind!=='association'||edge.origin!=='semantic-area'||edge.persisted!==true)continue;
+    const first=positions.get(edge.from),second=positions.get(edge.to);
+    if(first?.kind!=='area'||second?.kind!=='area'||first===second)continue;
+    const restLength=Math.hypot(first.x-second.x,first.y-second.y);
+    for(const [from,to] of [[edge.from,edge.to],[edge.to,edge.from]]){
+      if(!neighbors.has(from))neighbors.set(from,new Map());
+      neighbors.get(from).set(to,restLength);
+    }
   }
-  release(){this.held=false;}
+  return neighbors;
+}
+
+const boundsFor=({x,y,node},box)=>({
+  left:Math.min(0,box.left+node.r-x),right:Math.max(0,box.right-node.r-x),
+  top:Math.min(0,box.top+node.r-y),bottom:Math.max(0,box.bottom-node.r-y)
+});
+const clamp=(value,min,max)=>Math.max(min,Math.min(max,value));
+const setOffset=(group,x,y)=>{
+  group.x=x;group.y=y;
+  for(const point of group.points){point.node.x=point.x+x;point.node.y=point.y+y;}
+};
+
+export class ConnectedAreaDrag {
+  constructor(layout,positions,areaId,neighbors=new Map()){
+    const points=clusterPositions(layout,areaId);
+    this.group={points,x:0,y:0,anchor:points.find(p=>p.node.id===areaId),ids:new Set(points.map(p=>p.node.id))};
+    this.followers=[];
+    this.active=false;
+    const assigned=new Set(this.group.ids);
+    const distance=node=>Math.hypot(node.x-this.group.anchor.x,node.y-this.group.anchor.y);
+    const nearest=[...neighbors.keys()].map(id=>positions.get(id)).filter(node=>node&&!assigned.has(node.id))
+      .sort((a,b)=>distance(a)-distance(b)).slice(0,FOLLOW_LIMIT);
+    for(const node of nearest){
+      const followers=clusterPositions(layout,node.id);
+      if(followers.some(p=>assigned.has(p.node.id)))continue;
+      this.followers.push({points:followers,anchor:followers.find(p=>p.node===node),maxLinkLength:neighbors.get(node.id)+LINK_SLACK,x:0,y:0,vx:0,vy:0});
+      for(const point of followers)assigned.add(point.node.id);
+    }
+  }
+
+  move(dx,dy,box,reduced){
+    const bounds=boundsFor(this.group.anchor,box);
+    const x=clamp(dx,bounds.left,bounds.right),y=clamp(dy,bounds.top,bounds.bottom);
+    setOffset(this.group,x,y);
+    for(const group of this.followers){
+      const limits=boundsFor(group.anchor,box);
+      group.limits=limits;
+      // The unedited layout provides the resting link length across gestures.
+      let targetX=x*FOLLOW_RATIO,targetY=y*FOLLOW_RATIO;
+      const gapX=this.group.anchor.node.x-group.anchor.x-targetX,gapY=this.group.anchor.node.y-group.anchor.y-targetY;
+      const length=Math.hypot(gapX,gapY);
+      if(length>group.maxLinkLength){
+        const stretch=1-group.maxLinkLength/length;
+        targetX+=gapX*stretch;targetY+=gapY*stretch;
+      }
+      group.targetX=clamp(targetX,limits.left,limits.right);
+      group.targetY=clamp(targetY,limits.top,limits.bottom);
+      if(reduced){setOffset(group,group.targetX,group.targetY);group.vx=group.vy=0;}
+    }
+    this.active=!reduced&&this.followers.length>0;
+  }
+
   step(seconds){
     if(!this.active)return false;
-    const dt=Math.max(0,Math.min(.05,seconds));let moving=false;
-    for(const p of this.points){
-      if(p===this.root&&this.held)continue;
-      const distance=Math.hypot(p.x-this.root.x,p.y-this.root.y),omega=15/(1+distance/170),decay=Math.exp(-omega*dt);
-      for(const [axis,velocity,delta]of [['x','vx',this.dx],['y','vy',this.dy]]){
-        const target=p[axis]+delta,offset=p.node[axis]-target,term=p[velocity]+omega*offset;
-        p.node[axis]=target+(offset+term*dt)*decay;p[velocity]=(p[velocity]-omega*term*dt)*decay;
-        if(Math.abs(p.node[axis]-target)>.04||Math.abs(p[velocity])>.08)moving=true;else{p.node[axis]=target;p[velocity]=0;}
+    const dt=clamp(seconds,0,.05),frequency=13,decay=Math.exp(-frequency*dt);
+    let moving=false;
+    for(const group of this.followers){
+      const {limits}=group;
+      const offsets=[];
+      // Analytical critically damped spring keeps each owned group rigid and
+      // stable after long frames, without pushing on further graph branches.
+      for(const [axis,velocity,target,min,max] of [
+        ['x','vx',group.targetX,limits.left,limits.right],
+        ['y','vy',group.targetY,limits.top,limits.bottom]
+      ]){
+        const delta=group[axis]-target,term=group[velocity]+frequency*delta;
+        const value=target+(delta+term*dt)*decay,bounded=clamp(value,min,max);
+        group[velocity]=bounded===value?(group[velocity]-frequency*term*dt)*decay:0;
+        const unsettled=Math.abs(bounded-target)>.04||Math.abs(group[velocity])>.08;
+        moving||=unsettled;
+        if(!unsettled)group[velocity]=0;
+        offsets.push(unsettled?bounded:target);
       }
-      if(this.bounds){for(const [axis,lo,hi]of [['x','left','right'],['y','top','bottom']]){const min=Math.min(p[axis],this.bounds[lo]+p.node.r),max=Math.max(p[axis],this.bounds[hi]-p.node.r),bounded=Math.max(min,Math.min(max,p.node[axis]));if(bounded!==p.node[axis])p['v'+axis]=0;p.node[axis]=bounded;}}
+      setOffset(group,...offsets);
     }
-    // Bounded local separation. The pointer-owned root never yields; siblings
-    // are checked in nearby buckets, not with an all-pairs physics simulation.
-    const buckets=new Map(),size=64;
-    for(const p of [this.root,...this.points.filter(p=>p!==this.root)]){
-      const gx=Math.floor(p.node.x/size),gy=Math.floor(p.node.y/size);let checked=0;
-      for(let x=gx-1;x<=gx+1&&checked<16;x++)for(let y=gy-1;y<=gy+1&&checked<16;y++)for(const other of buckets.get(x+','+y)||[]){
-        if(checked++>=16)break;const dx=p.node.x-other.node.x,dy=p.node.y-other.node.y,distance=Math.hypot(dx,dy),minimum=p.node.r+other.node.r+2;
-        if(distance<minimum){const angle=distance?Math.atan2(dy,dx):Math.atan2(p.y-other.y,p.x-other.x),push=minimum-distance;p.node.x+=Math.cos(angle)*push;p.node.y+=Math.sin(angle)*push;moving=true;}
-      }
-      if(this.bounds){p.node.x=Math.max(Math.min(p.x,this.bounds.left+p.node.r),Math.min(Math.max(p.x,this.bounds.right-p.node.r),p.node.x));p.node.y=Math.max(Math.min(p.y,this.bounds.top+p.node.r),Math.min(Math.max(p.y,this.bounds.bottom-p.node.r),p.node.y));}
-      const key=Math.floor(p.node.x/size)+','+Math.floor(p.node.y/size);if(!buckets.has(key))buckets.set(key,[]);buckets.get(key).push(p);
-    }
-    this.active=moving;return moving;
+    this.active=moving;
+    return moving;
+  }
+
+  restore(){
+    setOffset(this.group,0,0);
+    for(const group of this.followers)setOffset(group,0,0);
+    this.active=false;
   }
 }
