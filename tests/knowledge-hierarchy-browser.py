@@ -19,7 +19,11 @@ with sync_playwright() as p:
    await write(s=>{s.mind.memories=[{id:'a',content:'A broad sport observation.',category:'Sport',categoryId:'sport',relatedMemoryIds:['b']},{id:'b',content:'Association football is a type of sport.',category:'Association football',categoryId:'football',relatedMemoryIds:['a'],research:{sourceURL:'https://example.org/evidence',quoteHash:'preserved'}},{id:'c',content:'A scientific observation.',category:'Science',categoryId:'science'},{id:'d',content:'Another distinct football observation.',category:'Association football',categoryId:'football'}];s.mind.memories.forEach((m,i)=>{m.source='SERVICE';m.analysis={name:'mindling-learning-service',verification:'unverified-player-claim'};m.intelligence={kind:'claim',current:true};m.contentIntegrity={version:1,status:'captured',length:m.content.length};m.topic='Fixture topic '+i;});return reconcileAreaEvidence(s);});
    window.app={state:await read(),store:db,renderState(){},async change(fn,opts){this.state=await write(fn,opts);}};
    const engine=new AutonomousLearningEngine(app);await engine.loadPermissions();
-   for(let i=0;i<8;i++)await engine.prepare(understandInput('Learn about public topic '+i,'TEACH'),'fixture-'+i);engine.destroy();
+   for(let i=0;i<13;i++){
+    const task=await engine.prepare(understandInput('Learn about public topic '+i,'TEACH'),'fixture-'+i);
+    if(i<5)await engine.patch(task.id,null,item=>{item.status='COMPLETED';item.code='SOURCE_BACKED';});
+   }
+   engine.destroy();
    window.before=JSON.stringify([app.state.mind.memories,app.state.mind.pathways,app.state.mind.energy,app.state.mind.lifetimeXP]);
    document.querySelectorAll('.installation').forEach(e=>e.remove());document.querySelector('#app').hidden=false;document.querySelector('.dashboard-chrome').classList.remove('is-hidden');document.querySelector('#memory-view').hidden=false;document.querySelector('#app').classList.add('memory-mode');
    window.makeView=()=>{window.view=new NeuralMemoryView(document.querySelector('#memory-view'),{onMemoryView:(id,value)=>db.memoryView(id,value),onMergeAreas:async(proposal,id)=>{await write(s=>{if(s.mind.id!==id)throw Error('identity');const next={...s,mind:commitHierarchy(s.mind,graphData(s.mind),proposal)};if(window.rejectMerge)throw Error('mock transaction rejection');return next;});view.update((await read()).mind);}});return view;};
@@ -66,8 +70,10 @@ with sync_playwright() as p:
   # Ordinary drag persists root positions without merging; pagination/filter state survives.
   start=page.evaluate('point','Science');page.mouse.move(start['x'],start['y']);page.mouse.down();page.mouse.move(start['x']-35,start['y']+30,steps=8);page.mouse.up();page.wait_for_timeout(700)
   assert page.locator('.research-task-browser').is_visible()
-  page.locator('[data-task-search]').fill('public');page.locator('[data-task-page=next]').click();page.wait_for_timeout(700)
-  assert page.evaluate('view.taskPage===1 && view.root.querySelectorAll(".research-task-browser ul li").length<=6')
+  page.locator('[data-task-search]').fill('public')
+  assert page.locator('[data-task-page-label]').inner_text()=='1–12 of 13'
+  page.locator('[data-task-page=next]').click();page.wait_for_timeout(700)
+  assert page.locator('[data-task-page-label]').inner_text()=='13–13 of 13'
   saved=page.evaluate('''async()=>{await view.saveChain;const p=await db.memoryView(view.viewIdentity);check(p.taskPage===1,'task page not saved');check(Object.keys(p.positions).length===2,'only displayed roots retain independent positions');window.saved=p;view.setVisible(false);view.setVisible(true);return p;}''')
   page.wait_for_timeout(500)
   assert page.evaluate('view.taskPage===1 && view.taskQuery==="public"')

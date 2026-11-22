@@ -15,6 +15,7 @@ const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undef
 const svg=(tag,attrs={})=>{const node=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))node.setAttribute(k,String(v));return node;};
 const compact=(text,size=29)=>text.length>size?text.slice(0,size-1)+'…':text;
 const PAGE_SIZE=6;
+const TASK_PAGE_SIZE=12;
 
 
 export class NeuralMemoryView {
@@ -80,15 +81,15 @@ export class NeuralMemoryView {
   renderIndex(){if(!this.filtered)return;const active=document.activeElement?.closest('.memory-browser [data-select-memory]')?.dataset.selectMemory;const total=this.filtered.memories.length;this.page=Math.max(0,Math.min(this.page,Math.max(0,Math.ceil(total/PAGE_SIZE)-1)));const items=this.filtered.memories.slice(this.page*PAGE_SIZE,this.page*PAGE_SIZE+PAGE_SIZE).map(node=>{const li=el('li'),button=memoryButton(node);button.style.setProperty('--memory-area-color',this.colors.get(node.areaId)||NEUTRAL_COLOR);button.setAttribute('aria-pressed',String(this.selected===node.id));li.append(button);return li;});this.root.querySelector('.memory-browser ul').replaceChildren(...items);if(active)[...this.root.querySelectorAll('.memory-browser [data-select-memory]')].find(button=>button.dataset.selectMemory===active)?.focus({preventScroll:true});this.root.querySelector('[data-memory-page-label]').textContent=total?`${this.page*PAGE_SIZE+1}–${Math.min(total,this.page*PAGE_SIZE+PAGE_SIZE)} of ${total}`:'No matching memories';this.root.querySelector('[data-memory-page="prev"]').disabled=this.page===0;this.root.querySelector('[data-memory-page="next"]').disabled=(this.page+1)*PAGE_SIZE>=total;}
   renderTaskIndex(){
     const tasks=[...this.taskNodes.values()].sort((a,b)=>b.task.updatedAt-a.task.updatedAt||a.id.localeCompare(b.id)).filter(n=>(!this.taskQuery||n.label.toLocaleLowerCase().includes(this.taskQuery.toLocaleLowerCase()))&&(this.taskFilter==='all'||this.taskFilter==='completed'&&n.task.status==='COMPLETED'||this.taskFilter==='active'&&n.task.status!=='COMPLETED'||this.taskFilter==='actionable'&&['CLARIFICATION','MODEL_CLARIFICATION'].includes(n.task.code)));
-    this.taskPage=Math.max(0,Math.min(this.taskPage,Math.max(0,Math.ceil(tasks.length/PAGE_SIZE)-1)));
-    const shown=tasks.slice(this.taskPage*PAGE_SIZE,(this.taskPage+1)*PAGE_SIZE).map(node=>({node,status:researchPresentation(node.task,this.state.memories).status}));
+    this.taskPage=Math.max(0,Math.min(this.taskPage,Math.max(0,Math.ceil(tasks.length/TASK_PAGE_SIZE)-1)));
+    const shown=tasks.slice(this.taskPage*TASK_PAGE_SIZE,(this.taskPage+1)*TASK_PAGE_SIZE).map(node=>({node,status:researchPresentation(node.task,this.state.memories).status}));
     const signature=JSON.stringify([this.selected,shown.map(({node,status})=>[node.id,node.label,status])]);
     if(signature!==this.taskListSignature){this.taskListSignature=signature;const list=this.root.querySelector('.research-task-browser ul');list.replaceChildren();
       for(const {node,status} of shown){const row=el('li'),button=el('button',`${compact(node.label,65)} · ${status}`);button.type='button';button.dataset.selectLearning=node.id;button.setAttribute('aria-pressed',String(this.selected===node.id));row.append(button);list.append(row);}
       if(!shown.length)list.append(el('li','No matching learning tasks.'));
     }
-    this.root.querySelector('[data-task-page-label]').textContent=tasks.length?`${this.taskPage*PAGE_SIZE+1}–${Math.min(tasks.length,(this.taskPage+1)*PAGE_SIZE)} of ${tasks.length}`:'0 tasks';
-    this.root.querySelector('[data-task-page="prev"]').disabled=this.taskPage===0;this.root.querySelector('[data-task-page="next"]').disabled=(this.taskPage+1)*PAGE_SIZE>=tasks.length;
+    this.root.querySelector('[data-task-page-label]').textContent=tasks.length?`${this.taskPage*TASK_PAGE_SIZE+1}–${Math.min(tasks.length,(this.taskPage+1)*TASK_PAGE_SIZE)} of ${tasks.length}`:'0 tasks';
+    this.root.querySelector('[data-task-page="prev"]').disabled=this.taskPage===0;this.root.querySelector('[data-task-page="next"]').disabled=(this.taskPage+1)*TASK_PAGE_SIZE>=tasks.length;
   }
   selectTask(id){if(!this.taskNodes?.has(id))return;this.selected=id;this.scheduleSave();this.renderInspector();if(this.positions.has(id))this.focus(id);else this.drawSoon();this.renderTaskIndex();}
   select(id,focus=false){if(!this.positions.has(id)&&this.graph.nodes.some(node=>node.id===id)){this.area='all';this.query='';this.rebuild();}if(!this.positions.has(id))return;this.selected=id;this.scheduleSave();this.renderInspector();this.root.querySelector('.memory-inspector').scrollTop=0;this.renderIndex();if(focus)this.focus(id);else this.drawSoon();}
