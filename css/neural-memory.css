@@ -157,7 +157,6 @@
 .neural-memory-view .legend-association { border-top: 1px solid var(--accent); }
 .neural-memory-view .legend-submission { border-top: 1px dotted var(--border-hover); }
 
-.compact-memory .memory-entry-context{grid-column:1 / -1;font-size:8px;line-height:1.5;color:var(--text-muted);overflow-wrap:anywhere}
 
 .research-task-browser .task-browser-tools,.research-task-browser>div:last-child{display:flex;align-items:center;gap:8px;margin-top:8px}
 .research-task-browser .task-browser-tools input{flex:1;min-width:0}

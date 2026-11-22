@@ -309,7 +309,7 @@ export class Dashboard {
       interaction.unanswered=interaction.activity==='TALK'&&reply?.insufficientInformation===true;
       if(interaction.activity==='TALK'&&reply?.conversationalAnswer)interaction.priorAnswer=reply.conversationalAnswer;
       this.#refreshResearch();
-    }else this.#showResponse(id,{state:result?.accepted?'ready':'error',message:activityResult(interaction.activity,result,this.#state?.memories),sources:reply?.sources});
+    }else this.#showResponse(id,{state:result?.accepted?'ready':'error',message:activityResult(interaction.activity,result,this.#state?.memories)});
   }
   canContinueResearch(id){return this.#current(id)&&this.primaryView==='dashboard';}
   showResearchResult(task,id){
@@ -327,7 +327,7 @@ export class Dashboard {
     if(model.status==='Waiting'&&task.code==='PERMISSION_REQUIRED'&&this.#state?.researchPermissions?.enabled)return;
     const excerpts=interaction.activity==='TALK'?(model.excerpts.length?model.excerpts:interaction.priorAnswer?[interaction.priorAnswer]:[]):[];
     const message=interaction.activity==='DEEP_TRAINING'&&model.learned?'Training complete!':model.message;
-    this.#showResponse(interaction.id,{state:model.active?'processing':'ready',message,excerpts,sources:model.sources});
+    this.#showResponse(interaction.id,{state:model.active?'processing':'ready',message,excerpts});
   }
   #responsePanel(state){
     const panel=document.querySelector('[data-talk-response]');
@@ -338,12 +338,12 @@ export class Dashboard {
     if(container)container.scrollTop=Math.max(0,panel.offsetTop-container.clientHeight/2);
     return panel;
   }
-  #showResponse(id,{state,message,excerpts=[],sources=[]}){
+  #showResponse(id,{state,message,excerpts=[]}){
     if(!this.#current(id))return;
-    const key=JSON.stringify([state,message,excerpts,sources.map(s=>[s.url,s.title,s.publishedAt])]);
+    const key=JSON.stringify([state,message,excerpts]);
     if(this.#interaction.viewKey===key)return;
     this.#interaction.viewKey=key;
-    renderResponseContent(this.#responsePanel(state),{message,excerpts,sources});
+    renderResponseContent(this.#responsePanel(state),{message,excerpts});
     this.#refreshNotifications();
   }
   #showQuestion(id,model){

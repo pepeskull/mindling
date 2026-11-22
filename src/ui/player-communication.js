@@ -42,7 +42,6 @@ export function activityResult(activity,result,memories=[]){
 export function researchPresentation(task,memories=[],{enabled,unanswered=false}={}){
   const known=task.status==='COMPLETED'?memories.filter(memory=>task.knowledgeIds.includes(memory.id)&&!memory.supersededBy&&memory.kind!=='historical'&&memory.intelligence?.kind!=='historical'&&memory.intelligence?.current!==false):[];
   const learned=known.filter(memory=>memory.research?.taskId===task.id).length;
-  const sources=task.sourceReferences.filter(source=>known.some(memory=>memory.research?.sourceURL===source.url||memory.researchSupport?.some(e=>e.taskId===task.id&&e.sourceURL===source.url)));
   const unknown=task.researchExecution?.outcomeUnknown===true||task.researchObservation||task.code==='TOOL_LIFECYCLE_INCOMPLETE';
   const active=!unknown&&(['RESEARCHING','EVALUATING','COMMITTING'].includes(task.status)||task.status==='QUEUED'&&task.code==='PLANNING');
   let status='Paused',message=LEARNING_PAUSED;
@@ -56,32 +55,14 @@ export function researchPresentation(task,memories=[],{enabled,unanswered=false}
   else if(!unknown&&task.code==='ENERGY_LOW'){status='Waiting';message='I need more Energy before I can continue.';}
   else if(!unknown&&(task.code==='QUEUED'||task.evidenceRefinement?.state==='QUEUED')){status='Waiting';message='I’m ready to continue exploring this topic.';}
   if(unanswered&&status==='Waiting')message=`${UNKNOWN_ANSWER} ${message}`;
-  return {status,message,active,learned,known,sources,excerpts:known.map(editableMemoryText)};
+  return {status,message,active,learned,known,excerpts:known.map(editableMemoryText)};
 }
 
-export function appendSourceLinks(host,sources=[]){
-  if(!sources.length)return;
-  const list=document.createElement('ul');
-  list.className='research-citations';
-  list.setAttribute('aria-label','Sources');
-  for(const source of sources.slice(0,3)){
-    let url;try{url=new URL(source.url);}catch{continue;}
-    if(url.protocol!=='https:'||url.username||url.password)continue;
-    const item=document.createElement('li'),link=document.createElement('a');
-    link.href=url.href;link.textContent=source.title||url.hostname;link.target='_blank';link.rel='noopener noreferrer';
-    item.append(link);
-    if(source.publishedAt)item.append(document.createTextNode(` · ${source.publishedAt}`));
-    list.append(item);
-  }
-  if(list.children.length)host.append(list);
-}
-
-export function renderResponseContent(panel,{message,excerpts=[],sources=[]}){
+export function renderResponseContent(panel,{message,excerpts=[]}){
   panel.querySelector('[data-talk-status]').textContent=message;
   const content=panel.querySelector('[data-talk-content]');
   content.replaceChildren();
   for(const excerpt of excerpts){const paragraph=document.createElement('p');paragraph.textContent=excerpt;content.append(paragraph);}
-  appendSourceLinks(content,sources);
 }
 
 export function renderClarificationContent(panel,model,onChoice){
