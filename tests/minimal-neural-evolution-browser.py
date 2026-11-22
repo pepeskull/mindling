@@ -60,7 +60,7 @@ with sync_playwright() as p:
         assert page.locator('.memory-inspector-content dl').inner_text().find('Gaming')>=0
         page.locator('.memory-inspector-content .compact-memory').first.click()
         assert page.locator('.memory-inspector .memory-status-chip').inner_text()=='Current memory'
-        page.locator('.research-task-browser summary').click();page.locator('[data-select-learning]').first.click()
+        page.locator('[data-select-learning]').first.click()
         inspector=page.locator('.memory-inspector-content');assert inspector.locator('progress').count()==1
         assert 'sources' in inspector.inner_text() and 'new memories' in inspector.inner_text()
         assert all(text not in inspector.inner_text() for text in ['Hosted tool','Request reference','HTTP','Source observation','Saved sources'])
