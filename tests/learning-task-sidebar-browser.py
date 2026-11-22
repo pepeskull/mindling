@@ -74,20 +74,27 @@ def boxes(page, selectors):
     return [page.locator(selector).bounding_box() for selector in selectors]
 
 def check_sidebar(page, touch):
-    protected = ['.knowledge-radar-panel', '.memory-inspector']
-    sidebar = page.locator('.memory-graph-stage > .research-task-browser')
+    sidebar = page.locator('.knowledge-graph-panel .research-task-browser')
     assert sidebar.count() == page.locator('.research-task-browser').count() == 1
-    summary = sidebar.locator('summary')
-    before = boxes(page, [*protected, '.memory-graph-stage', '.memory-graph-stage canvas:not(.memory-flow)'])
-    graph_view = page.evaluate('JSON.stringify([view.pan,view.zoom,view.selected])')
-    (summary.tap if touch else lambda: summary.press('Enter'))()
-    assert sidebar.evaluate('(node) => node.open')
-    assert boxes(page, [*protected, '.memory-graph-stage', '.memory-graph-stage canvas:not(.memory-flow)']) == before
-    assert page.evaluate('JSON.stringify([view.pan,view.zoom,view.selected])') == graph_view
+    assert sidebar.evaluate('(node) => node.tagName === "SECTION" && !node.querySelector("summary")')
+    assert sidebar.get_by_role('heading', name='Learning Tasks').is_visible()
+    assert page.locator('.neural-memory-grid .memory-eyebrow').all_text_contents() == [
+        '01 / LEARNING TASKS', '02 / EXPLORE', '03 / PERSPECTIVE', '04 / CONNECTION DETAIL'
+    ]
+    assert page.evaluate('''() => {
+      const metrics=id=>{const style=getComputedStyle(document.getElementById(id));return [style.fontSize,style.fontWeight,style.fontFamily].join(',');};
+      return metrics('learning-tasks-title')===metrics('knowledge-areas-title') && metrics('learning-tasks-title')===metrics('coverage-title');
+    }''')
 
-    panel, stage = sidebar.bounding_box(), before[2]
-    assert panel['x'] >= stage['x'] and panel['x'] + panel['width'] <= stage['x'] + stage['width']
-    assert panel['y'] >= stage['y'] and panel['y'] + panel['height'] <= stage['y'] + stage['height']
+    panel, explore, stage = boxes(page, ['.research-task-browser', '.knowledge-explore', '.memory-graph-stage'])
+    if touch:
+        assert panel['x'] == explore['x'] and panel['width'] == explore['width']
+        assert panel['y'] + panel['height'] <= explore['y']
+    else:
+        assert panel['x'] + panel['width'] == explore['x']
+        assert panel['y'] == explore['y'] and panel['height'] == explore['height']
+    assert stage['x'] == explore['x'] and stage['width'] == explore['width']
+    assert page.locator('.knowledge-graph-panel').evaluate('(el) => el.scrollWidth <= el.clientWidth')
     assert sidebar.locator('.task-browser-body').evaluate('(el) => el.scrollWidth <= el.clientWidth')
     if touch:
         tasks = sidebar.locator('ul')
@@ -141,25 +148,31 @@ def check_sidebar(page, touch):
       mountSidebarView();
     }''')
     page.wait_for_function('view.taskNodes.size === 9 && !view.loadingView')
-    assert sidebar.evaluate('(node) => node.open')
+    assert sidebar.get_by_role('heading', name='Learning Tasks').is_visible()
     assert search.input_value() == 'topic' and status.input_value() == 'all'
     assert pagination.inner_text() == '7–9 of 9'
     assert rows.last.get_attribute('aria-pressed') != 'true'
     assert rows.filter(has_text='Topic 1').get_attribute('aria-pressed') == 'true'
-    rectangles = boxes(page, [*protected, '.memory-graph-stage'])
-    summary.press('Space')
-    assert not sidebar.evaluate('(node) => node.open')
-    assert boxes(page, [*protected, '.memory-graph-stage']) == rectangles
+    page.get_by_role('button', name='Fit graph').click()
+    assert page.evaluate('view.autoFit && view.zoom > 0')
     pan = page.evaluate('view.pan.x')
     page.locator('.memory-graph-stage canvas:not(.memory-flow)').press('ArrowLeft')
     assert page.evaluate('view.pan.x') == pan + 35
     assert page.evaluate('view.taskPage === 1 && view.taskQuery === "topic" && view.selected.endsWith("1")')
+    page.get_by_role('button', name='Zoom in').click()
+    assert page.evaluate('view.zoom > view.fitZoom')
+    page.get_by_role('button', name='Reset view').click()
+    assert page.evaluate('view.autoFit && view.zoom === view.fitZoom')
+    page.locator('.memory-browser summary').click()
+    page.locator('.memory-browser [data-select-memory]').click()
+    assert page.locator('#memory-inspector-title').inner_text() == 'Saturn'
+    assert page.evaluate('JSON.stringify(sidebarState) === initialState')
 
 with sync_playwright() as playwright:
     browser = playwright.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox'])
     baseline_files = {file: subprocess.check_output(['git', 'show', f'{BASELINE}:{file}'], text=True)
                       for file in LAYOUT_FILES} if BASELINE else None
-    for width, height, touch in [(1500, 1000, False), (390, 760, True), (320, 568, True)]:
+    for width, height, touch in [(1900, 940, False), (1024, 768, False), (390, 760, True), (320, 568, True)]:
         settings = dict(viewport={'width': width, 'height': height}, has_touch=touch, reduced_motion='reduce')
         context = browser.new_context(**settings)
         errors = []
@@ -172,5 +185,5 @@ with sync_playwright() as playwright:
         check_sidebar(page, touch)
         assert not errors, errors
         context.close()
-        print(f'{width}×{height}: sidebar layout, filters, selection, clarification, pagination and restore passed')
+        print(f'{width}×{height}: permanent sidebar, filters, selection, graph controls and restore passed')
     browser.close()

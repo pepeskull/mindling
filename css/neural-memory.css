@@ -15,7 +15,6 @@
 .knowledge-graph-panel,.knowledge-radar-panel,.memory-inspector{border:1px solid var(--border-subtle);border-radius:var(--radius);background:linear-gradient(135deg,rgba(16,18,20,.67),rgba(6,7,8,.55));backdrop-filter:blur(22px) saturate(115%);-webkit-backdrop-filter:blur(22px) saturate(115%);overflow:hidden}
 .graph-panel-heading{display:flex;align-items:center;justify-content:space-between;padding:22px 24px 16px;gap:15px}
 .neural-memory-view h3{font-size:17px;letter-spacing:-.35px;font-weight:430;margin:0;color:var(--text-primary)}
-.graph-panel-heading .memory-eyebrow{font-size:8px;color:var(--text-muted);letter-spacing:.16em;margin-bottom:8px}
 .local-memory-tag{font-size:7px;letter-spacing:.11em;color:var(--text-secondary);display:flex;align-items:center;gap:7px}
 .local-memory-tag i{width:4px;height:4px;background:var(--accent);border-radius:50%;}
 .memory-graph-stage{position:relative;flex:1 0 160px;min-height:160px;overflow:hidden;background:transparent}
@@ -44,7 +43,7 @@
 .memory-browser>div button{background:none;border:1px solid var(--border-subtle);color:var(--text-secondary);padding:5px 9px;border-radius:5px;font-size:9px}
 .memory-side{display:flex;flex-direction:column;gap:17px}
 .knowledge-radar-panel{padding:20px}
-.knowledge-radar-panel .memory-eyebrow,.memory-inspector .memory-eyebrow{color:var(--text-secondary);font-size:8px;margin-bottom:10px}
+.graph-panel-heading .memory-eyebrow,.knowledge-radar-panel .memory-eyebrow,.memory-inspector .memory-eyebrow{color:var(--text-secondary);font-size:8px;margin-bottom:10px}
 .knowledge-radar-panel h3{font-size:17px}
 .radar-description{font-size:10px;color:var(--text-secondary);margin:9px 0 0;line-height:1.5}
 .memory-radar{margin:0 -10px;min-height:175px}
@@ -131,22 +130,22 @@
 
 /* Research is a separate, bounded layer; canonical category styles stay intact. */
 .graph-legend .legend-research { border-top: 1px dashed var(--text-muted); }
-/* Keep both the graph viewport and the neighboring panels stable on toggle. */
-.research-task-browser {
- --task-summary-height: 36px;
- position:absolute;inset-block-start:8px;inset-inline-end:8px;z-index:5;
- max-inline-size:calc(100% - 16px);border:1px solid var(--border-subtle);border-radius:9px;
- background:var(--surface-deep);color:var(--text-secondary);font-size:9px;
+.knowledge-graph-panel>.knowledge-explorer{
+ display:grid;grid-template-columns:clamp(11rem,25%,19.5rem) minmax(0,1fr);
+ flex:1 0 15rem;min-inline-size:0;
 }
-.research-task-browser[open]{inline-size:17rem;block-size:min(22rem,calc(100% - 16px))}
-.research-task-browser summary{cursor:pointer;block-size:var(--task-summary-height);line-height:var(--task-summary-height);padding-inline:12px;border-radius:8px}
-.research-task-browser summary:hover{background:var(--border-subtle);color:var(--text-primary)}
+.knowledge-explore{display:flex;flex-direction:column;min-inline-size:0}
+.research-task-browser{
+ display:grid;grid-template-rows:auto minmax(0,1fr);min-inline-size:0;min-block-size:0;
+ border-inline-end:1px solid var(--border-subtle);background:rgba(0,0,0,.14);color:var(--text-secondary);font-size:9px;
+}
 .task-browser-body{
- position:absolute;inset:var(--task-summary-height) 0 0;display:grid;grid-template-rows:auto minmax(2.5rem,1fr) auto;
- gap:8px;padding:8px;border-top:1px solid var(--border-subtle);overflow:auto;scrollbar-width:thin;
+ display:grid;grid-template-rows:auto minmax(0,1fr) auto;gap:8px;
+ min-inline-size:0;padding:0 16px 12px;
 }
-.research-task-browser ul{margin:0;padding:2px 3px;list-style:none;display:grid;align-content:start;gap:6px;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain}
-.research-task-browser button { width: 100%; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 5px; background: rgba(255,255,255,.025); color: var(--text-secondary); text-align: left; font-size: 9px; overflow-wrap: anywhere; }
+.research-task-browser ul{margin:0;padding:2px 3px;list-style:none;display:grid;grid-template-columns:minmax(0,1fr);align-content:start;gap:6px;overflow:auto;scrollbar-width:thin;overscroll-behavior:contain}
+.research-task-browser button { width: 100%; padding: 8px 10px; border: 1px solid var(--border-subtle); border-radius: 5px; background: rgba(255,255,255,.025); color: var(--text-secondary); text-align: left; font-size: 9px; }
+.research-task-browser li button{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .research-task-browser button[aria-pressed="true"] { border-color: var(--text-muted); color: var(--text-primary); }
 .memory-inspector .research-status { color: var(--text-secondary); border-color: var(--border-subtle); }
 .memory-inspector progress { display: block; width: 100%; accent-color: var(--text-muted); }
@@ -175,8 +174,16 @@
 .task-browser-body>div:last-child{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:4px}
 .task-browser-body>div:last-child button{width:auto;padding-inline:6px}
 .task-browser-body>div:last-child span{text-align:center}
-@media(max-width:550px){.task-browser-tools{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:800px){
+ /* Keep the left panel's scrollable controls above the fixed mobile footer. */
+ .neural-memory-view .knowledge-graph-panel{margin-block-end:calc(76px + env(safe-area-inset-bottom))}
+ .knowledge-graph-panel>.knowledge-explorer{
+  --task-sidebar-height:clamp(13rem,34dvh,17rem);
+  grid-template-columns:minmax(0,1fr);grid-template-rows:var(--task-sidebar-height) minmax(14rem,1fr);
+  flex-basis:calc(var(--task-sidebar-height) + 14rem);
+ }
+ .research-task-browser{border-inline-end:0;border-block-end:1px solid var(--border-subtle)}
+}
 @media(pointer:coarse){
- .research-task-browser{--task-summary-height:44px}
  .task-browser-body :is(button,input,select){min-block-size:44px}
 }
