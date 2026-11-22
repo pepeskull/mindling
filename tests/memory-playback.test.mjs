@@ -39,9 +39,9 @@ test('playback and real event intensity remain separate, bounded and deduplicate
  const combined=events.values(1200).map((v,i)=>Math.min(.94,1-(1-v)*(1-p.values()[i])));assert(combined[1]>p.values()[1]);assert(combined.every(v=>v<=.94));assert.equal(events.events.length,1);
  const current=p.time;p.advance(0);assert.equal(p.time,current);assert.deepEqual(p.values(),p.values());
 });
-test('cloud background is transparent and accessible bars describe combined visual activity',()=>{
+test('cloud background is transparent and distinguishes decoration from learning',()=>{
  assert.match(readFileSync(new URL('../css/network.css',import.meta.url),'utf8'),/\.network-cloud-plot\{background:transparent\}/);
- const view=readFileSync(new URL('../src/network/network-view.js',import.meta.url),'utf8');assert.match(view,/Combined visual activity from stored-memory playback/);assert(!view.includes('decorative brain activity is excluded'));
+ const view=readFileSync(new URL('../src/network/network-view.js',import.meta.url),'utf8');assert.match(view,/stored neural structure and retained memories; not computation or learning/);assert.doesNotMatch(view,/data-bars|data-lines/);
 });
 test('every persisted edge participates even when edges outnumber memories; deleted records cannot overlap themselves',()=>{
  const state=fixture(43);for(let i=0;i<43;i++)state.memories[i].relatedMemoryIds=[state.memories[(i+1)%43].id,state.memories[(i+7)%43].id];

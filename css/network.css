@@ -1,15 +1,5 @@
-/* Same tokens, spacing and glass treatment as Dashboard, Memory and Development. */
-.network-view{position:absolute;z-index:6;inset:var(--top-height) 0 30px;padding:20px clamp(20px,3.2vw,60px) 16px;display:flex;min-height:0;min-width:0;color:var(--text-primary);font-family:var(--font);overflow:auto;background:transparent}
-.network-view[hidden],.network-view [hidden]{display:none!important}
-.network-grid{display:grid;grid-template-columns:minmax(230px,25%) minmax(0,1fr);grid-template-rows:minmax(200px,.8fr) minmax(280px,1.6fr);gap:16px;flex:1;min-height:0;min-width:0}
-.network-panel{min-width:0;min-height:0;display:flex;flex-direction:column;padding:14px;border:1px solid var(--border-subtle);border-radius:var(--radius);background:linear-gradient(135deg,rgba(16,18,20,.67),rgba(6,7,8,.55));backdrop-filter:blur(22px) saturate(115%);-webkit-backdrop-filter:blur(22px) saturate(115%)}
-.network-plot{position:relative;flex:1;min-height:0;overflow:hidden;border-radius:6px;background:var(--surface-deep)}
-.network-plot canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
-.network-cloud{grid-column:1/-1}
 .network-cloud-plot{background:transparent}
-.network-legend{display:flex;justify-content:flex-end;gap:16px;flex:none;margin:0 2px 12px;font-size:9px;color:var(--life-rest)}
-.network-legend span:nth-child(2){color:var(--accent)}
-.network-legend span:nth-child(3){color:var(--life-nutrition)}
-.network-legend span:before{content:'';display:inline-block;width:5px;height:5px;border-radius:50%;background:currentColor;margin-right:5px}
-.network-mode .scene,.network-mode .scene-vignette,.network-mode .dashboard{visibility:hidden;pointer-events:none}
-@media(max-width:800px){.network-view{bottom:80px;padding:16px}.network-grid{grid-template-columns:minmax(130px,.9fr) minmax(0,1.6fr);grid-template-rows:220px 380px;flex:1;gap:12px}.network-panel{padding:8px}.network-legend{gap:7px;font-size:8px;flex-wrap:wrap}}
+.integration-map .network-cloud-plot{position:absolute;inset:0 0 0 53%;z-index:-2;overflow:hidden;pointer-events:none}
+.network-cloud-plot canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.network-cloud-plot canvas[hidden]{display:none}
+@media(max-width:800px){.integration-map .network-cloud-plot{inset:12% 0 4% 54%}}

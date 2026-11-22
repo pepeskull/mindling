@@ -58,10 +58,28 @@ export function researchPresentation(task,memories=[],{enabled,unanswered=false}
   return {status,message,active,learned,known,excerpts:known.map(editableMemoryText)};
 }
 
-export function renderResponseContent(panel,{message,excerpts=[]}){
+function renderTalkAnswer(content,answer){
+  const emphasis=/(?<![\\*])(\*{1,2})(?![\s*])([^\n*]+?)(?<!\s)\1(?!\*)/gu;
+  for(const text of answer.replace(/\r\n?/g,'\n').split(/\n[ \t]*\n/)){
+    const paragraph=document.createElement('p');paragraph.className='talk-answer';
+    let offset=0;
+    for(const match of text.matchAll(emphasis)){
+      paragraph.append(text.slice(offset,match.index));
+      const element=document.createElement(match[1]==='**'?'strong':'em');
+      element.textContent=match[2];
+      paragraph.append(element);
+      offset=match.index+match[0].length;
+    }
+    paragraph.append(text.slice(offset));
+    content.append(paragraph);
+  }
+}
+
+export function renderResponseContent(panel,{message,excerpts=[],answer}){
   panel.querySelector('[data-talk-status]').textContent=message;
   const content=panel.querySelector('[data-talk-content]');
   content.replaceChildren();
+  if(answer)renderTalkAnswer(content,answer);
   for(const excerpt of excerpts){const paragraph=document.createElement('p');paragraph.textContent=excerpt;content.append(paragraph);}
 }
 

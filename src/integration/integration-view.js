@@ -1,3 +1,4 @@
+import {NetworkView} from '../network/network-view.js';
 import {orbitFrame,streamColor} from './orbit-motion.js';
 // Catalog describes potential connectors, never authentication or authorization.
 export const PLATFORMS=[
@@ -15,10 +16,13 @@ export const PLATFORMS=[
 ].map(([id,name,group,description,permissions])=>({id,name,group,description,permissions,status:'Coming soon'}));
 export class IntegrationView{
  constructor(root){this.root=root;this.abort=new AbortController();this.selected=null;this.paths=[];this.frame=null;
-  root.innerHTML=`<section class="integration-panel glass-panel"><header><div><p class="integration-eyebrow">CONNECTION ARCHITECTURE</p><h2>Extend your Mindling.</h2></div><span class="integration-status">Connector preview</span></header><div class="integration-map"><canvas class="orbit-streams" aria-hidden="true"></canvas><div class="integration-platforms" aria-label="Potential platforms">${PLATFORMS.map(p=>`<button type="button" data-platform="${p.id}" aria-pressed="false"><span class="integration-monogram" aria-hidden="true">${p.name.slice(0,1)}</span><span>${p.name}<small>${p.group}</small></span><span class="integration-dot" aria-hidden="true"></span></button>`).join('')}</div><div class="integration-hub"><div class="integration-orbit"></div><span class="integration-eyebrow">MINDLING</span><strong data-hub-name></strong><small>Identity · Knowledge · Permissions</small></div></div><section class="integration-detail" aria-live="polite"><div><span class="integration-eyebrow" data-detail-group></span><h3 data-detail-name></h3><p data-detail-description></p></div><div><h4>Permissions required</h4><ul data-detail-permissions></ul></div><div><span class="integration-status">Coming soon</span><p>No connector is available or authenticated. No permissions have been requested.</p></div></section><p class="integration-note">The orbit illustrates potential connections.</p></section>`;
-  root.addEventListener('click',event=>{const button=event.target.closest('[data-platform]');if(button){const selected=PLATFORMS.find(p=>p.id===button.dataset.platform);this.selected=this.selected===selected?null:selected;this.renderSelection();}},{signal:this.abort.signal});this.motion=matchMedia('(prefers-reduced-motion: reduce)');this.motion.addEventListener('change',()=>this.syncMotion(),{signal:this.abort.signal});document.addEventListener('visibilitychange',()=>this.syncMotion(),{signal:this.abort.signal});this.update({});this.renderSelection();this.syncMotion();this.observer=new ResizeObserver(()=>this.layoutPaths());this.observer.observe(root.querySelector('.integration-map'));
+  root.innerHTML=`<section class="integration-panel glass-panel"><header><div><p class="integration-eyebrow">CONNECTION ARCHITECTURE</p><h2>Network</h2></div><span class="integration-status">Connector preview</span></header><div class="integration-map"><div class="network-cloud-plot"></div><canvas class="orbit-streams" aria-hidden="true"></canvas><div class="integration-platforms" aria-label="Potential platforms">${PLATFORMS.map(p=>`<button type="button" data-platform="${p.id}" aria-pressed="false"><span class="integration-monogram" aria-hidden="true">${p.name.slice(0,1)}</span><span>${p.name}<small>${p.group}</small></span><span class="integration-dot" aria-hidden="true"></span></button>`).join('')}</div><div class="integration-hub"><div class="integration-orbit"></div><span class="integration-eyebrow">MINDLING</span><strong data-hub-name></strong><small>Identity · Knowledge · Permissions</small></div></div><section class="integration-detail" aria-live="polite"><div><span class="integration-eyebrow" data-detail-group></span><h3 data-detail-name></h3><p data-detail-description></p></div><div><h4>Permissions required</h4><ul data-detail-permissions></ul></div><div><span class="integration-status">Coming soon</span><p>No connector is available or authenticated. No permissions have been requested.</p></div></section><p class="integration-note">The orbit illustrates potential connections.</p></section>`;
+  this.cloud=new NetworkView(root.querySelector('.network-cloud-plot'));
+  this.canvas=root.querySelector('.orbit-streams');
+  root.addEventListener('click',event=>{const button=event.target.closest('[data-platform]');if(button){const selected=PLATFORMS.find(p=>p.id===button.dataset.platform);this.selected=this.selected===selected?null:selected;this.renderSelection();}},{signal:this.abort.signal});this.motion=matchMedia('(prefers-reduced-motion: reduce)');this.motion.addEventListener('change',()=>this.syncMotion(),{signal:this.abort.signal});document.addEventListener('visibilitychange',()=>this.syncMotion(),{signal:this.abort.signal});this.update({});this.renderSelection();this.syncMotion();this.observer=new ResizeObserver(()=>{this.layoutPaths();this.syncMotion();});this.observer.observe(root.querySelector('.integration-map'));
  }
- update(state){this.root.querySelector('[data-hub-name]').textContent=state.name||'Your Mindling';}
+ update(state){this.root.querySelector('[data-hub-name]').textContent=state.name||'Your Mindling';this.cloud.update(state);}
+ ingest(event){return this.cloud.ingest(event);}
  renderSelection(){
   const platform=this.selected;
   for(const button of this.root.querySelectorAll('[data-platform]'))button.setAttribute('aria-pressed',String(button.dataset.platform===platform?.id));
@@ -33,10 +37,11 @@ export class IntegrationView{
  layoutPaths(){
   if(this.abort.signal.aborted)return;
   const map=this.root.querySelector('.integration-map').getBoundingClientRect();
+  this.hasSize=map.width>0&&map.height>0;
+  if(!this.hasSize)return;
   const hub=this.root.querySelector('.integration-hub').getBoundingClientRect();
-  if(!map.width||!map.height)return;
   this.width=map.width;this.height=map.height;
-  const canvas=this.root.querySelector('canvas'),dpr=Math.min(devicePixelRatio||1,2);
+  const canvas=this.canvas,dpr=Math.min(devicePixelRatio||1,2);
   canvas.width=Math.round(map.width*dpr);canvas.height=Math.round(map.height*dpr);
   this.ctx=canvas.getContext('2d');this.ctx.setTransform(dpr,0,0,dpr,0,0);
   this.paths=PLATFORMS.map(platform=>{
@@ -61,13 +66,13 @@ export class IntegrationView{
   ctx.globalAlpha=1;
  }
  syncMotion(){
-  const active=!!this.visible&&!document.hidden&&!this.motion.matches&&!this.abort.signal.aborted;
+  const active=!!this.visible&&!!this.hasSize&&!document.hidden&&!this.motion.matches&&!this.abort.signal.aborted;
   this.root.classList.toggle('is-active',active);
   if(!active){cancelAnimationFrame(this.frame);this.frame=null;return;}
   if(this.frame!==null)return;
   const tick=now=>{this.time=now/1000;this.paint(this.time);this.frame=requestAnimationFrame(tick);};
   this.frame=requestAnimationFrame(tick);
  }
- setVisible(visible){this.visible=visible;this.root.hidden=!visible;if(visible)this.layoutPaths();this.syncMotion();}
- destroy(){this.visible=false;this.syncMotion();this.observer.disconnect();this.abort.abort();this.root.replaceChildren();this.ctx=null;this.paths=[];}
+ setVisible(visible){this.visible=visible;this.root.hidden=!visible;this.cloud.setVisible(visible);if(visible)this.layoutPaths();this.syncMotion();}
+ destroy(){this.visible=false;this.syncMotion();this.observer.disconnect();this.abort.abort();this.cloud.destroy();this.root.replaceChildren();this.ctx=null;this.paths=[];}
 }

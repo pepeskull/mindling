@@ -8,3 +8,7 @@
 @media(max-width:800px){.header-status{gap:4px}.stage-chip,.age-chip{height:29px;padding:0 8px;font-size:8px}.age-chip svg{display:none}.left-stack{display:none;position:absolute;z-index:7;left:12px;right:12px;bottom:calc(105px + env(safe-area-inset-bottom));top:auto;width:auto;max-height:min(58dvh,510px);overflow-y:auto}.left-stack.mobile-open{display:block}.left-stack>.side-panel,.life-panel{display:block;position:static;width:100%}.right-panel{max-height:min(58dvh,510px)}.compact-section{padding:12px 14px}.activity-grid button{min-height:42px}.care-grid button{min-height:44px}}
 @media(max-width:380px){.stage-chip b{max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.age-chip{padding-inline:7px}.life-panel>header p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.life-panel [data-life-warning]{margin-top:8px}}
 @media(prefers-reduced-motion:reduce){.activity-grid button,.care-grid button{transition:none}}
+.care-grid [data-care-cooldown]{display:inline;font-variant-numeric:tabular-nums;white-space:nowrap}
+.care-grid [data-care-cooldown][hidden]{display:none}
+.care-grid [data-care-cooldown]::before{content:' · ';color:var(--text-muted)}
+.care-grid [data-care-cooldown][data-ready=true]{color:var(--life-health)}

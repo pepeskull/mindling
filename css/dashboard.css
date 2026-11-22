@@ -16,6 +16,8 @@
 .talk-response [data-talk-status] { font-size: 11px; color: var(--text-primary); line-height: 1.6; margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .talk-response [data-talk-content] { max-height: 180px; overflow-y: auto; scrollbar-width: thin; }
 .talk-response [data-talk-content] p { font-size: 11px; line-height: 1.75; color: var(--text-primary); white-space: pre-wrap; overflow-wrap: anywhere; margin: 6px 0; }
+.talk-response [data-talk-content] .talk-answer { line-height: 1.6; }
+.talk-response [data-talk-status]:empty { margin: 0; }
 .talk-response[data-state=error] [data-talk-status] { color: var(--text-secondary); }
 
 .clarification-choices { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
