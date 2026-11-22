@@ -4,6 +4,9 @@ import { understandInput } from '../learning/input-understanding.js';
 export const REJECTION_REASONS=Object.freeze({
   CLAIM_FIELDS_INVALID:'A proposed claim did not contain exactly the required evidence fields.',
   SOURCE_ID_UNKNOWN:'A proposed claim did not reference a retrieved cited source.',
+  PARAGRAPH_ID_UNKNOWN:'The selected paragraph does not belong to the cited source.',
+  SENTENCE_RANGE_INVALID:'The selected sentence range does not exist in the cited paragraph.',
+  PASSAGE_SUPPORT_INSUFFICIENT:'The selected sentences did not establish direct support for the complete claim.',
   QUOTE_FORMAT_INVALID:'A proposed passage did not meet the exact quotation length or format requirements.',
   QUOTE_NOT_IN_CITED_PASSAGE:'A proposed quotation was not present verbatim within one passage from its cited source.',
   CATEGORY_INVALID:'A proposed claim had invalid knowledge-category metadata.',

@@ -5,6 +5,7 @@ import {validateResearchLearningContext} from '../learning/research-learning-con
 import { passageIssue } from '../memory/passage-integrity.js';
 import { citedPassages, supportsClaimDate } from './evidence-dates.js';
 import { limitationSchema, limitationFailureFor } from './research-limitations.js';
+import { materialize, sentenceSpans } from '../semantic/evidence-spans.js';
 // Shared by the existing inference endpoint and browser. No external tool is
 // inferred from model output; source access is a separate configured capability.
 export const INFORMATION_CAPABILITY='mindling-web-search-v1';
@@ -93,16 +94,24 @@ export function publicSourceURL(value){
 }
 const claimSchema={type:'object',additionalProperties:false,required:['sourceId','quote','category','topic','reason','validAt'],properties:{sourceId:{type:'string'},quote:{type:'string',minLength:40,maxLength:700},category:{type:'string',minLength:1,maxLength:80},topic:{type:'string',minLength:1,maxLength:100},reason:{type:'string',minLength:1,maxLength:240},validAt:{type:['string','null'],pattern:'^\\d{4}-\\d{2}-\\d{2}$'}}};
 export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:limitationSchema,maxItems:3},nextQuestion:{type:['string','null'],minLength:1,maxLength:120}}};
-export function sourceEvaluationSchemaFor(sources,{subjectCheck=false,hypotheses=[]}={}){
+const paragraphId=index=>`p${index+1}`;
+export const numberedParagraphs=source=>citedPassages(source).map((passage,index)=>({id:paragraphId(index),sentences:sentenceSpans(passage).map(({quote},number)=>({number,text:quote}))}));
+export function sourceEvaluationSchemaFor(sources,{subjectCheck=false,hypotheses=[],selection=false}={}){
   const schema=structuredClone(sourceEvaluationSchema);
   if(hypotheses.length){schema.required.push('hypothesisReview');schema.properties.hypothesisReview=reviewSchema(hypotheses);}
-  schema.properties.claims.items.properties.sourceId.enum=sources.map(source=>source.id);
-  if(subjectCheck){const claim=schema.properties.claims.items;claim.required.push('relevance');claim.properties.relevance={type:'string',enum:['direct','background','off_topic','uncertain']};}
+  const claim=schema.properties.claims.items;
+  claim.properties.sourceId.enum=sources.map(source=>source.id);
+  if(selection){
+    claim.required=claim.required.filter(key=>key!=='quote').concat('paragraphId','first','last','support');
+    delete claim.properties.quote;
+    Object.assign(claim.properties,{paragraphId:{type:'string'},first:{type:'integer'},last:{type:'integer'},support:{type:'string',enum:['supported','insufficient','contradicted']}});
+  }
+  if(subjectCheck){claim.required.push('relevance');claim.properties.relevance={type:'string',enum:['direct','background','off_topic','uncertain']};}
   return schema;
 }
 // The schema constrains shape/length/IDs; exact attribution and calendar support
 // remain application checks. Quotes are never trimmed, paraphrased or repaired.
-export const SOURCE_EVALUATION_RULES=Object.freeze(['HYPOTHESIS_SUPPORT_MISSING','SUBJECT_RELEVANCE_MISSING','SUBJECT_RELEVANCE_INVALID','SUBJECT_MISMATCH','CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','QUOTE_FORMAT_INVALID','QUOTE_INCOMPLETE','QUOTE_BOUNDARY_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
+export const SOURCE_EVALUATION_RULES=Object.freeze(['HYPOTHESIS_SUPPORT_MISSING','SUBJECT_RELEVANCE_MISSING','SUBJECT_RELEVANCE_INVALID','SUBJECT_MISMATCH','CLAIM_FIELDS_INVALID','SOURCE_ID_UNKNOWN','PARAGRAPH_ID_UNKNOWN','SENTENCE_RANGE_INVALID','PASSAGE_SUPPORT_INSUFFICIENT','QUOTE_FORMAT_INVALID','QUOTE_INCOMPLETE','QUOTE_BOUNDARY_INVALID','QUOTE_NOT_IN_CITED_PASSAGE','CATEGORY_INVALID','TOPIC_INVALID','REASON_INVALID','DATE_FORMAT_INVALID','DATE_UNSUPPORTED','DATE_AFTER_RETRIEVAL']);
 const evaluationFailure=(detail,metadata={})=>{throw Object.assign(Error('Mindling could not validate the source evaluation. No research knowledge was saved.'),{code:'RESPONSE_PARSE_ERROR',detail,...metadata});};
 function validateLimitations(values){
   for(const [index,value] of values.entries()){
@@ -160,6 +169,17 @@ export function selectSourceEvaluation(value,sources,{allowFollowup=true,subject
       else if(!['direct','background','off_topic','uncertain'].includes(proposal.relevance))rule='SUBJECT_RELEVANCE_INVALID';
       else if(proposal.relevance!=='direct')rule='SUBJECT_MISMATCH';
       if(object(proposal)){const {relevance,...supported}=proposal;claim=supported;}
+    }
+    // Older quote-only assessments use the same verbatim validator below.
+    // Selection proposals must materialize their own range in the named source.
+    if(!rule&&object(claim)&&['paragraphId','first','last','support'].some(key=>Object.hasOwn(claim,key))){
+      const {paragraphId:id,first,last,support,...metadata}=claim;
+      const source=sources.find(item=>item.id===metadata.sourceId);
+      const passage=source&&citedPassages(source).find((_,index)=>paragraphId(index)===id);
+      const span=passage&&materialize({first,last},passage);
+      rule=Object.keys(claim).sort().join(',')!=='category,first,last,paragraphId,reason,sourceId,support,topic,validAt'?'CLAIM_FIELDS_INVALID':
+        !source?'SOURCE_ID_UNKNOWN':!passage?'PARAGRAPH_ID_UNKNOWN':!span?'SENTENCE_RANGE_INVALID':support!=='supported'?'PASSAGE_SUPPORT_INSUFFICIENT':null;
+      if(!rule)claim={...metadata,quote:span.quote};
     }
     rule=rule||claimRejection(claim,sources);
     if(rule)validation.rejections.push({index,rule});else{claims.push(claim);acceptedIndices.push(index);}
@@ -219,10 +239,14 @@ export function validateResearchCheckpoint(value){
   if(JSON.stringify(value).length>24000)acquisitionFailure('CHECKPOINT_SIZE_LIMIT');return value;
 }
 export function validateResearchEvaluationContext(value){
-  if(!object(value)||!['checkpoint','checkpoint,learning','checkpoint,refinement','checkpoint,learning,refinement'].includes(Object.keys(value).sort().join(',')))fail();
+  if(!object(value)||Object.keys(value).some(key=>!['checkpoint','learning','refinement','retainedQuotes'].includes(key)))fail();
   validateResearchCheckpoint(value.checkpoint);
   if(value.learning!==undefined)validateResearchLearningContext(value.learning);
   if(Object.hasOwn(value,'refinement')&&value.refinement!==true)fail();
+  if(Object.hasOwn(value,'retainedQuotes')){
+    const quotes=value.retainedQuotes;
+    if(value.refinement!==true||!Array.isArray(quotes)||!quotes.length||quotes.length>2||new Set(quotes).size!==quotes.length||quotes.some(quote=>!text(quote,700)||quote.length<40||!value.checkpoint.evidence.sources.some(source=>citedPassages(source).some(passage=>passage.includes(quote)))))fail();
+  }
   return value;
 }
 
