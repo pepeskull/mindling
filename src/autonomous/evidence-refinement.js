@@ -15,10 +15,29 @@ export const refinementWaiting=task=>task?.engineVersion===4&&task.status==='BLO
 
 export function refinementBlocker(task,now){
   const checkpoint=task.pendingSourceEvidence,diagnostic=task.serviceDiagnostic,receipt=task.researchExecution;
-  if(!checkpoint?.evidence?.sources?.length||!receipt||receipt.toolState!=='COMPLETED'||receipt.outcomeUnknown!==false||task.researchObservation||diagnostic?.errorCategory!==null||diagnostic.correlationId!==receipt.correlationId||diagnostic.candidateOutcome!=='NO_GENERATED_CANDIDATES'||diagnostic.validation?.candidates!==0)return 'EVIDENCE_UNAVAILABLE';
+  const empty=diagnostic?.candidateOutcome==='NO_GENERATED_CANDIDATES'&&diagnostic.validation?.candidates===0;
+  const kept=task.pendingEvidence?.length||0;
+  const partial=diagnostic?.candidateOutcome==='CANDIDATES_ACCEPTED'&&kept>0&&kept<LIMITS.memories&&task.evidenceDiagnostics?.rejections?.length>0&&diagnostic.validation?.accepted>=kept;
+  if(!checkpoint?.evidence?.sources?.length||!receipt||receipt.toolState!=='COMPLETED'||receipt.outcomeUnknown!==false||task.researchObservation||diagnostic?.errorCategory!==null||diagnostic.correlationId!==receipt.correlationId||(!empty&&!partial))return 'EVIDENCE_UNAVAILABLE';
   if(checkpoint.expiresAt<=now)return 'CHECKPOINT_EXPIRED';
   if((task.modelCalls||0)>=LIMITS.inferenceCalls||(task.evaluationCalls||0)>=2)return 'BUDGET_EXHAUSTED';
   return null;
+}
+
+export function skipRefinement(task,reason){
+  task.evidenceRefinement={...queuedRefinement(),state:'SKIPPED',reason};
+  task.message=refinementMessage(task.evidenceRefinement);
+  if(task.pendingEvidence?.length)delete task.pendingSourceEvidence;
+}
+
+// The first assessment is already validated. An interrupted second evaluation
+// must never replace its search receipt or prevent local integration.
+export function keepPartialEvidence(task,reason){
+  task.evidenceRefinement.state='INTERRUPTED';
+  task.evidenceRefinement.reason=reason;
+  delete task.pendingSourceEvidence;
+  delete task.pendingSourceEvaluation;
+  task.status='BLOCKED';task.code='QUEUED';task.message=refinementMessage(task.evidenceRefinement);
 }
 
 export function refinementMessage(record){
@@ -27,7 +46,7 @@ export function refinementMessage(record){
     case 'DISPATCHED':return 'Research is checking the saved sources for narrower claims.';
     case 'RECEIVED':return 'Research received the refined claims and is checking their evidence.';
     case 'COMPLETED':return 'Research completed its check of the saved sources.';
-    case 'EXHAUSTED':return 'The additional check found insufficient evidence to retain knowledge.';
+    case 'EXHAUSTED':return 'The additional check found no further evidence-backed claims to retain.';
     case 'INTERRUPTED':return 'The additional check was interrupted. Its reservation is retained and the request will not be repeated.';
     case 'SKIPPED':
       if(record.reason==='BUDGET_EXHAUSTED')return 'There is no remaining budget for another source evaluation.';

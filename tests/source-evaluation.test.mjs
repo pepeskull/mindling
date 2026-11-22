@@ -22,7 +22,7 @@ async function api({mode='research-acquire',context:input=context,propose=evalua
     if(url.endsWith('/responses')){assert.equal(JSON.parse(options.body).max_tool_calls,2);return Response.json(searchPayload());}
     assert.equal(url,'https://api.openai.com/v1/chat/completions');
     const body=JSON.parse(options.body),data=JSON.parse(body.messages[1].content);
-    assert.equal(body.max_completion_tokens,2600);assert.equal(body.model,'opaque-model');assert.deepEqual(body.response_format.json_schema.schema,sourceEvaluationSchemaFor(data.sources,{subjectCheck:true}));
+    assert.equal(body.max_completion_tokens,2600);assert.equal(body.model,'opaque-model');assert.deepEqual(body.response_format.json_schema.schema,sourceEvaluationSchemaFor(data.sources,{subjectCheck:true,selection:true}));
     assert.ok(data.sources.every(source=>Number.isSafeInteger(source.observedAt)));
     if(upstreamFailure==='abort')throw new DOMException('PRIVATE interrupted evaluation','AbortError');
     if(upstreamFailure)return Response.json({error:{message:'PRIVATE upstream failure'}},{status:503});
