@@ -13,7 +13,7 @@ import {activityResult,isCurrentInteraction,processingMessage,renderClarificatio
 
 class Element {
   constructor(tag){this.tag=tag;this.children=[];this.attributes={};this.dataset={};this.listeners={};this.value='';}
-  get textContent(){return (this.text||'')+this.children.map(node=>node.textContent).join(' ');}
+  get textContent(){return (this.text||'')+this.children.map(node=>typeof node==='string'?node:node.textContent).join('');}
   set textContent(value){this.text=value;this.children=[];}
   append(...nodes){this.children.push(...nodes);}
   replaceChildren(){this.children=[];}
@@ -45,10 +45,11 @@ test('Talk renders the actual answer without a source list or an empty citation 
   renderResponseContent(view.host,{message:processingMessage('TALK','Nova')});
   assert.equal(view.status.textContent,'Nova is thinking...');
   assert.equal(view.content.textContent,'');
-  const reply={answer:'Saturn has rings.',memoryIds:['saturn'],uncertainty:'low',sources:[{url:'https://example.com/saturn',title:'Saturn source'}]};
-  renderResponseContent(view.host,{message:activityResult('TALK',{accepted:true,talkResponse:reply}),sources:reply.sources});
-  assert.equal(view.status.textContent,reply.answer);
-  assert.equal(view.content.children.length,0);
+  const reply={answer:'**Saturn** has *rings*.',memoryIds:['saturn'],uncertainty:'low',sources:[{url:'https://example.com/saturn',title:'Saturn source'}]};
+  renderResponseContent(view.host,{message:'',answer:activityResult('TALK',{accepted:true,talkResponse:reply}),sources:reply.sources});
+  assert.equal(view.status.textContent,'');
+  assert.equal(view.content.textContent,'Saturn has rings.');
+  assert.deepEqual(view.content.children[0].children.filter(node=>typeof node!=='string').map(node=>node.tag),['strong','em']);
   assert.doesNotMatch(view.host.textContent,/uncertainty|referenced|supporting knowledge|example\.com|Saturn source/i);
   assert.equal(activityResult('TALK',{accepted:true,talkResponse:{insufficientInformation:true,memoryIds:[]}}),"I don't know that yet.");
 });

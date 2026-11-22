@@ -1,6 +1,6 @@
 .integration-view{position:absolute;z-index:6;inset:var(--top-height) 0 30px;padding:20px clamp(20px,3.2vw,60px);min-height:0;overflow:auto}
 .integration-view[hidden]{display:none!important}
-.integration-mode .scene,.integration-mode .scene-vignette,.integration-mode .dashboard{visibility:hidden;pointer-events:none}
+.network-mode .scene,.network-mode .scene-vignette,.network-mode .dashboard{visibility:hidden;pointer-events:none}
 .integration-panel{height:100%;min-height:550px;display:flex;flex-direction:column;padding:22px 28px;background:linear-gradient(125deg,var(--surface-glass),var(--surface-deep));border:1px solid var(--border-subtle);border-radius:var(--radius);backdrop-filter:blur(22px)}
 .integration-panel>header{display:flex;justify-content:space-between;align-items:center;gap:16px}
 .integration-panel h2{font-size:24px;font-weight:400;margin:6px 0 0}.integration-eyebrow{font-size:9px;letter-spacing:.13em;color:var(--text-muted);margin:0}.integration-status{font-size:10px;color:var(--text-secondary);border:1px solid var(--border-subtle);padding:6px 10px;border-radius:6px;white-space:nowrap}

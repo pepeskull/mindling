@@ -44,13 +44,13 @@ with sync_playwright() as playwright:
           db.close();
           document.querySelectorAll('.installation').forEach(e=>e.remove());
           document.querySelector('#app').hidden=false;
-          document.querySelector('#app').classList.add('integration-mode');
+          document.querySelector('#app').classList.add('network-mode');
           document.querySelector('.dashboard-chrome').classList.remove('is-hidden');
           const chip=new StageChip(document.querySelector('[data-life-stage]'));
           chip.setStage('Neural Seed');chip.elapsed=31000;chip.setName(resumed.mind.name);
           if(chip.node.textContent!=='Mira is learning.')throw Error('Stage name');
           chip.destroy();
-          window.orbit=new IntegrationView(document.querySelector('#integration-view'));
+          window.orbit=new IntegrationView(document.querySelector('#network-view'));
           orbit.update(resumed.mind);orbit.setVisible(true);
         }""", preview)
         page.wait_for_function("orbit.time>0&&orbit.paths.length===11")
@@ -67,13 +67,13 @@ with sync_playwright() as playwright:
         page.set_viewport_size({"width": 420, "height": 800})
         page.wait_for_function("orbit.width<420&&orbit.paths.every(path=>path.width>0)")
         page.emulate_media(reduced_motion="reduce")
-        page.wait_for_function("orbit.frame===null")
+        page.wait_for_function("orbit.frame===null&&orbit.cloud.frame===null")
         page.emulate_media(reduced_motion="no-preference")
         page.wait_for_function("orbit.frame!==null")
         page.evaluate("orbit.setVisible(false)")
-        assert page.evaluate("orbit.frame===null")
+        assert page.evaluate("orbit.frame===null&&orbit.cloud.frame===null")
         page.evaluate("orbit.setVisible(true);orbit.destroy()")
-        assert page.evaluate("orbit.frame===null&&orbit.ctx===null")
+        assert page.evaluate("orbit.frame===null&&orbit.cloud.frame===null&&orbit.ctx===null")
         assert not errors, errors
         print(("Stage Preview" if preview else "Normal") + ": hydrated name, durable Energy state, Orbit interaction, resize, reduced motion and cleanup passed.", flush=True)
         context.close()

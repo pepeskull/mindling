@@ -20,7 +20,7 @@ import { TestWalletUI } from './wallet-ui.js';
 import { PreviewStore } from './storage.js';
 
 export class SandboxPreview extends EvolutionPreview {
-  constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'}),originalFraming:true,canonicalBrain:true}); this.listeners=new AbortController(); }
+  constructor(options={}) { super({...options,snapshotProvider:async()=>({status:'empty'}),originalFraming:true,canonicalBrain:true}); this.listeners=new AbortController();this.dashboardOptions.careClock=()=>this.state.now+Math.max(0,Date.now()-this.state.wallAt); }
   async start() {
     if(new URLSearchParams(location.search).get('stage-preview')!=='1')throw Error('Sandbox requires explicit preview URL');
     const store=await new PreviewStore().open();
@@ -56,12 +56,7 @@ export class SandboxPreview extends EvolutionPreview {
       }
     });});
     this.listen(document.querySelector('#interaction-form'),'submit',e=>{e.preventDefault();this.action(()=>this.presentLearning(),{feedback:false});});
-    for(const button of document.querySelectorAll('[data-care]')){
-      const detail=button.querySelector('small');
-      this.careLabels??=[];this.careLabels.push([detail,detail.textContent]);
-      detail.textContent=`Free · ${LIFE_RULES.care[button.dataset.care].cooldownHours}h`;
-      this.listen(button,'click',()=>this.action(()=>this.care(button.dataset.care)));
-    }
+    for(const button of document.querySelectorAll('[data-care]'))this.listen(button,'click',()=>this.action(()=>this.care(button.dataset.care)));
     for(const button of document.querySelectorAll('[data-input-mode],[data-activity-mode]'))this.listen(button,'click',()=>this.setActivity(button.dataset.inputMode||button.dataset.activityMode));
     this.listen(this.panel.querySelector('[data-node-selection]'),'change',e=>this.inspectNode(e.target.value));
     this.listen(document.querySelector('[data-new-mindling]'),'click',()=>this.panel.querySelector('[data-sandbox="new"]').click());
@@ -77,6 +72,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.walletUI=new TestWalletUI(this);
     this.renderState();
     this.energyTimer=setInterval(()=>{
+      this.dashboard.tickCareCooldowns();
       if(this.external?.locked||this.busy||this.pendingMutations||!this.state.mind)return;
       const now=this.state.now+Math.max(0,Date.now()-this.state.wallAt),energy=this.state.mind.energy;
       this.dashboard.renderEnergy(energy,now);
@@ -234,5 +230,5 @@ export class SandboxPreview extends EvolutionPreview {
     if(m.life.lifeState==='DECEASED'){this.view.reduced=true;this.seed.setReducedMotion(true);}
     this.view.updateLabels(state.peers);this.host.dataset.network=this.timeline.network.state;this.external?.refresh();
   }
-  destroy(){stopLearning(this);clearInterval(this.lifeTimer);clearInterval(this.energyTimer);this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();for(const [node,text] of this.careLabels||[])node.textContent=text;this.panel?.remove();this.cognition?.destroy();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
+  destroy(){stopLearning(this);clearInterval(this.lifeTimer);clearInterval(this.energyTimer);this.walletUI?.destroy();this.listeners.abort();this.stabilityRow?.remove();this.panel?.remove();this.cognition?.destroy();this.store?.close();document.querySelector('#app')?.classList.remove('sandbox-mode');super.destroy();}
 }

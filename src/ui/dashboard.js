@@ -1,6 +1,5 @@
 import {activityResult, isCurrentInteraction, processingMessage, renderClarificationContent, renderResponseContent, researchPresentation} from './player-communication.js';
 import {IntegrationView} from '../integration/integration-view.js';
-import {NetworkView} from '../network/network-view.js';
 import {ClarificationNotifications} from './clarification-notifications.js';
 import {ResearchAccess} from './research-access.js';
 import {pendingClarifications} from '../autonomous/clarification-tasks.js';
@@ -16,7 +15,7 @@ import { energyLabel } from '../economy/energy.js';
 import { EVENTS } from "../app/events.js";
 import { downloadMindlingProfile, safeProfileFilename } from "../profile/mindling-profile.js";
 import { LIFE_RULES, lifeStageFor, neuralCycles, warningFor } from "../life/life-system.js";
-import { formatLifePercentage } from './life-format.js';
+import { formatCareCooldown, formatLifePercentage } from './life-format.js';
 import { STAGES } from '../preview/evolution-model.js';
 import { previewWarning } from '../preview/sandbox/life.js';
 
@@ -24,7 +23,8 @@ export class Dashboard {
   #unsubscribe;
   #memoryMap;
   #development;
-  #network;
+  #careClock;
+  #careButtons;
   #onViewChange;
   #readOnly = false;
   #listeners = new AbortController();
@@ -45,7 +45,7 @@ export class Dashboard {
   #onCancelClarification;
   #interaction = null;
 
-  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onMemoryView=null, onMergeAreas=null, onConnectMemories=null, onConnectAreas=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, readOnly = false } = {}) {
+  constructor(events, { onInput, onCare, onNewMindling, onViewChange, onLearningTask=null, onMemoryView=null, onMergeAreas=null, onConnectMemories=null, onConnectAreas=null, onClarification=null, onCancelClarification=null, onResearchAccess=null, readOnly = false, careClock=Date.now } = {}) {
     for(const node of document.querySelectorAll('[data-activity-mode], [data-input-mode]')){
       const mode=node.dataset.activityMode||node.dataset.inputMode,policy=LIFE_RULES.activity[mode];if(!policy)continue;
       const reward=activityReward(mode),label=`${policy.label}: ${policy.energyCost} Energy · +${reward} XP`;
@@ -57,17 +57,18 @@ export class Dashboard {
     this.primaryView='dashboard';
     this.#memoryMap = new NeuralMemoryView(document.querySelector("#memory-view"),{onLearningTask,onMemoryView,onMergeAreas,onConnectMemories,onConnectAreas});
     this.#development = new DevelopmentView(document.querySelector("#development-view"));
-    this.#network = new NetworkView(document.querySelector("#network-view"));
-    this.integration=new IntegrationView(document.querySelector('#integration-view'));
+    this.integration=new IntegrationView(document.querySelector('#network-view'));
     this.#onViewChange = onViewChange;
     this.#readOnly = readOnly;
     this.#events = events;
     this.#onInput = onInput;
     this.#onCare = onCare;
+    this.#careClock = careClock;
+    this.#careButtons = [...document.querySelectorAll('[data-care]')];
     this.#onNewMindling = onNewMindling;
     this.#unsubscribe = events.on(EVENTS.STATE_READY, (state) => this.render(state));
     this.#eventUnsubscribes = [
-      events.on(EVENTS.NEURAL_INPUT, event => this.#network.ingest(event)),
+      events.on(EVENTS.NEURAL_INPUT, event => this.integration.ingest(event)),
       events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
     this.notifications=new ClarificationNotifications(document.querySelector('.header-status'),{canAct:()=>!this.locked,onTask:!readOnly&&onLearningTask?async id=>{
@@ -89,15 +90,19 @@ export class Dashboard {
     this.#listen(document.querySelector("[data-view='development']"), "click", () => this.#setPrimaryView("development"));
     this.#listen(document.querySelector("[data-view='memories']"), "click", () => this.#setPrimaryView("memories"));
     this.#listen(document.querySelector("[data-view='dashboard']"), "click", event => { event.preventDefault(); this.#setPrimaryView("dashboard"); });
-    this.#listen(document.querySelector("[data-view=integration]"), "click", () => this.#setPrimaryView("integration"));
     this.#listen(document.querySelector("[data-view=network]"), "click", () => this.#setPrimaryView("network"));
     document.querySelectorAll("[data-mobile-view]").forEach(button => this.#listen(button, "click", () => this.#openMobileView(button.dataset.mobileView)));
     this.#listen(document.querySelector("[data-download-profile]"), "click", () => { if (this.#state) downloadMindlingProfile(this.#state, this.#life); });
     this.#listen(document.querySelector('[data-dismiss-talk]'),'click',()=>{this.#onCancelClarification?.();this.#interaction=null;document.querySelector('[data-talk-response]').hidden=true;this.#refreshNotifications();if(this.talkOpenedPanel)document.querySelector('.right-panel').classList.remove('mobile-open');this.talkOpenedPanel=false;});
     this.#listen(document.querySelector("#mindling-input"), "focus", () => document.documentElement.classList.add("input-active"));
     this.#listen(document.querySelector("#mindling-input"), "blur", () => document.documentElement.classList.remove("input-active"));
-    const restore=()=>{const view=location.hash.slice(1)||'dashboard';if(['dashboard','development','memories','network','integration'].includes(view))this.#setPrimaryView(view,false);};
+    const restore=()=>{
+      let view=location.hash.slice(1)||'dashboard';
+      if(view==='integration'){view='network';history.replaceState(history.state,'','#network');}
+      if(['dashboard','development','memories','network'].includes(view))this.#setPrimaryView(view,false);
+    };
     this.#listen(window,'hashchange',restore);this.#listen(window,'popstate',restore);restore();
+    this.#listen(document,'visibilitychange',()=>this.tickCareCooldowns());
   }
 
   #listen(target, type, callback) { target.addEventListener(type, event=>{if(!this.locked)callback(event);}, { signal: this.#listeners.signal }); }
@@ -134,6 +139,7 @@ export class Dashboard {
   render(state) {
     if(this.#state?.mindlingId!==state.mindlingId){this.#onCancelClarification?.();document.querySelector('[data-talk-response]').hidden=true;this.#interaction=null;}
     this.#state = state;
+    this.tickCareCooldowns();
     this.stageChip.setName(state.name);
     this.researchAccess?.refresh();this.#refreshNotifications();this.#refreshResearch();
     const brain=stageMorphologyCounts(state.stage);
@@ -172,13 +178,13 @@ export class Dashboard {
   #renderMemoryDevelopment() {
     this.#memoryMap.update(this.#state);
     this.#development.update(this.#state, this.#life);
-    this.#network.update(this.#state);this.integration.update(this.#state);
+    this.integration.update(this.#state);
   }
 
   #setPrimaryView(view,record=true) {
     if(record&&location.hash!==`#${view}`)history.pushState(null,'',`#${view}`);
-    this.primaryView=view;this.integration.setVisible(view==='integration');document.querySelector('#app').classList.toggle('integration-mode',view==='integration');
-    document.querySelector('#network-view').hidden=view!=='network';this.#network.setVisible(view==='network');document.querySelector('#app').classList.toggle('network-mode',view==='network');
+    this.primaryView=view;this.integration.setVisible(view==='network');document.querySelector('#app').classList.toggle('network-mode',view==='network');
+    this.tickCareCooldowns();
     this.stageChip.setActive(view==='dashboard');
     const memory = view === "memories", development = view === "development";
     document.querySelector("#development-view").hidden = !development;
@@ -251,7 +257,26 @@ export class Dashboard {
     const messages = { NOT_HUNGRY: "Your Mindling is not hungry.", ALREADY_RESTED: "Your Mindling is already resting.", CARE_COOLDOWN: "Your Mindling needs time before receiving more care.", CARE_NOT_NEEDED: "Your Mindling does not need care right now." };
     this.#showStatus(result.accepted ? "Care completed" : result.message || messages[result.reason] || "Care is unavailable");
   }
-  show() { this.stageChip.setActive(this.primaryView==='dashboard');document.querySelector(".dashboard-chrome").classList.remove("is-hidden"); }
+  tickCareCooldowns() {
+    if(this.primaryView!=='dashboard'||document.hidden||this.locked||this.#listeners.signal.aborted||document.querySelector('.dashboard-chrome').classList.contains('is-hidden'))return;
+    const life=this.#state?.life,now=Math.max(this.#state?.developmentNow??0,this.#careClock()),ready=[];
+    for(const button of this.#careButtons){
+      const output=button.querySelector('[data-care-cooldown]'),type=button.dataset.care;
+      const last=life?.care?.[type];
+      const expiresAt=last==null?now:Number.isFinite(last)?last+LIFE_RULES.care[type].cooldownHours*3600000:NaN;
+      const label=life?.lifeState==='ALIVE'?formatCareCooldown(expiresAt,now):'',available=label==='Ready!';
+      if(available&&output.dataset.ready==='false')ready.push(button.getAttribute('aria-label').split(',')[0]);
+      if(output.textContent!==label){
+        output.textContent=label;
+        if(label)output.dataset.ready=String(available);
+        else delete output.dataset.ready;
+      }
+      output.hidden=!label;
+    }
+    if(ready.length)document.querySelector('[data-care-announcement]').textContent=`${ready.join(', ')} cooldown complete.`;
+  }
+
+  show() { this.stageChip.setActive(this.primaryView==='dashboard');document.querySelector(".dashboard-chrome").classList.remove("is-hidden");this.tickCareCooldowns(); }
   hide() { this.stageChip.setActive(false);document.querySelector(".dashboard-chrome").classList.add("is-hidden"); }
 
   setStorageStatus(available) {
@@ -309,7 +334,11 @@ export class Dashboard {
       interaction.unanswered=interaction.activity==='TALK'&&reply?.insufficientInformation===true;
       if(interaction.activity==='TALK'&&reply?.conversationalAnswer)interaction.priorAnswer=reply.conversationalAnswer;
       this.#refreshResearch();
-    }else this.#showResponse(id,{state:result?.accepted?'ready':'error',message:activityResult(interaction.activity,result,this.#state?.memories)});
+    }else{
+      const message=activityResult(interaction.activity,result,this.#state?.memories);
+      const answer=result?.accepted&&interaction.activity==='TALK'&&reply?.answer===message?message:undefined;
+      this.#showResponse(id,{state:result?.accepted?'ready':'error',message:answer?'':message,answer});
+    }
   }
   canContinueResearch(id){return this.#current(id)&&this.primaryView==='dashboard';}
   showResearchResult(task,id){
@@ -325,9 +354,10 @@ export class Dashboard {
     if(task.code==='QUERY_REVIEW'&&interaction.reviewing)return;
     const model=researchPresentation(task,this.#state?.memories,{enabled:this.#state?.researchPermissions?.enabled,unanswered:interaction.unanswered});
     if(model.status==='Waiting'&&task.code==='PERMISSION_REQUIRED'&&this.#state?.researchPermissions?.enabled)return;
-    const excerpts=interaction.activity==='TALK'?(model.excerpts.length?model.excerpts:interaction.priorAnswer?[interaction.priorAnswer]:[]):[];
+    const excerpts=interaction.activity==='TALK'?model.excerpts:[];
+    const answer=interaction.activity==='TALK'&&!excerpts.length?interaction.priorAnswer:undefined;
     const message=interaction.activity==='DEEP_TRAINING'&&model.learned?'Training complete!':model.message;
-    this.#showResponse(interaction.id,{state:model.active?'processing':'ready',message,excerpts});
+    this.#showResponse(interaction.id,{state:model.active?'processing':'ready',message,excerpts,answer});
   }
   #responsePanel(state){
     const panel=document.querySelector('[data-talk-response]');
@@ -338,12 +368,12 @@ export class Dashboard {
     if(container)container.scrollTop=Math.max(0,panel.offsetTop-container.clientHeight/2);
     return panel;
   }
-  #showResponse(id,{state,message,excerpts=[]}){
+  #showResponse(id,{state,message,excerpts=[],answer}){
     if(!this.#current(id))return;
-    const key=JSON.stringify([state,message,excerpts]);
+    const key=JSON.stringify([state,message,excerpts,answer]);
     if(this.#interaction.viewKey===key)return;
     this.#interaction.viewKey=key;
-    renderResponseContent(this.#responsePanel(state),{message,excerpts});
+    renderResponseContent(this.#responsePanel(state),{message,excerpts,answer});
     this.#refreshNotifications();
   }
   #showQuestion(id,model){
@@ -415,7 +445,7 @@ export class Dashboard {
     this.#setPrimaryView("dashboard",false);
     this.#memoryMap.destroy();
     this.#development.destroy();
-    this.#network.destroy();this.integration.destroy();
+    this.integration.destroy();
     this.stageChip.destroy();
     this.#unsubscribe?.();
     this.#eventUnsubscribes.forEach(unsubscribe => unsubscribe());

@@ -1,7 +1,7 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {createSandbox,newMindling,advanceTime,talk,evolve,DAY} from '../src/preview/sandbox/engine.js';
 import {carePreview,condition,upgradePreviewLife,stimulatePreviewLife} from '../src/preview/sandbox/life.js';
-import { formatLifePercentage } from '../src/ui/life-format.js';
+import { formatCareCooldown, formatLifePercentage } from '../src/ui/life-format.js';
 const start=()=>newMindling(createSandbox(),{confirmed:true,id:'life-test'});
 test('Life 2.0 neglect collapses in 48–96 hours with visible warnings and a zero vital sign',()=>{
   const initial=start(),wallet=structuredClone(initial.player);let s=initial,critical=false;
@@ -41,4 +41,12 @@ test('Life 2.0 Talk pays Energy, prevents repeated input farming, and never awar
   const s=talk(initial,text);assert.equal(s.mind.energy.remaining,9);assert.equal(s.mind.lifetimeXP,0);assert.equal(s.mind.memories.length,0);assert.equal(initial.mind.energy.remaining,10);
   const later=advanceTime(advanceTime(s,1),1);assert.throws(()=>talk(later,text),/repeated/);
   assert.throws(()=>talk(later,'hello'),/meaningful/);assert.equal(later.mind.energy.remaining,10);
+});
+
+test('care countdown rounds up until expiry and omits invalid time',()=>{
+  assert.equal(formatCareCooldown(20538000,0),'05:42:18');
+  assert.equal(formatCareCooldown(1000,999),'00:00:01');
+  assert.equal(formatCareCooldown(1000,1000),'Ready!');
+  assert.equal(formatCareCooldown(1000,1001),'Ready!');
+  assert.equal(formatCareCooldown(NaN,1000),'');
 });

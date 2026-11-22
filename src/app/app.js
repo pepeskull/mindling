@@ -65,12 +65,12 @@ export class MindlingApp extends EvolutionPreview {
       onHover: event => { this.seed.hoverAt?.(event); }
     });
     this.events.on(EVENTS.MEMORY_SELECTED, route => { this.seed.highlightRoute(route); this.view.selectedCanonical = route?.neuronIds?.[0] || null; });
-    for (const button of document.querySelectorAll('[data-care]')) button.querySelector('small').textContent = `Free · ${LIFE_RULES.care[button.dataset.care].cooldownHours}h`;
     this.renderState();
     if (this.state.mind) this.dashboard.show(); else this.showOnboarding();
     this.lifeTimer = setInterval(() => this.refreshState(), 60_000);
     this.energyTimer=setInterval(()=>{if(!this.external?.locked&&this.state?.mind){
       this.dashboard.renderEnergy(this.state.mind.energy,Date.now());
+      this.dashboard.tickCareCooldowns();
       const e=this.state.mind.energy;
       if(!this.pendingMutations&&eligibility({...this.state,now:Date.now()}).eligible)this.refreshState();
       else if(e.version===2&&e.remaining-e.bonus<energyCapacityForStage(this.state.mind.stage)&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
