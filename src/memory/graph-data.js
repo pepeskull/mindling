@@ -1,7 +1,7 @@
 import {currentAreaRelation} from '../semantic/area-relations.js';
 import {renderHierarchy} from './merge-projection.js';
 import {projectHierarchy,areaRadius} from './knowledge-hierarchy.js';
-import { memoryLabel, contextualLabel, memoryContext } from './memory-label.js';
+import { memoryLabel, contextualLabel } from './memory-label.js';
 // Read-only presentation projection. Never opens a database, classifies text or
 // guesses a relationship from similarity. Saved IDs are the only memory identity.
 const string=value=>typeof value==='string'?value.trim():'';
@@ -62,7 +62,6 @@ export function graphData(state={}) {
   }
   const areas=[...categories.values()].sort((a,b)=>compare(a.label,b.label)||compare(a.id,b.id));
   for(const area of areas){const ts=area.topicIds.map(id=>topics.get(id));area.displayLabel=ts.length>1&&/^(definition|definitions)$/iu.test(area.label)?`Definitions · ${ts.length} topics`:contextualLabel(area.label,ts.length===1?ts[0].label:null)||area.label;for(const topic of ts){const first=nodes.find(n=>n.topicId===topic.id);topic.displayLabel=contextualLabel(topic.label,first&&memoryLabel(first).title)||topic.label;}}
-  const titles=new Map();for(const node of nodes){const label=memoryLabel(node).title;titles.set(label,(titles.get(label)||0)+1);}for(const node of nodes)if(titles.get(memoryLabel(node).title)>1)node.labelContext=memoryContext(node.raw);
   projectHierarchy(areas,nodes,edges,state?.knowledgeHierarchy);
   const topicNodes=[...topics.values()].sort((a,b)=>compare(a.id,b.id));
   for(const area of areas)for(const topicId of area.topicIds)edges.push({from:area.id,to:topicId,kind:'hierarchy',persisted:false,sourceMemoryIds:topics.get(topicId).memoryIds,origin:'area-membership'});

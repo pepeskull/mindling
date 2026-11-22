@@ -5,7 +5,7 @@ import { rejectionExplanation } from './research-evidence.js';
 import { taskProgress, taskStatusLabel } from './tasks.js';
 import { memoryNodeId } from '../memory/graph-data.js';
 import { memoryButton } from '../memory/memory-label.js';
-import { appendSourceLinks, researchPresentation } from '../ui/player-communication.js';
+import { researchPresentation } from '../ui/player-communication.js';
 import { canRetryResearch, matchingEvaluationFailure } from './service-diagnostics.js';
 import { taskClarification } from './clarification-tasks.js';
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
@@ -71,7 +71,6 @@ export function renderTaskInspector(host,node,{onAction=null,memories=[]}={}){
   host.append(el('h4',task.topic||'Learning'),el('p',summary.status,'memory-status-chip'),el('p',summary.message));
   if(summary.active)host.append(progress);
   if(summary.learned)host.append(el('p',`${summary.learned} new ${summary.learned===1?'memory':'memories'}`));
-  appendSourceLinks(host,summary.sources);
   for(const memory of current){if(summary.known.includes(memory.raw))host.append(memoryButton(memory));}
   if(onAction&&!['COMPLETED','CANCELLED','FAILED'].includes(task.status)){
     const status=el('p');status.setAttribute('role','status');

@@ -5,6 +5,9 @@ import {learningEngine,stopLearning} from '../src/autonomous/learning-engine.js'
 import {renderTaskDiagnostics,renderTaskInspector} from '../src/autonomous/task-inspector.js';
 import {resumeClarification} from '../src/learning/clarification.js';
 import {understandInput} from '../src/learning/input-understanding.js';
+import {graphData} from '../src/memory/graph-data.js';
+import {openMemoryMaintenance} from '../src/memory/maintenance-view.js';
+import {memoryButton} from '../src/memory/memory-label.js';
 import {createSandbox,newMindling} from '../src/preview/sandbox/engine.js';
 import {activityResult,isCurrentInteraction,processingMessage,renderClarificationContent,renderResponseContent,researchPresentation} from '../src/ui/player-communication.js';
 
@@ -17,11 +20,13 @@ class Element {
   setAttribute(key,value){this.attributes[key]=value;}
   addEventListener(name,listener){this.listeners[name]=listener;}
   focus(){this.focused=true;}
+  click(){this.listeners.click?.();}
+  showModal(){}
   querySelector(selector){return this.children.find(node=>selector==='button:not([disabled])'?node.tag==='button'&&!node.disabled:Object.hasOwn(node.attributes,selector.slice(1,-1)));}
 }
 
 const documentFixture=()=>Object.assign(new EventTarget(),{
-  hidden:false,createElement:tag=>new Element(tag),createTextNode(text){const node=new Element('#text');node.textContent=text;return node;}
+  hidden:false,createElement:tag=>new Element(tag)
 });
 function panel(){
   const host=new Element('section'),status=new Element('p'),content=new Element('div');
@@ -34,18 +39,17 @@ function replaceGlobal(testContext,name,value){
   testContext.after(()=>{if(original)Object.defineProperty(globalThis,name,original);else delete globalThis[name];});
 }
 
-test('Talk renders one natural status and the actual answer, with attributed HTTPS links',t=>{
+test('Talk renders the actual answer without a source list or an empty citation container',t=>{
   replaceGlobal(t,'document',documentFixture());
   const view=panel();
   renderResponseContent(view.host,{message:processingMessage('TALK','Nova')});
   assert.equal(view.status.textContent,'Nova is thinking...');
   assert.equal(view.content.textContent,'');
-  const reply={answer:'Saturn has rings.',memoryIds:['saturn'],uncertainty:'low',sources:[{url:'https://example.com/saturn',title:'Saturn'},{url:'javascript:alert(1)',title:'Unsafe link'}]};
+  const reply={answer:'Saturn has rings.',memoryIds:['saturn'],uncertainty:'low',sources:[{url:'https://example.com/saturn',title:'Saturn source'}]};
   renderResponseContent(view.host,{message:activityResult('TALK',{accepted:true,talkResponse:reply}),sources:reply.sources});
   assert.equal(view.status.textContent,reply.answer);
-  assert.equal(view.content.children[0].children.length,1);
-  assert.equal(view.content.children[0].children[0].children[0].href,reply.sources[0].url);
-  assert.doesNotMatch(view.host.textContent,/uncertainty|referenced|supporting knowledge/i);
+  assert.equal(view.content.children.length,0);
+  assert.doesNotMatch(view.host.textContent,/uncertainty|referenced|supporting knowledge|example\.com|Saturn source/i);
   assert.equal(activityResult('TALK',{accepted:true,talkResponse:{insufficientInformation:true,memoryIds:[]}}),"I don't know that yet.");
 });
 
@@ -113,23 +117,70 @@ const researchTask=(extra={})=>({
   completedWork:['understanding','source'],sourceReferences:[],knowledgeIds:[],sourceRequests:1,plan:[],message:'Internal research message.',...extra
 });
 
-test('Research success requires a saved memory and links only retained provenance',()=>{
-  const sourceURL='https://example.com/saturn',quote='Saturn has rings.',research={taskId:'research',sourceURL,observedAt:100,sourceHash:'hash',quoteHash:'hash'};
+test('Research shows saved-memory counts without rendering sources and exports preserve evidence',async t=>{
+  replaceGlobal(t,'document',documentFixture());
+  const taskId='a'.repeat(64),sourceURL='https://example.com/saturn',quote='Saturn has rings.';
+  const research={taskId,sourceURL,observedAt:100,sourceHash:'b'.repeat(64),quoteHash:'c'.repeat(64),evidenceText:quote};
   const memory={id:'saved',content:`Source observation (${new Date(100).toISOString()}) from ${sourceURL}: ${quote}`,research};
-  const task=researchTask({status:'COMPLETED',knowledgeIds:[memory.id],sourceReferences:[{url:sourceURL,title:'Saturn'},{url:'https://example.com/other'}]});
-  const before=structuredClone({memory,task});
+  const source={url:sourceURL,title:'Saturn source',doi:'10.0000/saturn',authorizedAt:90,observedAt:100,hash:research.sourceHash};
+  const task=researchTask({
+    version:1,id:taskId,mindlingId:'fixture',requestId:'request',run:'run',createdAt:1,updatedAt:100,attempts:1,referenceIds:[],energyCharged:true,timeSensitive:false,
+    status:'COMPLETED',code:'SOURCE_BACKED',knowledgeIds:[memory.id,'missing'],sourceReferences:[source]
+  });
+  const state={id:'fixture',memories:[memory],categories:[],learningTasks:[task]},before=structuredClone(state);
   const model=researchPresentation(task,[memory]);
   assert.equal(model.message,'I learned something new!');
   assert.equal(model.learned,1);
   assert.deepEqual(model.excerpts,[quote]);
-  assert.deepEqual(model.sources,[task.sourceReferences[0]]);
+  const view=panel(),normal=new Element('div');
+  renderResponseContent(view.host,{message:model.message,sources:task.sourceReferences});
+  assert.equal(view.status.textContent,model.message);
+  assert.equal(view.content.children.length,0);
+  renderTaskInspector(normal,{task},{memories:graphData(state).memories});
+  assert.match(normal.textContent,/1 new memory/);
+  assert.doesNotMatch(normal.textContent,/Saturn source|example\.com|10\.0000\/saturn|Saved sources/);
+  assert(normal.children.every(node=>!['a','ul','details'].includes(node.tag)));
   assert.equal(researchPresentation(task,[]).learned,0);
   assert.doesNotMatch(researchPresentation(task,[{...memory,supersededBy:'edited'}]).message,/learned something new/);
   const supporting={id:'saved',content:quote,researchSupport:[research]};
   assert.equal(researchPresentation(task,[supporting]).message,'I found more support for something I remember.');
   assert.equal(researchPresentation(researchTask()).message,"I couldn't verify anything new yet.");
   assert.equal(researchPresentation(researchTask({status:'RESEARCHING',code:'SEARCHING'}),[],{unanswered:true}).message,"I don't know that yet. Let me look into it.");
-  assert.deepEqual({memory,task},before);
+
+  let downloaded;
+  t.mock.method(URL,'createObjectURL',blob=>{downloaded=blob;return 'blob:memory-records';});
+  const dialog=openMemoryMaintenance(new Element('div'),{getState:()=>state});
+  const diagnostics=dialog.children.find(node=>node.dataset.task===taskId).children[1];
+  const sources=diagnostics.children.find(node=>node.tag==='details'&&node.children[0].textContent==='Saved sources');
+  assert.equal(sources.children[1].children[0].href,sourceURL);
+  assert.equal(sources.children[1].children[0].textContent,source.title);
+  dialog.children.find(node=>node.tag==='button'&&node.textContent==='Export memory records').click();
+  const exported=JSON.parse(await downloaded.text());
+  assert.deepEqual(exported.memories,[memory]);
+  assert.deepEqual(exported.learningTasks,[task]);
+  assert.deepEqual(state,before);
+});
+
+test('compact cards keep title, category, status and selection even when titles match',t=>{
+  replaceGlobal(t,'document',documentFixture());
+  const topic='Scientific theory',category='Science';
+  const memories=[
+    {id:'first',topic,category,content:'A **scientific theory** explains observations.'},
+    {id:'second',topic,category,content:'A **scientific theory** can be refined.',supersededBy:'first'}
+  ];
+  const before=structuredClone(memories);
+  const nodes=graphData({memories}).memories;
+  assert.equal(nodes.length,2);
+  for(const [index,node] of nodes.entries()){
+    const card=memoryButton(node),status=index===0?'Current':'Historical';
+    assert.deepEqual(card.children.map(part=>[part.className,part.textContent]),[
+      ['memory-entry-title',topic],['memory-entry-area',category],['memory-entry-state',status]
+    ]);
+    assert.equal(card.attributes['aria-label'],`${topic}. ${category}. ${status} memory.`);
+    assert.equal(card.dataset.selectMemory,node.id);
+    assert.equal(node.raw.content,before[index].content);
+  }
+  assert.deepEqual(memories,before);
 });
 
 test('technical Research details and hypotheses stay out of normal rendering without changing the record',t=>{

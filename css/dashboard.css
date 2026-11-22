@@ -24,8 +24,6 @@
 .clarification-form { display: flex; flex-wrap: wrap; gap: 8px; }
 .clarification-input { flex: 1 1 170px; min-width: 0; color: var(--text-secondary); font-size: 10px; }
 .clarification-input input { display: block; width: 100%; margin-top: 5px; padding: 8px; border: 1px solid var(--border-subtle); border-radius: 6px; background: transparent; color: var(--text-primary); font: inherit; }
-.talk-response .research-citations { margin: 10px 0; padding-left: 18px; font-size: 10px; line-height: 1.7; color: var(--text-secondary); }
-.talk-response .research-citations a { color: var(--accent); }
 
 
 .topbar:has(.clarification-notifications){z-index:8}
