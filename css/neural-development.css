@@ -29,11 +29,16 @@
 .development-metrics dd { margin: 0; font-size: 18px; font-weight: 430; font-variant-numeric: tabular-nums; }
 .development-view p { line-height: 1.7; }
 .development-view .development-muted { color: var(--text-muted); font-size: 9px; }
-.development-xp > p { color: var(--text-secondary); font-size: 10px; }
-.development-xp progress { display: block; width: 100%; height: 4px; border: 0; background: var(--border-subtle); accent-color: var(--accent); }
+.development-xp { --daily-xp: #efa755; display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: center; gap: 4px 8px; }
+.development-xp > p { color: var(--text-secondary); font-size: 10px; margin: 0; text-align: end; }
+.development-xp > :is(progress,.daily-xp-counter,.daily-xp-cap) { grid-column: 1 / -1; }
+.development-xp > .daily-xp-counter { color: var(--daily-xp); }
+.development-xp > .daily-xp-cap { color: var(--text-muted); font-size: 9px; }
+.development-xp progress { --xp-progress-color: var(--accent); display: block; width: 100%; height: 4px; border: 0; background: var(--border-subtle); accent-color: var(--xp-progress-color); }
+.development-xp .daily-xp-progress { --xp-progress-color: var(--daily-xp); height: 3px; }
 .development-xp progress::-webkit-progress-bar { background: var(--border-subtle); border-radius: 4px; }
-.development-xp progress::-webkit-progress-value { background: var(--accent); border-radius: 4px; transition: width .6s ease; }
-.development-xp progress::-moz-progress-bar { background: var(--accent); border-radius: 4px; }
+.development-xp progress::-webkit-progress-value { background: var(--xp-progress-color); border-radius: 4px; transition: width .6s ease; }
+.development-xp progress::-moz-progress-bar { background: var(--xp-progress-color); border-radius: 4px; }
 .development-pathways h4:first-child { margin-top: 0; }
 .development-pathway-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .development-pathway-list > span { padding: 6px 8px; border: 1px solid var(--border-subtle); border-radius: 6px; color: var(--accent); background: var(--accent-muted); font-size: 9px; }
@@ -79,7 +84,7 @@
 .development-progression .development-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 20px; }
 .development-progression .development-metrics > div { padding: 8px 0; }
 .development-progression .development-metrics dd { font-size: 14px; }
-.development-progression .development-xp h4 { margin: 0 0 8px; }
+.development-progression .development-xp h4 { margin: 0; }
 @media(max-width:800px) { .development-grid { grid-template-columns: minmax(0,1fr); overflow-y: auto; } .development-evolution { min-height: 560px; } .development-pathways { overflow: visible; } .development-progression { grid-template-columns: minmax(0,1fr); gap: 14px; } }
 
 .development-progression > *, .development-progression .development-metrics > div { min-width: 0; }

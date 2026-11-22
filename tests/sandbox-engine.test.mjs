@@ -25,12 +25,15 @@ test('M4.1 a free cared-for Mindling can reach Agent Mind at exactly 38 virtual 
   assert.equal(s.mind.stage,7);assert.equal((s.now-born)/DAY,38);assert.equal(s.player.wallet.receipts.length,0);assert.equal(s.mind.life.lifeState,'ALIVE');assert.ok(s.mind.nodes.length<=64);
 });
 
-test('M4.1 spam, repetition, meaningless input and daily XP farming fail atomically',()=>{
+test('M4.1 rejects spam and caps XP while saving valid learning',()=>{
   let s=start();s.mind.energy=creditEnergy(s.mind.energy,100,s.now);
   s=learn(s,event(1));assert.throws(()=>learn(s,event(1)),/processed/);
-  s=learn(s,{...event(1),id:'reinforce'});assert.equal(s.mind.lifetimeXP,50);assert.equal(s.mind.memories.length,1);
+  s=learn(s,{...event(1),id:'reinforce'});assert.equal(s.mind.lifetimeXP,XP.concept);assert.equal(s.mind.memories.length,1);
   assert.throws(()=>learn(s,{...event(1),id:'reinforce-again'}),/reinforced/);
   assert.throws(()=>learn(s,{...event(2),text:'hello'}),/readable claim/);
-  for(let i=2;i<=10;i++)s=learn(s,event(i));
-  const before=JSON.stringify(s);assert.throws(()=>learn(s,event(11)),/Daily XP/);assert.equal(JSON.stringify(s),before);assert.equal(s.mind.lifetimeXP,500);
+  for(let i=2;i<=20;i++)s=learn(s,event(i));
+  const next=learn(s,event(21));
+  assert.equal(next.mind.memories.length,21);assert.equal(next.mind.history.at(-1).xp,0);
+  assert.equal(next.mind.lifetimeXP,XP.daily);assert.equal(next.mind.stageXP,XP.daily);
+  assert.throws(()=>learn(next,event(21)),/processed/);
 });

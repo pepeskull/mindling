@@ -1,4 +1,5 @@
 import { AdaptivePathwaysView } from '../pathways/pathway-view.js';
+import { XP } from '../economy/xp.js';
 import { developmentData } from './development-data.js';
 import { NeuralDevelopmentScene } from './neural-development-scene.js';
 
@@ -55,11 +56,18 @@ export class DevelopmentView {
     const metrics = this.root.querySelector('[data-development-metrics]'); metrics.replaceChildren();
     for (const [label, count] of [['Energy', data.energyText], ['Current memories', data.currentMemories], ['Knowledge areas', data.areaCount], ['Lifetime XP', data.lifetimeXP]]) { const row = element('div'); row.append(element('dt', label), element('dd', value(count))); metrics.append(row); }
     const xp = this.root.querySelector('[data-development-xp]'); xp.replaceChildren(element('h4', 'Stage XP'));
+    let stageProgress;
     if (data.stageXP !== null && data.targetXP !== null) {
       xp.append(element('p', `${value(data.stageXP)} / ${value(data.targetXP)} XP`));
-      const progress = element('progress'); progress.max = data.targetXP; progress.value = Math.min(data.stageXP, data.targetXP);
-      progress.setAttribute('aria-label', 'XP toward the next stage requirement'); progress.textContent = `${data.stageXP} of ${data.targetXP} XP`; xp.append(progress);
+      stageProgress = element('progress'); stageProgress.max = data.targetXP; stageProgress.value = Math.min(data.stageXP, data.targetXP);
+      stageProgress.setAttribute('aria-label', 'XP toward the next stage requirement'); stageProgress.textContent = `${data.stageXP} of ${data.targetXP} XP`;
     } else xp.append(element('p', data.stageNumber === 7 ? `${value(data.stageXP)} stage XP · Final recorded stage` : 'Stage XP is not available in this record.', 'development-muted'));
+    xp.append(element('p', `${data.dailyXP} / ${XP.daily} XP today`, 'daily-xp-counter'));
+    if (stageProgress) xp.append(stageProgress);
+    const dailyProgress = element('progress', `${data.dailyXP} of ${XP.daily} XP today`, 'daily-xp-progress');
+    dailyProgress.max = XP.daily; dailyProgress.value = data.dailyXP;
+    dailyProgress.setAttribute('aria-label', 'Daily XP earned today'); xp.append(dailyProgress);
+    if (data.dailyXP === XP.daily) xp.append(element('p', 'Daily XP cap reached', 'daily-xp-cap'));
     const areas = this.root.querySelector('[data-development-areas]'); areas.replaceChildren();
     for (const area of data.areas) { const item = element('li'); item.append(element('span', area.label), element('strong', String(area.count))); areas.append(item); }
     if (!data.areas.length) areas.append(element('li', 'No current knowledge areas yet.', 'development-muted'));

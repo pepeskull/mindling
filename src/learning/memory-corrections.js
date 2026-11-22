@@ -3,7 +3,7 @@ import {learningContext} from '../preview/sandbox/learning-assessment.js';
 import {requestLearningAssessment} from '../preview/sandbox/learning-service.js';
 import {connectSemanticMemory} from '../semantic/memory-connections.js';
 import {recordMemory} from '../preview/sandbox/memory-records.js';
-import {XP} from '../preview/sandbox/engine.js';
+import {XP,cappedXPAward} from '../economy/xp.js';
 import {developmentStatistics} from './knowledge.js';
 import {energyAt,spendEnergy} from '../economy/energy.js';
 import {LIFE_RULES} from '../life/life-system.js';
@@ -15,7 +15,6 @@ const current=memory=>memory&&!memory.supersededBy&&memory.intelligence?.current
 function correctionBudget(state){
   const energy=energyAt(state.mind.energy,state.now),cost=LIFE_RULES.activity.TEACH.energyCost,day=Math.floor(state.now/86400000);
   if(energy.remaining<cost)throw Error('Not enough Energy for a correction.');
-  if(state.mind.history.filter(event=>event.day===day).reduce((sum,event)=>sum+event.xp,0)+XP.correction>XP.daily)throw Error('Daily XP limit reached.');
   if(state.mind.memories.length>=1000)throw Error('Memory capacity reached.');
   return {energy,cost,day};
 }
@@ -53,6 +52,7 @@ export async function correctMemory(app,{memoryId,text},{guard=()=>{},journal=fa
       const target=correctionTarget(state.mind,memoryId,text);if(target.unchanged)throw noChangeError();
       if(JSON.stringify(target.memory)!==snapshot||JSON.stringify(learningContext(input,state.mind,{correctionTargetId:memoryId}))!==context)throw Error('Relevant knowledge changed. Reopen the memory and submit again.');
       const {energy,cost,day}=correctionBudget(state);
+      const award=cappedXPAward(XP.correction,state.mind.history,state.now);
       const next=structuredClone(state),mind=next.mind,original=mind.memories.find(memory=>memory.id===memoryId),at=new Date(state.now).toISOString();
       const replacement=recordMemory(mind,{id,text:input,decision,event:{id,activity:'TEACH'},at,associations:{neuronIds:original.neuronIds||[],synapseIds:original.synapseIds||[]},connect:false});
       replacement.correctsMemoryId=memoryId;replacement.provenance={source:'player',method:'explicit-memory-correction'};
@@ -61,8 +61,8 @@ export async function correctMemory(app,{memoryId,text},{guard=()=>{},journal=fa
       original.supersededBy=id;original.supersededAt=at;original.intelligence={...original.intelligence,current:false};connectSemanticMemory(mind,replacement.id);
       if(original.research?.quoteHash)mind.researchExclusions=[...new Set([...(mind.researchExclusions||[]),original.research.quoteHash])].slice(-1000);
       mind.energy=spendEnergy(energy,cost,state.now);stimulatePreviewLife(mind.life,'TEACH',state.now);mind.lastLearning=state.now;
-      mind.stageXP+=XP.correction;mind.lifetimeXP+=XP.correction;mind.processed.push(id);
-      mind.history.push({id,day,at:state.now,xp:XP.correction,kind:'correction',concept:decision.concept||decision.topic,activity:'TEACH',source:'SERVICE',operation:'CORRECT_MEMORY',memoryIds:[memoryId,id],energySpent:cost});
+      mind.stageXP+=award;mind.lifetimeXP+=award;mind.processed.push(id);
+      mind.history.push({id,day,at:state.now,xp:award,kind:'correction',concept:decision.concept||decision.topic,activity:'TEACH',source:'SERVICE',operation:'CORRECT_MEMORY',memoryIds:[memoryId,id],energySpent:cost});
       mind.nativeKnowledge=developmentStatistics(mind.memories);mind.areas=[...new Set(mind.memories.map(memory=>memory.areaSuggestion).filter(Boolean))];return next;
     },{preserveGameplay:true,...(journal?{journal:{id,type:'TEACH'}}:{})});
   }catch(error){if(error.code==='CORRECTION_NO_CHANGE')return noChange();throw error;}

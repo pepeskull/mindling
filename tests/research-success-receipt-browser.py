@@ -4,7 +4,7 @@ The first normal-store success uses an actual 23.087-second hosted-tool fixture 
 import os
 from playwright.sync_api import sync_playwright
 BASE=os.environ.get('MINDLING_TEST_URL','http://127.0.0.1:8765')
-CASES=os.environ.get('MINDLING_RECEIPT_CASES','').split(',') if os.environ.get('MINDLING_RECEIPT_CASES') else ['success','hidden_inflight','visibility_cycles','abort_after_body','hidden_after_body','offline_after_body','missing','body_abort','parse','stale','checkpoint','receipt_store','evidence_store','integration','post_commit','cancel','changed_run','revoked','storage_unavailable','navigation']
+CASES=os.environ.get('MINDLING_RECEIPT_CASES','').split(',') if os.environ.get('MINDLING_RECEIPT_CASES') else ['success','daily_cap','hidden_inflight','visibility_cycles','abort_after_body','hidden_after_body','offline_after_body','missing','body_abort','parse','stale','checkpoint','receipt_store','evidence_store','integration','post_commit','cancel','changed_run','revoked','storage_unavailable','navigation']
 with sync_playwright() as p:
     browser=p.chromium.launch(executable_path='/usr/bin/chromium',headless=True,args=['--no-sandbox'])
     for preview in [False,True]:
@@ -28,6 +28,12 @@ with sync_playwright() as p:
           await write(()=>newMindling(createSandbox(),{id:'receipt-browser',confirmed:true,pathways:['Gaming','Developer','Social']}));
           const prior={id:'previous',content:'An existing retained teaching claim remains unchanged.',category:'History',categoryId:'prior-area',topic:'History',source:'NATIVE',neuronIds:[],synapseIds:[],relatedMemoryIds:[]};
           if(kind!=='success')await write(s=>{s.mind.memories.push(prior);return s;});
+          const capped=kind==='daily_cap';
+          if(capped)await write(s=>{
+            s.mind.stageXP=s.mind.lifetimeXP=100;
+            s.mind.history.push({id:'previous-xp',at:s.now,day:Math.floor(s.now/86400000),xp:100,kind:'concept'});
+            return s;
+          });
           let injected=false;
           const app={store,state:await read(),renderState(){},async change(reducer,options={}){
             this.state=await write(s=>{
@@ -41,7 +47,7 @@ with sync_playwright() as p:
             }
           }};
           let engine=new AutonomousLearningEngine(app);await engine.loadPermissions();await engine.setAccess(true);
-          const task=await engine.prepare(understandInput('Learn about Gaming','TEACH'),'received-browser',{autonomous:true});
+          const task=await engine.prepare(understandInput('Learn about Gaming','TEACH'),'received-browser',{autonomous:!capped});
           const saved=()=>app.state.mind.learningTasks.find(t=>t.id===task.id),initial={memories:JSON.stringify(app.state.mind.memories),energy:app.state.mind.energy.remaining,xp:app.state.mind.lifetimeXP,player:JSON.stringify(app.state.player),origins:JSON.stringify(app.state.mind.pathways)};
           let calls=0,bodyRead=false,networkCalls=0;const originalFetch=globalThis.fetch;
           globalThis.fetch=async(url,options)=>{
@@ -82,9 +88,17 @@ with sync_playwright() as p:
           }
           await running;const elapsed=performance.now()-start;let value=saved();
           delete document.hidden;delete navigator.onLine;
-          if(kind==='success'||kind==='post_commit'){
+          if(kind==='success'||kind==='post_commit'||capped){
             const count=kind==='success'?3:4;
             check(value.status==='COMPLETED'&&app.state.mind.memories.length===count,'valid receipt not integrated');
+            if(capped){
+              const committed=(await read()).mind;
+              check(value.learningRewarded&&committed.stageXP===100&&committed.history.reduce((sum,event)=>sum+event.xp,0)===100,'daily allowance was exceeded');
+              const before=networkCalls;
+              engine.destroy();store.close();store=await (preview?new PreviewStore():new MindlingDatabase()).open();app.store=store;app.state=await read();
+              engine=new AutonomousLearningEngine(app);await engine.loadPermissions();await engine.run(saved(),'Gaming');value=saved();
+              check(JSON.stringify(await read())===JSON.stringify(app.state)&&JSON.stringify(app.state.mind)===JSON.stringify(committed)&&networkCalls===before,'reopen/replay duplicated XP, work or knowledge');
+            }
             if(kind==='post_commit'){
               const committed=await read();
               check(injected&&!engine.clientFailure&&committed.mind.learningTasks[0].status==='COMPLETED','post-commit error reported as failed integration');
@@ -117,7 +131,7 @@ with sync_playwright() as p:
             check(JSON.stringify(app.state.mind.memories)===initial.memories,'failure changed previous knowledge');
           }
           check(calls===1&&value.sourceRequests===4&&value.modelCalls===3,'duplicate dispatch or changed ceilings');
-          check(app.state.mind.energy.remaining===initial.energy&&app.state.mind.lifetimeXP===initial.xp&&JSON.stringify(app.state.player)===initial.player&&JSON.stringify(app.state.mind.pathways)===initial.origins,'identity/economy/origins changed');
+          check(app.state.mind.energy.remaining===initial.energy-(capped?2:0)&&app.state.mind.lifetimeXP===initial.xp&&JSON.stringify(app.state.player)===initial.player&&JSON.stringify(app.state.mind.pathways)===initial.origins,'identity/economy/origins changed');
           if(kind!=='success')check(JSON.stringify(app.state.mind.memories.find(m=>m.id==='previous'))===JSON.stringify(prior),'existing memory changed');
           if(value.status==='COMPLETED')for(const memory of app.state.mind.memories.filter(m=>m.research)){const source=value.sourceReferences.find(s=>s.url===memory.research.sourceURL);check(source.passages.includes(memory.research.evidenceText)&&source.hash===memory.research.sourceHash&&memory.research.verification==='tool-cited-unverified-synthesis','provenance changed');}
           engine.destroy();store.close();globalThis.fetch=originalFetch;return 'PASS';

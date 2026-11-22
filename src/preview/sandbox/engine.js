@@ -1,4 +1,4 @@
-import { XP, activityReward } from '../../economy/xp.js';
+import { XP, activityReward, cappedXPAward } from '../../economy/xp.js';
 export { XP } from '../../economy/xp.js';
 import { connectSemanticMemory } from '../../semantic/memory-connections.js';
 import { assertResearchReplacement, linkResearchSuccessor } from '../../autonomous/memory-evolution.js';
@@ -69,10 +69,9 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   const analysisMind=replaced?{...m,memories:m.memories.filter(memory=>memory.id!==replaced.id).map(memory=>({...memory,content:editableMemoryText(memory)}))}:m;
   const a=assessment ? serviceLearningAnalysis(text,m,assessment) : analyzeNative(text,analysisMind);
   if(research&&a.decision)throw Error('Research cannot bypass canonical conflict or safety checks.');
-  if(a.decision)return applyMemoryDecision(state,{id,text,mindId,activity},a.decision,{XP});
+  if(a.decision)return applyMemoryDecision(state,{id,text,mindId,activity},a.decision);
   if(a.relationship==='repeated')return research?structuredClone(state):reinforce(state,{id,text,memoryId:a.relatedMemoryId,mindId,activity});
-  const day=Math.floor(state.now/DAY),earned=m.history.filter(e=>e.day===day).reduce((n,e)=>n+e.xp,0),award=research?0:activityReward(activity);
-  if(award>0&&earned+award>XP.daily)throw Error('Daily XP limit reached');
+  const day=Math.floor(state.now/DAY),award=research?0:cappedXPAward(activityReward(activity),m.history,state.now);
   if(!['TEACH','DEEP_TRAINING'].includes(activity))throw Error('Learning requires Teach or Deep Training');
   const cost=research?0:LIFE_RULES.activity[activity].energyCost;
   const energy=energyAt(m.energy,state.now);if(energy.remaining<cost)throw Error('Not enough Energy; wait for regeneration');
@@ -132,8 +131,7 @@ export function talk(state,text,{id=crypto.randomUUID(),rewardEligible=false}={}
   if(typeof id!=='string'||!id||id.length>100||m.processed.includes(id)||m.memories.some(v=>v.id===id))throw Error('Activity event already processed or invalid');
   if(typeof text!=='string'||text.length>2000||key.length<20||new Set(key.split(' ')).size<4)throw Error('Share a meaningful thought of at least four words');
   if((m.activityHistory||[]).some(e=>e.key===key&&state.now-e.at<DAY))throw Error('Share a different thought; repeated input earns no stimulation today');
-  const day=Math.floor(state.now/DAY),energy=energyAt(m.energy,state.now),award=rewardEligible?activityReward('TALK'):0;
-  if(award&&m.history.filter(e=>e.day===day).reduce((sum,e)=>sum+e.xp,0)+award>XP.daily)throw Error('Daily XP limit reached');
+  const day=Math.floor(state.now/DAY),energy=energyAt(m.energy,state.now),award=rewardEligible?cappedXPAward(activityReward('TALK'),m.history,state.now):0;
   if(energy.remaining<1)throw Error('Not enough Energy; wait for regeneration');
   const next=structuredClone(state),n=next.mind;
   stimulatePreviewLife(n.life,'TALK',next.now);n.processed.push(id);n.energy=spendEnergy(energy,1,next.now);

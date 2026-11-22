@@ -10,7 +10,7 @@ import {researchLearningContext} from '../learning/research-learning-context.js'
 import {semanticQueue} from '../semantic/scheduling.js';
 import { VERSION as SEMANTIC_VERSION } from '../semantic/model-contract.js';
 import { runSemantic } from '../semantic/model-worker.js';
-import { activityReward } from '../economy/xp.js';
+import { activityReward, cappedXPAward } from '../economy/xp.js';
 import { researchRelation, claimEvidence, addSupportingEvidence, retainConflict, replacementAllowed } from './memory-evolution.js';
 import { validateResearchClaim } from './tasks.js';
 import { correctMemory, belongsToResearchTask } from '../learning/memory-corrections.js';
@@ -18,7 +18,7 @@ import { SERVICE_MESSAGES, canRetryResearch, retryableServiceFailure, matchingEv
 import { AUTONOMY, automaticPause, dayKey, nextOpportunity, autonomousStatus, autonomousDiagnostics } from './autonomous-schedule.js';
 import { EVENTS } from '../app/events.js';
 import { evidenceRejection, canonicalRejection, rejectionExplanation } from './research-evidence.js';
-import { learn, XP } from '../preview/sandbox/engine.js';
+import { learn } from '../preview/sandbox/engine.js';
 import { stimulatePreviewLife } from '../preview/sandbox/life.js';
 import { understandInput, knowledgeGap, LEARNING_MODES } from '../learning/input-understanding.js';
 import { trainingContext } from '../training/retrieval.js';
@@ -498,9 +498,8 @@ export class AutonomousLearningEngine {
       }
       // Directly requested Teach/Deep research has the same one-activity
       // activity reward as supplied teaching. Background research remains 0 XP.
-      if(formed&&current.autonomous===false&&activity!=='TALK'&&!current.learningRewarded&&!next.mind.history.some(e=>e.requestId===current.requestId&&e.xp>0)){
-        const award=activityReward(activity),day=Math.floor(next.now/86400000),earned=next.mind.history.filter(e=>e.day===day).reduce((sum,e)=>sum+e.xp,0);
-        if(earned+award>XP.daily)throw integrationIssue('DAILY_XP_LIMIT');
+      if(formed&&current.autonomous===false&&activity!=='TALK'&&!current.learningRewarded&&!next.mind.history.some(e=>e.requestId===current.requestId&&(e.xp>0||e.rewardBasis==='user-directed-learning'))){
+        const award=cappedXPAward(activityReward(activity),next.mind.history,next.now);
         const event=next.mind.history.find(e=>e.taskId===current.id&&e.memoryIds===undefined&&e.kind==='research'&&knowledge.includes(e.id));
         if(!event)throw integrationIssue('REWARD_EVENT_MISSING');
         event.xp=award;event.activity=activity;event.requestId=current.requestId;event.rewardBasis='user-directed-learning';
