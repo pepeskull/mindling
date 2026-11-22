@@ -38,7 +38,7 @@ with sync_playwright() as p:
    page.get_by_role('button',name='Reset view',exact=True).click()
    bounds=page.locator('.memory-graph-stage').bounding_box();selected=page.evaluate('actualMemoryView.selected');page.mouse.move(bounds['x']+20,bounds['y']+30);page.mouse.down();page.mouse.move(bounds['x']+55,bounds['y']+50);page.mouse.up();assert page.evaluate('actualMemoryView.selected')==selected
    page.get_by_role('button',name='Fit graph',exact=True).click()
-  page.locator('.memory-browser summary').click();page.locator('.memory-browser [data-select-memory]').first.click();assert page.locator('.memory-inspector .memory-status-chip').count()==1
+  page.get_by_role('tab',name='Browse Memories').click();page.locator('.memory-browser [data-select-memory]').first.click();assert page.locator('.memory-inspector .memory-status-chip').count()==1
   page.locator('[data-view="development"]').click();assert page.locator('[data-brain-action="focus"]').count()==0
   page.reload();page.wait_for_function("document.querySelector('[data-life-status-title]')?.textContent.includes('IntelligenceRepair')");assert page.evaluate(READ,preview)['mind']['memories']==saved['mind']['memories'];assert len(requests)==geometry_calls
   print('PASS '+('Preview' if preview else 'primary')+': incident claims reconcile durably, cross-topic semantic edges visible, unrelated Gaming/blockchain disconnected; accurate audited counter, compact Fit geometry, no primary-label overlap at 1600/1180, zoom/reset/selection, controls removed and reload',flush=True)

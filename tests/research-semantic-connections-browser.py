@@ -41,7 +41,7 @@ with sync_playwright() as p:
             assert preserved==old
         assert all(len(m['relatedMemoryIds'])==2 for m in repaired['mind']['memories'][:3])
         assert repaired['mind']['memories'][3]['relatedMemoryIds']==[]
-        page.locator('[data-view="memories"]').click();page.locator('.memory-browser summary').click()
+        page.locator('[data-view="memories"]').click();page.get_by_role('tab',name='Browse Memories').click()
         page.locator('.memory-browser .compact-memory',has=page.locator('.memory-entry-title',has_text='Blockchain Ledgers and Consensus')).click()
         inspector=page.locator('.memory-inspector-content');links=inspector.locator('.compact-memory')
         assert links.count()==2

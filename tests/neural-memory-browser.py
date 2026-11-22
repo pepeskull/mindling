@@ -38,24 +38,24 @@ with sync_playwright() as p:
     assert page.locator('#memory-inspector-title').text_content()=='Follow a thought.'
     page.locator('[data-graph-action=fit]').click()
     # Keyboard index, selected inspector, collapsed technical metadata.
-    page.locator('.memory-browser summary').click()
+    page.get_by_role('tab',name='Browse Memories').click()
     page.locator('[data-select-memory]').first.focus();page.keyboard.press('Enter')
     assert page.locator('.inspector-memory-text').text_content()=='Words carry meaning through context.'
     assert not page.locator('.memory-advanced').evaluate('(e)=>e.open')
     page.locator('.memory-advanced summary').click();assert 'm3-0-0' in page.locator('.memory-advanced').text_content()
-    page.locator('.memory-advanced summary').click();page.locator('.memory-browser summary').click()
+    page.locator('.memory-advanced summary').click();page.get_by_role('tab',name='Learning Tasks').click()
     page.locator('[data-graph-action=fit]').click();page.evaluate("document.querySelector('#memory-view').scrollTop=0;document.querySelector('.memory-inspector').scrollTop=0")
     page.screenshot(path=str(SHOTS/'m3-network.png'))
     # Area filtering and a connected memory that crosses that filter.
     area=page.locator('[data-area-filter] option',has_text='Language').get_attribute('value')
     page.locator('[data-area-filter]').select_option(area)
-    page.locator('.memory-browser summary').click();page.locator('[data-select-memory]').first.click();page.locator('.memory-browser summary').click()
+    page.get_by_role('tab',name='Browse Memories').click();page.locator('[data-select-memory]').first.click();page.get_by_role('tab',name='Learning Tasks').click()
     cross=page.locator('.related-memory-button',has_text='Tests describe observable behavior.')
     assert cross.count()==1;cross.click()
     assert page.locator('[data-area-filter]').input_value()=='all'
     assert 'Tests describe observable behavior.' in page.locator('.inspector-memory-text').text_content()
     page.locator('[data-memory-search]').fill('favorite programming language')
-    page.locator('.memory-browser summary').click();page.locator('[data-select-memory]').first.click();page.locator('.memory-browser summary').click()
+    page.get_by_role('tab',name='Browse Memories').click();page.locator('[data-select-memory]').first.click();page.get_by_role('tab',name='Learning Tasks').click()
     assert 'Python' in page.locator('.inspector-memory-text').text_content()
     assert page.locator('.memory-value-history').count()==1
     page.locator('.memory-value-history summary').click();assert 'JavaScript' in page.locator('.memory-value-history').text_content()

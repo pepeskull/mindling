@@ -19,9 +19,9 @@ with sync_playwright() as p:
    await write(s=>{s.mind.memories=[{id:'a',content:'A broad sport observation.',category:'Sport',categoryId:'sport',relatedMemoryIds:['b']},{id:'b',content:'Association football is a type of sport.',category:'Association football',categoryId:'football',relatedMemoryIds:['a'],research:{sourceURL:'https://example.org/evidence',quoteHash:'preserved'}},{id:'c',content:'A scientific observation.',category:'Science',categoryId:'science'},{id:'d',content:'Another distinct football observation.',category:'Association football',categoryId:'football'}];s.mind.memories.forEach((m,i)=>{m.source='SERVICE';m.analysis={name:'mindling-learning-service',verification:'unverified-player-claim'};m.intelligence={kind:'claim',current:true};m.contentIntegrity={version:1,status:'captured',length:m.content.length};m.topic='Fixture topic '+i;});return reconcileAreaEvidence(s);});
    window.app={state:await read(),store:db,renderState(){},async change(fn,opts){this.state=await write(fn,opts);}};
    const engine=new AutonomousLearningEngine(app);await engine.loadPermissions();
-   for(let i=0;i<13;i++){
+   for(let i=0;i<15;i++){
     const task=await engine.prepare(understandInput('Learn about public topic '+i,'TEACH'),'fixture-'+i);
-    if(i<5)await engine.patch(task.id,null,item=>{item.status='COMPLETED';item.code='SOURCE_BACKED';});
+    if(i<7)await engine.patch(task.id,null,item=>{item.status='COMPLETED';item.code='SOURCE_BACKED';});
    }
    engine.destroy();
    window.before=JSON.stringify([app.state.mind.memories,app.state.mind.pathways,app.state.mind.energy,app.state.mind.lifetimeXP]);
@@ -71,10 +71,11 @@ with sync_playwright() as p:
   start=page.evaluate('point','Science');page.mouse.move(start['x'],start['y']);page.mouse.down();page.mouse.move(start['x']-35,start['y']+30,steps=8);page.mouse.up();page.wait_for_timeout(700)
   assert page.locator('.research-task-browser').is_visible()
   page.locator('[data-task-search]').fill('public')
-  assert page.locator('[data-task-page-label]').inner_text()=='1–12 of 13'
+  assert page.locator('[data-task-page-label]').inner_text()=='1–14 of 15'
   page.locator('[data-task-page=next]').click();page.wait_for_timeout(700)
-  assert page.locator('[data-task-page-label]').inner_text()=='13–13 of 13'
-  saved=page.evaluate('''async()=>{await view.saveChain;const p=await db.memoryView(view.viewIdentity);check(p.taskPage===1,'task page not saved');check(Object.keys(p.positions).length===2,'only displayed roots retain independent positions');window.saved=p;view.setVisible(false);view.setVisible(true);return p;}''')
+  assert page.locator('[data-task-page-label]').inner_text()=='15–15 of 15'
+  page.get_by_role('tab',name='Browse Memories').click()
+  saved=page.evaluate('''async()=>{view.scheduleSave(0);await view.saveChain;const p=await db.memoryView(view.viewIdentity);check(p.taskPage===1&&p.browseOpen,'task page or selected tab not saved');check(Object.keys(p.positions).length===2,'only displayed roots retain independent positions');window.saved=p;view.setVisible(false);view.setVisible(true);return p;}''')
   page.wait_for_timeout(500)
   assert page.evaluate('view.taskPage===1 && view.taskQuery==="public"')
   # Stale hierarchy/UI revisions and wrong identities are rejected transactionally.
@@ -82,7 +83,7 @@ with sync_playwright() as p:
   page.evaluate('view.destroy()');page.wait_for_timeout(500);page.evaluate('db.close()');page.reload()
   assert page.evaluate('''async preview=>{const {PreviewStore}=await import('/src/preview/sandbox/storage.js'),{MindlingDatabase}=await import('/src/storage/database.js'),{NeuralMemoryView}=await import('/src/memory/neural-memory-view.js');window.db=await(preview?new PreviewStore():new MindlingDatabase()).open();const s=preview?await db.read():(await db.get('gameplay','primary')).state;window.persisted=await db.memoryView(s.mind.id);document.querySelectorAll('.installation').forEach(e=>e.remove());document.querySelector('#app').hidden=false;document.querySelector('.dashboard-chrome').classList.remove('is-hidden');document.querySelector('#memory-view').hidden=false;document.querySelector('#app').classList.add('memory-mode');window.view=new NeuralMemoryView(document.querySelector('#memory-view'),{onMemoryView:(id,value)=>db.memoryView(id,value)});view.update(s.mind);view.setVisible(true);return s.mind.knowledgeHierarchy.links.length===1&&s.mind.memories.length===4;}''',preview)
   page.wait_for_function('view.layout && !view.loadingView')
-  assert page.locator('.research-task-browser').is_visible()
+  assert page.locator('.memory-browser').is_visible() and page.locator('.research-task-browser').is_hidden()
   assert page.evaluate('''()=>view.taskPage===1&&view.taskQuery==='public'&&view.layout.nodes.filter(n=>n.kind==='area').every(n=>Math.abs(n.x-persisted.positions[n.id].x)<.01&&Math.abs(n.y-persisted.positions[n.id].y)<.01)''')
   assert not errors,errors
   print(('Preview' if preview else 'Normal')+': validated previews, atomic hierarchy, rollback, preserved knowledge, compact tasks, isolated durable layout and stale-write guards passed',flush=True)

@@ -15,13 +15,15 @@ SETUP = """async () => {
   const state={
     id:'sidebar-fixture',learningSession:'fixture-session',
     memories:[{id:'saturn',content:'Saturn has rings.',category:'Science',topic:'Saturn',
-      research:{taskId:taskId(1),sourceURL:source.url}}],
+      research:{taskId:taskId(1),sourceURL:source.url}},...Array.from({length:18},(_,i)=>({
+        id:'observation-'+String(i).padStart(2,'0'),content:'Observation '+i,topic:'Observation '+i,category:i%2?'Astronomy':'Science'
+      }))],
     learningTasks:Array.from({length:20},(_,i)=>({
       version:1,engineVersion:4,id:taskId(i),mindlingId:'sidebar-fixture',
       requestId:'fixture-'+i,run:'fixture',session:'fixture-session',mode:'TALK_RESEARCH',
       objective:'Learn about topic '+i,topic:'Topic '+i,createdAt:1,updatedAt:i+1,attempts:0,
-      status:i<2?'COMPLETED':i===3?'CANCELLED':'BLOCKED',
-      code:i===2?'MODEL_CLARIFICATION':'NO_EVIDENCE',
+      status:i<2?'COMPLETED':i===3?'CANCELLED':i===19?'RESEARCHING':'BLOCKED',
+      code:({2:'MODEL_CLARIFICATION',17:'ACCESS_DISABLED',18:'OFFLINE',19:'SEARCHING'})[i]||'NO_EVIDENCE',
       ...(i===2&&{coordinatorClarification:{version:1,kind:'model-scope',field:'detail',
         question:'Which aspect?',options:[{id:'example',label:'Examples',value:'Examples'}],freeText:false}}),
       completedWork:['understanding'],referenceIds:[],sourceReferences:i===1?[source]:[],knowledgeIds:i===1?['saturn']:[],
@@ -74,19 +76,19 @@ def boxes(page, selectors):
     return [page.locator(selector).bounding_box() for selector in selectors]
 
 def check_sidebar(page, touch):
-    sidebar = page.locator('.knowledge-graph-panel .research-task-browser')
-    assert sidebar.count() == page.locator('.research-task-browser').count() == 1
-    assert sidebar.evaluate('(node) => node.tagName === "SECTION" && !node.querySelector("summary")')
-    assert sidebar.get_by_role('heading', name='Learning Tasks').is_visible()
+    sidebar = page.locator('.knowledge-graph-panel .knowledge-sidebar')
+    tasks_tab = sidebar.get_by_role('tab', name='Learning Tasks')
+    memories_tab = sidebar.get_by_role('tab', name='Browse Memories')
+    tasks_panel = sidebar.locator('.research-task-browser')
+    memories_panel = sidebar.locator('.memory-browser')
+    assert tasks_panel.count() == memories_panel.count() == page.locator('.memory-browser').count() == 1
+    assert tasks_tab.get_attribute('aria-selected') == 'true'
+    assert tasks_panel.is_visible() and not memories_panel.is_visible()
     assert page.locator('.neural-memory-grid .memory-eyebrow').all_text_contents() == [
-        '01 / LEARNING TASKS', '02 / EXPLORE', '03 / PERSPECTIVE', '04 / CONNECTION DETAIL'
+        '01 / LEARNING & MEMORY', '02 / EXPLORE', '03 / PERSPECTIVE', '04 / CONNECTION DETAIL'
     ]
-    assert page.evaluate('''() => {
-      const metrics=id=>{const style=getComputedStyle(document.getElementById(id));return [style.fontSize,style.fontWeight,style.fontFamily].join(',');};
-      return metrics('learning-tasks-title')===metrics('knowledge-areas-title') && metrics('learning-tasks-title')===metrics('coverage-title');
-    }''')
 
-    panel, explore, stage = boxes(page, ['.research-task-browser', '.knowledge-explore', '.memory-graph-stage'])
+    panel, explore, stage = boxes(page, ['.knowledge-sidebar', '.knowledge-explore', '.memory-graph-stage'])
     if touch:
         assert panel['x'] == explore['x'] and panel['width'] == explore['width']
         assert panel['y'] + panel['height'] <= explore['y']
@@ -95,13 +97,13 @@ def check_sidebar(page, touch):
         assert panel['y'] == explore['y'] and panel['height'] == explore['height']
     assert stage['x'] == explore['x'] and stage['width'] == explore['width']
     assert page.locator('.knowledge-graph-panel').evaluate('(el) => el.scrollWidth <= el.clientWidth')
-    assert sidebar.locator('.task-browser-body').evaluate('(el) => el.scrollWidth <= el.clientWidth')
+    assert tasks_panel.evaluate('(el) => el.scrollWidth <= el.clientWidth')
     if touch:
-        tasks = sidebar.locator('ul')
+        tasks = tasks_panel.locator('ul')
         assert tasks.evaluate('(el) => el.scrollHeight > el.clientHeight')
         tasks.evaluate('(el) => { el.scrollTop = el.scrollHeight; }')
         assert tasks.evaluate('(el) => el.scrollTop > 0')
-        assert sidebar.locator('.task-browser-body').evaluate('(el) => el.scrollTop === 0')
+        assert tasks_panel.evaluate('(el) => el.scrollTop === 0')
 
     search, status = sidebar.locator('[data-task-search]'), sidebar.locator('[data-task-filter]')
     for control in (search, status):
@@ -109,23 +111,29 @@ def check_sidebar(page, touch):
     rows = sidebar.locator('[data-select-learning]')
     pagination = sidebar.locator('[data-task-page-label]')
     previous, next_page = sidebar.locator('[data-task-page=prev]'), sidebar.locator('[data-task-page=next]')
-    assert rows.count() == 12 and rows.first.inner_text().startswith('Topic 19')
-    assert pagination.inner_text() == '1–12 of 19' and previous.is_disabled()
+    assert rows.count() == 14 and rows.first.locator('.task-title').inner_text() == 'Topic 19'
+    assert pagination.inner_text() == '1–14 of 19' and previous.is_disabled()
+    for title, label, tone in [('Topic 19', 'Exploring', 'active'), ('Topic 18', 'Paused', 'attention'),
+                               ('Topic 17', 'Waiting', 'attention'), ('Topic 16', 'Finished', 'neutral')]:
+        badge = rows.filter(has=page.get_by_text(title, exact=True)).locator('.task-status')
+        assert badge.inner_text() == label and badge.get_attribute('data-tone') == tone
     next_page.click()
-    assert pagination.inner_text() == '13–19 of 19' and rows.count() == 7 and next_page.is_disabled()
+    assert pagination.inner_text() == '15–19 of 19' and rows.count() == 5 and next_page.is_disabled()
     previous.click()
-    assert pagination.inner_text() == '1–12 of 19' and previous.is_disabled()
+    assert pagination.inner_text() == '1–14 of 19' and previous.is_disabled()
     search.fill('topic 5')
     assert rows.count() == 1 and rows.first.inner_text().startswith('Topic 5')
     assert pagination.inner_text() == '1–1 of 1' and previous.is_disabled() and next_page.is_disabled()
     search.fill('')
     status.select_option('active')
-    assert pagination.inner_text() == '1–12 of 17'
+    assert pagination.inner_text() == '1–14 of 17'
     next_page.click()
-    assert pagination.inner_text() == '13–17 of 17' and rows.count() == 5 and next_page.is_disabled()
+    assert pagination.inner_text() == '15–17 of 17' and rows.count() == 3 and next_page.is_disabled()
     status.select_option('actionable')
     assert rows.count() == 1 and rows.first.inner_text().startswith('Topic 2')
     assert pagination.inner_text() == '1–1 of 1' and previous.is_disabled()
+    assert rows.first.locator('.task-status').inner_text() == 'Waiting for you'
+    assert rows.first.locator('.task-status').get_attribute('data-tone') == 'attention'
     rows.first.click()
     assert rows.first.get_attribute('aria-pressed') == 'true'
     detail = page.locator('.memory-inspector-content')
@@ -135,6 +143,8 @@ def check_sidebar(page, touch):
 
     status.select_option('completed')
     assert rows.count() == 2 and rows.first.inner_text().startswith('Topic 1')
+    assert rows.first.locator('.task-status').inner_text() == 'Completed'
+    assert rows.first.locator('.task-status').get_attribute('data-tone') == 'success'
     rows.first.click()
     assert rows.first.get_attribute('aria-pressed') == 'true'
     assert '1 new memory' in detail.inner_text()
@@ -144,8 +154,40 @@ def check_sidebar(page, touch):
     status.select_option('all')
     search.fill('topic')
     next_page.click()
-    assert pagination.inner_text() == '13–19 of 19'
+    assert pagination.inner_text() == '15–19 of 19'
     assert page.evaluate('JSON.stringify(sidebarState) === initialState')
+
+    rectangles = ['.memory-graph-stage', '.knowledge-radar-panel', '.memory-inspector']
+    before = boxes(page, rectangles)
+    camera = page.evaluate('JSON.stringify([view.selected,view.pan,view.zoom])')
+    tasks_tab.press('ArrowRight')
+    assert memories_tab.get_attribute('aria-selected') == 'true'
+    assert memories_tab.evaluate('(el) => el === document.activeElement')
+    assert memories_panel.is_visible() and not tasks_panel.is_visible()
+    after = boxes(page, rectangles)
+    assert after == before, (before, after)
+    assert page.evaluate('JSON.stringify([view.selected,view.pan,view.zoom])') == camera
+
+    memory_rows = memories_panel.locator('[data-select-memory]')
+    memory_page = memories_panel.locator('[data-memory-page-label]')
+    memory_previous = memories_panel.locator('[data-memory-page=prev]')
+    memory_next = memories_panel.locator('[data-memory-page=next]')
+    assert memory_rows.count() == 14 and memory_page.inner_text() == '1–14 of 19' and memory_previous.is_disabled()
+    assert memories_panel.locator('ul').evaluate('(el) => el.scrollHeight > el.clientHeight')
+    assert memory_rows.first.evaluate('''el => {
+      const style=getComputedStyle(el);
+      return style.borderLeftWidth==='2px' && style.backgroundImage.startsWith('linear-gradient') && !!style.getPropertyValue('--memory-area-color');
+    }''')
+    memory_next.click()
+    assert memory_rows.count() == 5 and memory_page.inner_text() == '15–19 of 19' and memory_next.is_disabled()
+    memory_previous.click()
+    assert memory_page.inner_text() == '1–14 of 19'
+    memory_next.click()
+    memory_rows.last.press('Enter')
+    assert memory_rows.last.get_attribute('aria-pressed') == 'true'
+    assert memory_rows.last.evaluate('(el) => getComputedStyle(el).backgroundImage') == 'none'
+    assert page.locator('#memory-inspector-title').inner_text() == 'Saturn'
+    assert page.evaluate('view.positions.get(view.selected)?.recordId === "saturn"')
 
     page.evaluate('''async () => {
       view.scheduleSave(0);
@@ -154,24 +196,23 @@ def check_sidebar(page, touch):
       mountSidebarView();
     }''')
     page.wait_for_function('view.taskNodes.size === 19 && !view.loadingView')
-    assert sidebar.get_by_role('heading', name='Learning Tasks').is_visible()
+    assert memories_panel.is_visible() and memory_page.inner_text() == '15–19 of 19'
+    assert memory_rows.last.get_attribute('aria-pressed') == 'true'
+    memories_tab.press('Home')
+    assert tasks_panel.is_visible() and not memories_panel.is_visible()
     assert search.input_value() == 'topic' and status.input_value() == 'all'
-    assert pagination.inner_text() == '13–19 of 19'
-    assert rows.last.get_attribute('aria-pressed') != 'true'
-    assert rows.filter(has_text='Topic 1').get_attribute('aria-pressed') == 'true'
+    assert pagination.inner_text() == '15–19 of 19'
+    assert page.locator('#memory-inspector-title').inner_text() == 'Saturn'
     page.get_by_role('button', name='Fit graph').click()
     assert page.evaluate('view.autoFit && view.zoom > 0')
     pan = page.evaluate('view.pan.x')
     page.locator('.memory-graph-stage canvas:not(.memory-flow)').press('ArrowLeft')
     assert page.evaluate('view.pan.x') == pan + 35
-    assert page.evaluate('view.taskPage === 1 && view.taskQuery === "topic" && view.selected.endsWith("1")')
+    assert page.evaluate('view.taskPage === 1 && view.query === "" && view.taskQuery === "topic" && view.positions.get(view.selected)?.recordId === "saturn"')
     page.get_by_role('button', name='Zoom in').click()
     assert page.evaluate('view.zoom > view.fitZoom')
     page.get_by_role('button', name='Reset view').click()
     assert page.evaluate('view.autoFit && view.zoom === view.fitZoom')
-    page.locator('.memory-browser summary').click()
-    page.locator('.memory-browser [data-select-memory]').click()
-    assert page.locator('#memory-inspector-title').inner_text() == 'Saturn'
     assert page.evaluate('JSON.stringify(sidebarState) === initialState')
 
 with sync_playwright() as playwright:

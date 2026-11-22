@@ -14,8 +14,8 @@ import { renderTaskInspector } from '../autonomous/task-inspector.js';
 const el=(tag,text,cls)=>{const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(cls)node.className=cls;return node;};
 const svg=(tag,attrs={})=>{const node=document.createElementNS('http://www.w3.org/2000/svg',tag);for(const [k,v] of Object.entries(attrs))node.setAttribute(k,String(v));return node;};
 const compact=(text,size=29)=>text.length>size?text.slice(0,size-1)+'…':text;
-const PAGE_SIZE=6;
-const TASK_PAGE_SIZE=12;
+const PAGE_SIZE=14;
+const taskStatusTone={Completed:'success',Exploring:'active',Paused:'attention','Waiting for you':'attention',Waiting:'attention'};
 
 
 export class NeuralMemoryView {
@@ -24,22 +24,38 @@ export class NeuralMemoryView {
     this.state=null;this.positions=new Map();this.colors=new Map();this.taskNodes=new Map();this.root=root;this.visible=false;this.autoFit=true;this.dirty=true;this.frame=null;this.selected=null;this.hover=null;this.area='all';this.query='';this.page=0;this.zoom=1;this.pan={x:0,y:0};this.abort=new AbortController();this.generation=0;
     root.innerHTML=`<div class="memory-stat-strip" aria-label="Memory statistics"></div>
       <div class="neural-memory-grid"><section class="knowledge-graph-panel" aria-labelledby="knowledge-areas-title"><div class="knowledge-explorer">
-      <section class="research-task-browser" aria-labelledby="learning-tasks-title">
-        <header class="graph-panel-heading"><div><p class="memory-eyebrow">01 / LEARNING TASKS</p><h3 id="learning-tasks-title">Learning Tasks</h3></div></header>
-        <div class="task-browser-body"><div class="task-browser-tools"><input type="search" data-task-search aria-label="Search learning tasks" placeholder="Find a learning task…"><select data-task-filter aria-label="Filter learning tasks"><option value="all">All tasks</option><option value="actionable">Clarification needed</option><option value="active">Unfinished</option><option value="completed">Completed</option></select></div><ul></ul><div><button type="button" data-task-page="prev">Previous</button><span data-task-page-label></span><button type="button" data-task-page="next">Next</button></div></div>
+      <section class="knowledge-sidebar" aria-labelledby="memory-sidebar-title">
+        <header class="graph-panel-heading"><h3 class="memory-eyebrow" id="memory-sidebar-title">01 / LEARNING &amp; MEMORY</h3></header>
+        <div class="sidebar-tabs" role="tablist" aria-label="Learning and memory">
+          <button type="button" role="tab" id="learning-tasks-tab" data-memory-tab="tasks" aria-controls="learning-tasks-panel" aria-selected="true">Learning Tasks</button>
+          <button type="button" role="tab" id="browse-memories-tab" data-memory-tab="memories" aria-controls="browse-memories-panel" aria-selected="false" tabindex="-1">Browse Memories</button>
+        </div>
+        <div class="research-task-browser sidebar-browser" id="learning-tasks-panel" role="tabpanel" aria-labelledby="learning-tasks-tab"><div class="task-browser-tools"><input type="search" data-task-search aria-label="Search learning tasks" placeholder="Find a learning task…"><select data-task-filter aria-label="Filter learning tasks"><option value="all">All tasks</option><option value="actionable">Clarification needed</option><option value="active">Unfinished</option><option value="completed">Completed</option></select></div><ul></ul><div><button type="button" data-task-page="prev">Previous</button><span data-task-page-label></span><button type="button" data-task-page="next">Next</button></div></div>
+        <div class="memory-browser sidebar-browser" id="browse-memories-panel" role="tabpanel" aria-labelledby="browse-memories-tab" hidden><ul></ul><div><button type="button" data-memory-page="prev">Previous</button><span data-memory-page-label></span><button type="button" data-memory-page="next">Next</button></div></div>
       </section>
       <div class="knowledge-explore"><div class="graph-panel-heading"><div><p class="memory-eyebrow">02 / EXPLORE</p><h3 id="knowledge-areas-title">Knowledge Network</h3></div><span class="local-memory-tag"><i></i> LOCAL MEMORY</span></div>
       <div class="memory-graph-stage"><canvas tabindex="0" role="img" aria-label="Interactive knowledge graph. Drag one current memory onto another to assess a semantic connection. Drag a knowledge area to move its cluster, or drag the background to pan; scroll to zoom. Arrow keys pan; plus and minus zoom. Use Browse memories for keyboard selection."></canvas><canvas class="memory-flow" aria-hidden="true"></canvas><div class="graph-empty" hidden><div class="empty-neural-seed" aria-hidden="true"><i></i><i></i><i></i><b></b></div><p>Your first connection starts here.</p><span>Teach your Mindling something worth remembering.</span></div><div class="memory-tooltip" role="tooltip" hidden></div><div class="graph-view-tools glass-line"><button type="button" data-graph-action="out" aria-label="Zoom out">−</button><span data-zoom-level>100%</span><button type="button" data-graph-action="in" aria-label="Zoom in">+</button><button type="button" data-graph-action="fit">Fit graph</button><button type="button" data-graph-action="reset">Reset view</button></div>
       </div></div></div>
       <div class="graph-legend"><span><i class="legend-hierarchy"></i> Organization</span><span><i class="legend-association"></i> Stored association</span><span><i class="legend-explicit"></i> History / parts</span><span><i class="legend-submission"></i> Same submission</span><span><i class="legend-research"></i> Learning task</span><span class="graph-gesture">Drag to explore · Scroll to zoom</span></div><p class="graph-message" role="status" aria-live="polite"></p>
-      <details class="memory-browser"><summary>Browse memories <span>Keyboard-accessible index</span></summary><ul></ul><div><button type="button" data-memory-page="prev">Previous</button><span data-memory-page-label></span><button type="button" data-memory-page="next">Next</button></div></details></section>
+      </section>
       <aside class="memory-side"><section class="knowledge-radar-panel" aria-labelledby="coverage-title"><p class="memory-eyebrow">03 / PERSPECTIVE</p><h3 id="coverage-title">Knowledge Distribution</h3><p class="radar-description">Where your current memories live.</p><div class="memory-radar"></div><ul class="coverage-values"></ul><p class="radar-method">Share of current canonical memories in each top-level area. Coverage, not measured skill or intelligence.</p><details class="radar-method-detail"><summary>How this is measured</summary><p>Each axis is the number of current memories in a top-level area divided by all current memories. Child areas retain their identity; each memory counts once under its root. Displayed percentages are rounded. Historical records are excluded. With more than six areas, the five largest are shown and the rest form Other areas. The outer ring is a labelled share scale rounded up to the next ten percentage points. No skill assessments are stored. Future measured skill proficiency requires evaluation data and is not inferred by this chart.</p></details></section>
       <section class="memory-inspector" aria-labelledby="memory-inspector-title"><p class="memory-eyebrow">04 / CONNECTION DETAIL</p><h3 id="memory-inspector-title">Follow a thought.</h3><div class="memory-inspector-content"><p>Select a memory to see what it holds, how it has grown, and where it connects.</p></div></section></aside></div>
       `;
     this.canvas=root.querySelector('canvas');this.ctx=this.canvas.getContext('2d');this.stage=root.querySelector('.memory-graph-stage');this.tooltip=root.querySelector('.memory-tooltip');
     this.flowCanvas=root.querySelector('.memory-flow');this.flowCtx=this.flowCanvas.getContext('2d');this.flowFrame=null;this.flowPaths=[];this.motion=matchMedia('(prefers-reduced-motion: reduce)');
     this.on(this.motion,'change',()=>{if(this.motion.matches)this.cancelDrag?.();this.stopFlow();this.startFlow();this.drawSoon();});
+    const tabs=[...root.querySelectorAll('[data-memory-tab]')];
+    this.on(root.querySelector('.sidebar-tabs'),'keydown',event=>{
+      const index=tabs.indexOf(event.target);
+      const offset={ArrowLeft:-1,ArrowRight:1}[event.key];
+      if(index<0||(!offset&&!['Home','End'].includes(event.key)))return;
+      event.preventDefault();
+      const tab=tabs[event.key==='Home'?0:event.key==='End'?tabs.length-1:(index+offset+tabs.length)%tabs.length];
+      tab.click();tab.focus();
+    });
     this.on(root,'click',event=>{
+      const tab=event.target.closest('[data-memory-tab]');
+      if(tab){this.showSidebarTab(tab.dataset.memoryTab==='memories');this.scheduleSave();return;}
       const action=event.target.closest('[data-graph-action]')?.dataset.graphAction;
       if(action==='in'||action==='out')this.setZoom(this.zoom*(action==='in'?VIEW_ZOOM.step:1/VIEW_ZOOM.step));
       if(action==='fit'||action==='reset'){if(action==='reset'){this.area='all';this.query='';this.rebuild(true);}else this.fit();}
@@ -50,7 +66,6 @@ export class NeuralMemoryView {
     });
     this.on(root.querySelector('[data-task-search]'),'input',e=>{this.taskQuery=e.target.value;this.taskPage=0;this.renderTaskIndex();this.scheduleSave();});
     this.on(root.querySelector('[data-task-filter]'),'change',e=>{this.taskFilter=e.target.value;this.taskPage=0;this.renderTaskIndex();this.scheduleSave();});
-    this.on(root.querySelector('.memory-browser'),'toggle',()=>this.scheduleSave());
     this.on(this.canvas,'wheel',event=>{event.preventDefault();const bounds=this.canvas.getBoundingClientRect();this.setZoom(this.zoom*Math.exp(-event.deltaY*VIEW_ZOOM.wheel),event.clientX-bounds.left,event.clientY-bounds.top);},{passive:false});
     this.on(this.canvas,'pointerdown',event=>{if(event.button!==0||this.drag||this.mergeBusy||this.connectionBusy||this.loadingView)return;const box=this.canvas.getBoundingClientRect(),hit=this.hit(event.clientX-box.left,event.clientY-box.top);clearTimeout(this.saveTimer);this.capturePositions();this.elastic=null;this.drag={id:event.pointerId,x:event.clientX,y:event.clientY,pan:{...this.pan},moved:false,memory:this.onConnectMemories&&hit?.kind==='memory'&&!hit.historical?hit:null,cluster:hit?.kind==='area'?new ElasticAreaDrag(this.layout,hit.id):null};this.canvas.setPointerCapture(event.pointerId);});
     this.on(this.canvas,'pointermove',event=>{
@@ -69,6 +84,15 @@ export class NeuralMemoryView {
     this.visibility=()=>{if(document.hidden){this.cancelDrag?.();this.stopFlow();cancelAnimationFrame(this.frame);this.frame=null;this.hideTooltip();}else if(this.dirty)this.queueBuild();else this.drawSoon();};this.on(document,'visibilitychange',this.visibility);
     this.observer=new ResizeObserver(()=>{if(this.visible){if(this.autoFit)this.fit();else this.drawSoon();}});this.observer.observe(this.stage);
   }
+  showSidebarTab(browseOpen){
+    this.browseOpen=browseOpen;
+    for(const tab of this.root.querySelectorAll('[data-memory-tab]')){
+      const selected=(tab.dataset.memoryTab==='memories')===browseOpen;
+      tab.setAttribute('aria-selected',String(selected));
+      tab.tabIndex=selected?0:-1;
+      this.root.querySelector('#'+tab.getAttribute('aria-controls')).hidden=!selected;
+    }
+  }
   on(target,type,callback,options={}){target.addEventListener(type,callback,{...options,signal:this.abort.signal});}
   update(state){if(this.abort.signal.aborted)return;this.state=state||{};this.restoreView();const signature=memorySignature(this.state)+JSON.stringify([tasksFor(this.state),this.state.researchPermissions]);if(signature===this.signature)return;this.signature=signature;this.dirty=true;if(this.visible)this.queueBuild();}
   setVisible(visible){if(this.abort.signal.aborted)return;this.visible=visible;if(visible){if(this.dirty)this.queueBuild();else this.drawSoon();}else{this.cancelDrag?.();this.capturePositions();this.scheduleSave();this.stopFlow();cancelAnimationFrame(this.frame);this.frame=null;this.hideTooltip();}}
@@ -81,15 +105,21 @@ export class NeuralMemoryView {
   renderIndex(){if(!this.filtered)return;const active=document.activeElement?.closest('.memory-browser [data-select-memory]')?.dataset.selectMemory;const total=this.filtered.memories.length;this.page=Math.max(0,Math.min(this.page,Math.max(0,Math.ceil(total/PAGE_SIZE)-1)));const items=this.filtered.memories.slice(this.page*PAGE_SIZE,this.page*PAGE_SIZE+PAGE_SIZE).map(node=>{const li=el('li'),button=memoryButton(node);button.style.setProperty('--memory-area-color',this.colors.get(node.areaId)||NEUTRAL_COLOR);button.setAttribute('aria-pressed',String(this.selected===node.id));li.append(button);return li;});this.root.querySelector('.memory-browser ul').replaceChildren(...items);if(active)[...this.root.querySelectorAll('.memory-browser [data-select-memory]')].find(button=>button.dataset.selectMemory===active)?.focus({preventScroll:true});this.root.querySelector('[data-memory-page-label]').textContent=total?`${this.page*PAGE_SIZE+1}–${Math.min(total,this.page*PAGE_SIZE+PAGE_SIZE)} of ${total}`:'No matching memories';this.root.querySelector('[data-memory-page="prev"]').disabled=this.page===0;this.root.querySelector('[data-memory-page="next"]').disabled=(this.page+1)*PAGE_SIZE>=total;}
   renderTaskIndex(){
     const tasks=[...this.taskNodes.values()].sort((a,b)=>b.task.updatedAt-a.task.updatedAt||a.id.localeCompare(b.id)).filter(n=>(!this.taskQuery||n.label.toLocaleLowerCase().includes(this.taskQuery.toLocaleLowerCase()))&&(this.taskFilter==='all'||this.taskFilter==='completed'&&n.task.status==='COMPLETED'||this.taskFilter==='active'&&n.task.status!=='COMPLETED'||this.taskFilter==='actionable'&&['CLARIFICATION','MODEL_CLARIFICATION'].includes(n.task.code)));
-    this.taskPage=Math.max(0,Math.min(this.taskPage,Math.max(0,Math.ceil(tasks.length/TASK_PAGE_SIZE)-1)));
-    const shown=tasks.slice(this.taskPage*TASK_PAGE_SIZE,(this.taskPage+1)*TASK_PAGE_SIZE).map(node=>({node,status:researchPresentation(node.task,this.state.memories).status}));
+    this.taskPage=Math.max(0,Math.min(this.taskPage,Math.max(0,Math.ceil(tasks.length/PAGE_SIZE)-1)));
+    const shown=tasks.slice(this.taskPage*PAGE_SIZE,(this.taskPage+1)*PAGE_SIZE).map(node=>({node,status:researchPresentation(node.task,this.state.memories).status}));
     const signature=JSON.stringify([this.selected,shown.map(({node,status})=>[node.id,node.label,status])]);
     if(signature!==this.taskListSignature){this.taskListSignature=signature;const list=this.root.querySelector('.research-task-browser ul');list.replaceChildren();
-      for(const {node,status} of shown){const row=el('li'),button=el('button',`${compact(node.label,65)} · ${status}`);button.type='button';button.dataset.selectLearning=node.id;button.setAttribute('aria-pressed',String(this.selected===node.id));row.append(button);list.append(row);}
+      for(const {node,status} of shown){
+        const row=el('li'),button=el('button'),badge=el('span',status,'task-status');
+        badge.dataset.tone=taskStatusTone[status]||'neutral';
+        button.type='button';button.dataset.selectLearning=node.id;
+        button.setAttribute('aria-pressed',String(this.selected===node.id));
+        button.append(el('span',node.label,'task-title'),badge);row.append(button);list.append(row);
+      }
       if(!shown.length)list.append(el('li','No matching learning tasks.'));
     }
-    this.root.querySelector('[data-task-page-label]').textContent=tasks.length?`${this.taskPage*TASK_PAGE_SIZE+1}–${Math.min(tasks.length,(this.taskPage+1)*TASK_PAGE_SIZE)} of ${tasks.length}`:'0 tasks';
-    this.root.querySelector('[data-task-page="prev"]').disabled=this.taskPage===0;this.root.querySelector('[data-task-page="next"]').disabled=(this.taskPage+1)*TASK_PAGE_SIZE>=tasks.length;
+    this.root.querySelector('[data-task-page-label]').textContent=tasks.length?`${this.taskPage*PAGE_SIZE+1}–${Math.min(tasks.length,(this.taskPage+1)*PAGE_SIZE)} of ${tasks.length}`:'0 tasks';
+    this.root.querySelector('[data-task-page="prev"]').disabled=this.taskPage===0;this.root.querySelector('[data-task-page="next"]').disabled=(this.taskPage+1)*PAGE_SIZE>=tasks.length;
   }
   selectTask(id){if(!this.taskNodes?.has(id))return;this.selected=id;this.scheduleSave();this.renderInspector();if(this.positions.has(id))this.focus(id);else this.drawSoon();this.renderTaskIndex();}
   select(id,focus=false){if(!this.positions.has(id)&&this.graph.nodes.some(node=>node.id===id)){this.area='all';this.query='';this.rebuild();}if(!this.positions.has(id))return;this.selected=id;this.scheduleSave();this.renderInspector();this.root.querySelector('.memory-inspector').scrollTop=0;this.renderIndex();if(focus)this.focus(id);else this.drawSoon();}
@@ -233,9 +263,10 @@ export class NeuralMemoryView {
     const identity=this.state.mindlingId||this.state.id;if(!identity||identity===this.viewIdentity)return;
     this.cancelDrag();this.elastic=null;this.springTime=null;clearTimeout(this.saveTimer);
     this.tasksOpen=false; // Retain compatibility with saved view preferences.
-    this.connectionVisual=null;this.viewIdentity=identity;this.autoFit=true;this.fitted=false;this.zoom=1;this.pan={x:0,y:0};this.root.querySelector('.memory-browser').open=false;this.savedPositions={};this.memoryOffsets={};this.viewRevision=0;this.layout=null;this.selected=null;this.taskQuery='';this.taskFilter='all';this.taskPage=this.page=0;this.loadingView=true;
+    this.showSidebarTab(false);
+    this.connectionVisual=null;this.viewIdentity=identity;this.autoFit=true;this.fitted=false;this.zoom=1;this.pan={x:0,y:0};this.savedPositions={};this.memoryOffsets={};this.viewRevision=0;this.layout=null;this.selected=null;this.taskQuery='';this.taskFilter='all';this.taskPage=this.page=0;this.loadingView=true;
     try{const saved=await this.onMemoryView?.(identity);if(this.abort.signal.aborted||identity!==this.viewIdentity)return;
-      if(saved?.version===1){this.viewRevision=saved.revision;this.positionsHierarchyRevision=saved.hierarchyRevision;const view=cleanView(saved);const {positions,...preferences}=view;Object.assign(this,{...preferences,savedPositions:positions});this.root.querySelector('.memory-browser').open=view.browseOpen;this.fitted=!view.autoFit;}
+      if(saved?.version===1){this.viewRevision=saved.revision;this.positionsHierarchyRevision=saved.hierarchyRevision;const view=cleanView(saved);const {positions,...preferences}=view;Object.assign(this,{...preferences,savedPositions:positions});this.showSidebarTab(view.browseOpen);this.fitted=!view.autoFit;}
       this.root.querySelector('[data-task-search]').value=this.taskQuery;this.root.querySelector('[data-task-filter]').value=this.taskFilter;
     }catch{if(!this.abort.signal.aborted)this.root.querySelector('.graph-message').textContent='Saved layout is unavailable.';}
     finally{if(identity===this.viewIdentity){this.loadingView=false;this.dirty=true;if(!this.abort.signal.aborted&&this.visible)this.queueBuild();}}
@@ -244,7 +275,7 @@ export class NeuralMemoryView {
     if(!this.onMemoryView||this.loadingView||this.drag||this.elastic?.active||this.mergeBusy||!this.viewIdentity)return;clearTimeout(this.saveTimer);
     const identity=this.viewIdentity;
     // Capture now, including before teardown. Actual writes are bounded and serialized.
-    this.capturePositions();const value=cleanView({...this,positions:this.savedPositions,browseOpen:this.root.querySelector('.memory-browser')?.open}),hierarchyRevision=this.state?.knowledgeHierarchy?.revision||0;
+    this.capturePositions();const value=cleanView({...this,positions:this.savedPositions}),hierarchyRevision=this.state?.knowledgeHierarchy?.revision||0;
     const save=()=>{this.saveChain=this.saveChain.catch(()=>{}).then(async()=>{if(identity!==this.viewIdentity)return;const result=await this.onMemoryView(identity,{...value,revision:this.viewRevision,hierarchyRevision});if(identity===this.viewIdentity)this.viewRevision=result.revision;}).catch(()=>{if(identity===this.viewIdentity&&!this.abort.signal.aborted)this.root.querySelector('.graph-message').textContent='Layout was not saved because local state changed. Reload to use the saved view.';});};
     if(delay)this.saveTimer=setTimeout(save,delay);else save();
   }

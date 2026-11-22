@@ -43,7 +43,7 @@ with sync_playwright() as p:
         saved=page.evaluate('evolutionSaved')
         page.goto(BASE+('/?stage-preview=1' if preview else '/'))
         page.wait_for_function("document.querySelector('[data-life-status-title]')?.textContent.includes('NeuralEvolution')")
-        page.locator('[data-view="memories"]').click();page.locator('.memory-browser summary').click()
+        page.locator('[data-view="memories"]').click();page.get_by_role('tab',name='Browse Memories').click()
         buttons=page.locator('.memory-browser .compact-memory');assert buttons.count()==3
         assert all(b.locator('.memory-entry-title').inner_text()=='Chessboard structure' for b in buttons.all())
         assert all(b.locator('.memory-entry-area').inner_text()=='Gaming' for b in buttons.all())
@@ -60,7 +60,7 @@ with sync_playwright() as p:
         assert page.locator('.memory-inspector-content dl').inner_text().find('Gaming')>=0
         page.locator('.memory-inspector-content .compact-memory').first.click()
         assert page.locator('.memory-inspector .memory-status-chip').inner_text()=='Current memory'
-        page.locator('[data-select-learning]').first.click()
+        page.get_by_role('tab',name='Learning Tasks').click();page.locator('[data-select-learning]').first.click()
         inspector=page.locator('.memory-inspector-content');assert inspector.locator('progress').count()==1
         assert 'sources' in inspector.inner_text() and 'new memories' in inspector.inner_text()
         assert all(text not in inspector.inner_text() for text in ['Hosted tool','Request reference','HTTP','Source observation','Saved sources'])

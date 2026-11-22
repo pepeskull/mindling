@@ -60,7 +60,7 @@ with sync_playwright() as p:
       check(saved.mind.memories.find(m=>m.id===LEGACY).content===ORIGINAL,'Original legacy ID/content destroyed');
       check(saved.mind.memories.some(m=>m.parentMemoryId===LEGACY&&m.content==='Jag heter Alex'),'Unrelated name overwritten');
       check(saved.mind.memories.some(m=>m.intelligence?.kind==='preference'&&m.valueHistory?.some(v=>v.content.includes('JavaScript'))),'Historical preference missing');
-      document.querySelector('[data-view=memories]').click();await new Promise(r=>setTimeout(r,40));document.querySelector('.memory-browser').open=true;
+      document.querySelector('[data-view=memories]').click();await new Promise(r=>setTimeout(r,40));document.getElementById('browse-memories-tab').click();
       const choices=[...document.querySelectorAll('.memory-browser [data-select-memory]')];choices.find(button=>button.textContent.includes('nu Python')).click();
       const memoryText=document.querySelector('.memory-inspector-content').textContent;check(memoryText.includes('Python')&&memoryText.includes('Previous values')&&memoryText.includes('JavaScript'),'History absent from inspector');
       [...document.querySelectorAll('.memory-browser [data-select-memory]')].find(button=>button.textContent===ORIGINAL).click();check(document.querySelector('.memory-status-chip').textContent==='Historical memory','Historical parent status absent');document.querySelector('[data-close-memory]').click();
