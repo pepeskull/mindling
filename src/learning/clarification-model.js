@@ -3,11 +3,11 @@ const labels={
   performance:['Prestanda','Performance','performance'],cost:['Kostnad','Cost','cost'],reliability:['Tillförlitlighet','Reliability','reliability'],features:['Egenskaper','Features','features'],
   intersection:['Båda begränsningarna','Both geographic constraints','apply both geographic constraints'],comparison:['Jämför områdena','Compare the regions','compare the explicitly mentioned regions'],
   week:['Senaste 7 dagarna','Last 7 days','the last 7 days'],month:['Senaste 30 dagarna','Last 30 days','the last 30 days'],year:['Senaste året','Last year','the last year'],
-  research:['Undersök frågan','Research the question','research'],statement:['Ange ett faktapåstående','Provide a factual statement','statement'],
+  research:['Undersök frågan','Explore the topic','research'],statement:['Ange ett faktapåstående','Teach a fact','statement'],
   foundation:['Förklara grunderna','Explain the foundations','foundations'],relationships:['Jämför samband','Compare relationships','relationships']
 };
-export function clarification(kind,question,field,choices=[],sv=false){
-  return {version:1,kind,question,field,options:choices.map(id=>({id,label:labels[id][sv?0:1],value:labels[id][2]})),freeText:false};
+export function clarification(kind,question,field,choices=[]){
+  return {version:1,kind,question,field,options:choices.map(id=>({id,label:labels[id][1],value:labels[id][2]})),freeText:false};
 }
 export function validClarification(value){return !!value&&value.version===1&&/^[a-z_-]{1,40}$/.test(value.kind)&&typeof value.question==='string'&&value.question.length<=400&&['metric','regionMode','period','action','detail','focus'].includes(value.field)&&Array.isArray(value.options)&&value.options.length<=4&&value.options.every(option=>/^[a-z_-]{1,32}$/.test(option.id)&&typeof option.label==='string'&&option.label.length<=80&&typeof option.value==='string'&&option.value.length<=160)&&new Set(value.options.map(option=>option.id)).size===value.options.length&&typeof value.freeText==='boolean';}
 export function validateAnswers(answers={}){

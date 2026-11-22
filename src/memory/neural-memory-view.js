@@ -6,7 +6,7 @@ import {NEUTRAL_COLOR,colors,areaColor} from './area-colors.js';
 import { VIEW_ZOOM } from '../ui/view-zoom.js';
 import { memoryLabel, memoryButton } from './memory-label.js';
 import {graphData,filterGraph,layoutGraph,memorySignature,memoryNodeId} from './graph-data.js';
-import { learningSummary } from '../autonomous/learning-summary.js';
+import { researchPresentation } from '../ui/player-communication.js';
 import { tasksFor } from '../autonomous/tasks.js';
 import { learningNodes, withResearch, layoutResearch } from '../autonomous/research-graph.js';
 import { renderTaskInspector } from '../autonomous/task-inspector.js';
@@ -74,9 +74,10 @@ export class NeuralMemoryView {
   renderTaskIndex(){
     const tasks=[...this.taskNodes.values()].sort((a,b)=>b.task.updatedAt-a.task.updatedAt||a.id.localeCompare(b.id)).filter(n=>(!this.taskQuery||n.label.toLocaleLowerCase().includes(this.taskQuery.toLocaleLowerCase()))&&(this.taskFilter==='all'||this.taskFilter==='completed'&&n.task.status==='COMPLETED'||this.taskFilter==='active'&&n.task.status!=='COMPLETED'||this.taskFilter==='actionable'&&['CLARIFICATION','MODEL_CLARIFICATION'].includes(n.task.code)));
     this.taskPage=Math.max(0,Math.min(this.taskPage,Math.max(0,Math.ceil(tasks.length/PAGE_SIZE)-1)));
-    const shown=tasks.slice(this.taskPage*PAGE_SIZE,(this.taskPage+1)*PAGE_SIZE),signature=JSON.stringify([this.selected,shown.map(n=>[n.id,n.label,n.task.status,n.task.code])]);
+    const shown=tasks.slice(this.taskPage*PAGE_SIZE,(this.taskPage+1)*PAGE_SIZE).map(node=>({node,status:researchPresentation(node.task,this.state.memories).status}));
+    const signature=JSON.stringify([this.selected,shown.map(({node,status})=>[node.id,node.label,status])]);
     if(signature!==this.taskListSignature){this.taskListSignature=signature;const list=this.root.querySelector('.research-task-browser ul');list.replaceChildren();
-      for(const node of shown){const row=el('li'),button=el('button',`${compact(node.label,65)} · ${learningSummary(node.task).status}`);button.type='button';button.dataset.selectLearning=node.id;button.setAttribute('aria-pressed',String(this.selected===node.id));row.append(button);list.append(row);}
+      for(const {node,status} of shown){const row=el('li'),button=el('button',`${compact(node.label,65)} · ${status}`);button.type='button';button.dataset.selectLearning=node.id;button.setAttribute('aria-pressed',String(this.selected===node.id));row.append(button);list.append(row);}
       if(!shown.length)list.append(el('li','No matching learning tasks.'));
     }
     this.root.querySelector('[data-task-page-label]').textContent=tasks.length?`${this.taskPage*PAGE_SIZE+1}–${Math.min(tasks.length,(this.taskPage+1)*PAGE_SIZE)} of ${tasks.length}`:'0 tasks';

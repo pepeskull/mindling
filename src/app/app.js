@@ -127,7 +127,7 @@ export class MindlingApp extends EvolutionPreview {
         const memory = this.state.mind.memories.find(item => item.id === (event?.memoryIds?.[0] || id));
         const edge = this.state.mind.synapses.find(item => item.id === memory?.synapseIds?.[0]);
         if (edge) this.seed.signal({entry:false,source:edge.from,destination:edge.to,synapse:edge.id,outcome:event?.kind==='reinforcement'?'REINFORCEMENT':'MEMORY_FORMATION'});
-        return {accepted:true,message};
+        return {accepted:true,message,learningEvent:event};
       }
     } catch (error) {
       if (!this.disposed) await this.refreshState();

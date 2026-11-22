@@ -26,12 +26,12 @@ export function understandInput(text, activity, {answers={}}={}) {
   const sv=/[åäö]|\b(?:vilket|vilken|sverige|fotboll|lär|jag|senaste)\b/iu.test(normalizedText);
   let pending=null;
   if(negated.test(normalizedText)&&/\b(?:learn|research|study|lär|lära|studera|aprendas|apprendre|lernen)\b/iu.test(normalizedText)){
-    intent='CLARIFICATION';pending=clarification('restriction',sv?'Vad får undersökas, med dina begränsningar kvar?':'What may be researched while retaining your restrictions?','detail',[],sv);
+    intent='CLARIFICATION';pending=clarification('restriction','What can I explore while respecting your limits?','detail',[]);
   }else if(activity!=='TALK'&&!learning&&/^(?:please|tell|show|give|help|find|get|make|become|remember|memorize|forget|do not|don't|vänligen|hjälp|berätta|visa|kom ihåg)\b/iu.test(normalizedText)){
-    intent='CLARIFICATION';pending=clarification('instruction',sv?'Vad vill du att Mindling ska undersöka?':'What should Mindling investigate?','detail',[],sv);
-  }else if(intent==='CLARIFICATION')pending=clarification('activity',sv?'Vill du undersöka frågan eller ange ett faktapåstående?':'Do you want to research this request or provide a factual statement?','action',activity==='TALK'?['research']:['research','statement'],sv);
+    intent='CLARIFICATION';pending=clarification('instruction','What would you like me to explore?','detail',[]);
+  }else if(intent==='CLARIFICATION')pending=clarification('activity','Should I explore this topic or learn a fact from you?','action',activity==='TALK'?['research']:['research','statement']);
   if(answers.action==='statement'){
-    if(!answers.detail)pending=clarification('statement',sv?'Vilket faktapåstående vill du lära Mindling?':'Which factual statement do you want to teach?','detail',[],sv);
+    if(!answers.detail)pending=clarification('statement','Which factual statement do you want to teach?','detail',[]);
     else {intent='FACT_TEACHING';pending=null;}
   }else if(answers.action==='research'||answers.detail&&pending?.kind==='instruction'){
     intent=activity==='TALK'?'QUESTION':activity==='DEEP_TRAINING'?'DEEP_LEARNING':'TOPIC_LEARNING';pending=null;
@@ -44,20 +44,20 @@ export function understandInput(text, activity, {answers={}}={}) {
   const count=normalizedText.match(/\b(?:top|first|last|topp|första|sista)\s+(\d{1,3})\b/iu);if(count)scope.count=Number(count[1]);
   const regions=regionPatterns.filter(([,pattern])=>pattern.test(normalizedText)).map(([region])=>region);
   if(regions.length===1)scope.region=regions[0];
-  if(researchRequest&&regions.length>1){scope.regions=regions;if(answers.regionMode)scope.regionMode=answers.regionMode;else if(!pending)pending=clarification('geography',sv?'Hur ska de nämnda områdena kombineras?':'How should the mentioned geographic areas be combined?','regionMode',['intersection','comparison'],sv);}
+  if(researchRequest&&regions.length>1){scope.regions=regions;if(answers.regionMode)scope.regionMode=answers.regionMode;else if(!pending)pending=clarification('geography','How should the mentioned geographic areas be combined?','regionMode',['intersection','comparison']);}
   const best=/\b(?:best|bäst)\b/iu.test(normalizedText),compare=/\b(?:compare|comparison|jämför|jämförelse)\b/iu.test(normalizedText);
   const hasCriterion=/\b(?:standings|table|form|historical|ligatabell(?:en)?|tabellen|historisk|performance|prestanda|cost|price|kostnad|pris|reliability|features)\b/iu.test(normalizedText);
   if(answers.metric)scope.metric=answers.metric;
   else if(!pending&&(intent==='QUESTION'||learning)&&(best||compare)&&!hasCriterion){
     const football=/\b(?:football|soccer|fotboll)\b/iu.test(normalizedText);
     const product=/\b(?:software|language|processor|service|product|programming|språk|programvara|tjänst)\b/iu.test(normalizedText);
-    pending=clarification('criterion',sv?'Vilket mått vill du använda?':'Which comparison criterion should be used?','metric',football?['standings','form','history']:product?['performance','cost','reliability']:[],sv);
+    pending=clarification('criterion','What should I use to compare them?','metric',football?['standings','form','history']:product?['performance','cost','reliability']:[]);
     if(!football&&!product){pending.field='detail';if(answers.detail){scope.detail=answers.detail;pending=null;}}
   }
   if(answers.period)scope.period=answers.period;
-  else if(researchRequest&&!pending&&/\b(?:recently|recent period|lately|senaste tiden|nyligen)\b/iu.test(normalizedText))pending=clarification('period',sv?'Vilken tidsperiod menar du?':'Which time period do you mean?','period',['week','month','year'],sv);
+  else if(researchRequest&&!pending&&/\b(?:recently|recent period|lately|senaste tiden|nyligen)\b/iu.test(normalizedText))pending=clarification('period','Which time period do you mean?','period',['week','month','year']);
   if(answers.focus)scope.focus=answers.focus;
-  if(!pending&&activity==='DEEP_TRAINING'&&learning&&topic.length<5&&!answers.detail)pending=clarification('depth',sv?'Vad vill du fördjupa?':'What should be studied in depth?','detail',[],sv);
+  if(!pending&&activity==='DEEP_TRAINING'&&learning&&topic.length<5&&!answers.detail)pending=clarification('depth','What would you like me to explore in more depth?','detail',[]);
   if(answers.detail)scope.detail=answers.detail;
   const suffix=answerText(answers),requestText=suffix?`${normalizedText}\nClarification: ${suffix}`:normalizedText;
   if(requestText.length>2000)throw Error('The clarified request exceeds 2,000 characters. Shorten the request without dropping its constraints.');

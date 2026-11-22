@@ -18,16 +18,16 @@ export class ClarificationNotifications {
   listen(document,'keydown',e=>{if(e.key==='Escape'&&!this.panel.hidden){e.preventDefault();this.close();}});
  }
  close(focus=true){const open=!this.panel.hidden;this.panel.hidden=true;this.button.setAttribute('aria-expanded','false');if(open&&focus)this.button.focus();}
- update(state={}){
+ update(state={}, {activeTaskId=null}={}){
   const identity=state.mindlingId||state.id;if(this.identity!==identity){this.close(false);this.identity=identity;this.feedback.textContent='';}
-  this.tasks=pendingClarifications(state);const n=this.tasks.length;
-  this.badge.hidden=!n;this.badge.textContent=String(n);this.button.setAttribute('aria-label',n?`Notifications: ${n} clarification${n===1?'':'s'} required`:'Notifications');this.heading.textContent=`Notifications (${n})`;
+  this.tasks=pendingClarifications(state).filter(task=>task.id!==activeTaskId);const n=this.tasks.length;
+  this.badge.hidden=!n;this.badge.textContent=String(n);this.button.setAttribute('aria-label',n?`Notifications: ${n} question${n===1?'':'s'} waiting`:'Notifications');this.heading.textContent=`Notifications (${n})`;
   const signature=JSON.stringify(this.tasks.map(t=>[t.id,t.topic,t.updatedAt]));
   if(signature!==this.signature){this.signature=signature;const focused=document.activeElement?.dataset.notificationTask;this.list.replaceChildren();
-   if(!n)this.list.append(element('p','No clarifications needed.'));
+   if(!n)this.list.append(element('p','No questions waiting.'));
    for(const task of this.tasks){const button=element('button');button.type='button';button.dataset.notificationTask=task.id;button.disabled=!this.onTask;
-    button.append(element('strong',task.topic||task.objective),element('small','Clarification required'));
-    button.addEventListener('click',async()=>{if(this.busy||!this.canAct()||!this.tasks.some(t=>t.id===task.id))return;this.busy=true;this.close();try{await this.onTask(task.id);}catch{if(this.identity===identity){this.feedback.textContent='This clarification is no longer available. Reopen notifications to refresh.';this.button.focus();}}finally{this.busy=false;}});this.list.append(button);
+    button.append(element('strong',task.topic||task.objective),element('small','Waiting for your answer'));
+    button.addEventListener('click',async()=>{if(this.busy||!this.canAct()||!this.tasks.some(t=>t.id===task.id))return;this.busy=true;this.close();try{await this.onTask(task.id);}catch{if(this.identity===identity){this.feedback.textContent='I no longer need an answer to that question.';this.button.focus();}}finally{this.busy=false;}});this.list.append(button);
    }
    if(focused&&!this.panel.hidden)([...this.list.querySelectorAll('button')].find(b=>b.dataset.notificationTask===focused)||this.button).focus();
   }

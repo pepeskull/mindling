@@ -7,7 +7,7 @@ export function cancelTaskClarification(app,taskId){if(stateFor(app).pending?.ta
 export function beginClarification(app,text,activity,requestId,interpretation,{taskId=null,paid=false,answers={}}={}){
   if(!validClarification(interpretation.clarification))throw Error('The clarification could not be validated.');
   const state=stateFor(app),pending={token:crypto.randomUUID(),identity:app.state.mind.id,text,activity,requestId,taskId,paid,answers:{...answers},model:interpretation.clarification,generation:++state.generation,processing:false};state.pending=pending;
-  return {accepted:false,needsClarification:true,message:'Clarification needed.',talkResponse:{answer:pending.model.question,clarification:{...pending.model,id:pending.token,activity,requestId},memoryIds:[],uncertainty:'high',insufficientInformation:true,energySpent:0}};
+  return {accepted:false,needsClarification:true,message:pending.model.question,talkResponse:{answer:pending.model.question,clarification:{...pending.model,id:pending.token,activity,requestId,taskId},memoryIds:[],uncertainty:'high',insufficientInformation:true,energySpent:0}};
 }
 export function interpretInteraction(app,text,activity,id,continuation=null){
   const state=stateFor(app);let context=null;
@@ -27,7 +27,7 @@ export async function resumeClarification(app,token,choice,detail=''){
   const option=pending.model.options.find(item=>item.id===choice);if(!option)throw Error('Unknown clarification option.');answers[pending.model.field]=pending.model.field==='detail'?option.value:option.id;
   pending.processing=true;const capability=Object.freeze({});state.capabilities.set(capability,{pending,answers});
   try{
-    const result=typeof app.submitInput==='function'?await app.submitInput(pending.text,pending.activity,pending.requestId,{continuation:capability}):await app.action(()=>app.submitLearning({text:pending.text,activity:pending.activity,id:pending.requestId,continuation:capability}));
+    const result=typeof app.submitInput==='function'?await app.submitInput(pending.text,pending.activity,pending.requestId,{continuation:capability}):await app.action(()=>app.submitLearning({text:pending.text,activity:pending.activity,id:pending.requestId,continuation:capability}),{feedback:false});
     if(state.pending===pending&&result?.accepted)state.pending=null;
     return result;
   }finally{pending.processing=false;}

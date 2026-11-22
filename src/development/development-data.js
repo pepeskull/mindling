@@ -23,7 +23,7 @@ export function developmentData(state = {}, life = null) {
     .sort((a, b) => a.at - b.at);
   const stageHistory = list(state.stageHistory).filter(event => event && timestamp(event.leftAt) !== null)
     .map(event => ({ at: timestamp(event.leftAt), ...eventTime(event), title: `${STAGES.find(item => item.number === event.stage)?.name || 'Previous stage'} completed`, detail: number(event.xp) === null ? '' : `${event.xp} recorded stage XP` }));
-  const events = [...history.map(event => ({ at: event.at, recordedAt: event.recordedAt, simulated: event.simulated, title: event.kind === 'reinforcement' ? 'Memory reinforced' : event.kind === 'correction' ? 'Memory updated' : event.kind === 'decision' ? 'Learning response recorded' : 'Learning recorded', detail: event.concept || (event.kind === 'decision' ? 'A learning response was saved; this does not imply new knowledge.' : 'Saved learning event'), xp: event.xp })), ...stageHistory]
+  const events = [...history.map(event => ({ at: event.at, recordedAt: event.recordedAt, simulated: event.simulated, title: event.kind === 'reinforcement' ? 'Memory strengthened' : event.kind === 'correction' ? 'Memory updated' : event.kind === 'decision' ? 'Learning response recorded' : 'Learning recorded', detail: event.concept || (event.kind === 'decision' ? 'Nothing new to remember yet.' : 'Saved learning event'), xp: event.xp })), ...stageHistory]
     .sort((a, b) => b.at - a.at).slice(0, 8);
   return {
     id: text(state.mindlingId || state.id), name: text(state.name) || 'Your Mindling',
