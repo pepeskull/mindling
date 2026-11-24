@@ -6,6 +6,7 @@ import { validatePlanningContext, validQuery, validateResearchCheckpoint, valida
 import { validateClientDiagnostic } from './client-diagnostics.js';
 import { validClarification, validateAnswers } from '../learning/clarification-model.js';
 import { LEARNING_MODES } from '../learning/input-understanding.js';
+import { DAILY_RESEARCH_PAUSE, DAILY_RESEARCH_MESSAGE } from './research-xp.js';
 export const TASK_STATES=Object.freeze(['PREPARED','QUEUED','RESEARCHING','EVALUATING','COMMITTING','COMPLETED','BLOCKED','FAILED','CANCELLED']);
 export const LIMITS=Object.freeze({tasks:24,unfinished:8,concurrent:1,attempts:2,sourceReferences:3,memories:3,sourceBytes:65536,inferenceCalls:4});
 export const WORK=Object.freeze(['understanding','retrieval','plan','source','evidence','knowledge','answer']);
@@ -32,6 +33,11 @@ export function validTask(task,mindId){
   if(task?.searchToolLimit!==undefined&&task.searchToolLimit!==MAX_WEB_SEARCH_CALLS)return false;
   if(task?.researchExecution){const e=task.researchExecution;if(e.version!==1||!['RESERVED','DISPATCHED','COMPLETED','FAILED','OUTCOME_UNKNOWN'].includes(e.toolState)||!validWebSearchCallCount(e.reserved)||e.reserved>webSearchLimit(task)||!Number.isSafeInteger(e.completed)||e.completed<0||e.completed>64||!Number.isSafeInteger(e.failed)||e.failed<0||e.failed>64||typeof e.clientDispatched!=='boolean'||typeof e.outcomeUnknown!=='boolean'||![null,true,false].includes(e.upstreamDispatched))return false;}
   if(task?.learningRewarded!==undefined&&typeof task.learningRewarded!=='boolean')return false;
+  if(task?.researchAdmission!==undefined){
+    const admission=task.researchAdmission;
+    if(!admission||typeof admission.run!=='string'||!admission.run||admission.run.length>100||
+      !Number.isSafeInteger(admission.startedAt)||admission.startedAt<0)return false;
+  }
   if(task?.sourcePlan){validatePlanningContext(task.sourcePlan.request);if(!Array.isArray(task.sourcePlan.queries)||task.sourcePlan.queries.length>2||!task.sourcePlan.queries.every(validQuery)||!['web','biomedical','unsupported'].includes(task.sourcePlan.sourceCategory)||typeof task.sourcePlan.available!=='boolean')return false;}
   if(task?.pendingEvidence&&(!Array.isArray(task.pendingEvidence)||task.pendingEvidence.length>3||task.pendingEvidence.some(claim=>typeof claim.quote!=='string'||claim.quote.length<40||claim.quote.length>700||!/^[a-f0-9]{64}$/.test(claim.quoteHash)||!/^[a-f0-9]{64}$/.test(claim.sourceHash)||typeof claim.category!=='string'||!claim.category.trim()||claim.category.length>80||typeof claim.topic!=='string'||!claim.topic.trim()||claim.topic.length>100||!task.sourceReferences?.some(source=>source.url===claim.sourceURL&&source.hash===claim.sourceHash&&source.observedAt===claim.observedAt))))return false;
   if(task?.evidenceDiagnostics&&(!Array.isArray(task.evidenceDiagnostics.rejections)||task.evidenceDiagnostics.rejections.length>3||task.evidenceDiagnostics.rejections.some(item=>!/^[A-Z_]{1,60}$/.test(item.code))||!Number.isSafeInteger(task.evidenceDiagnostics.candidates)||task.evidenceDiagnostics.candidates<0||task.evidenceDiagnostics.candidates>3||!Number.isSafeInteger(task.evidenceDiagnostics.accepted)||task.evidenceDiagnostics.accepted<0||task.evidenceDiagnostics.accepted>3))return false;
@@ -86,6 +92,7 @@ export function validateResearchClaim(state,authorization){
 }
 export function taskStatusLabel(task){
   if(![2,3,4].includes(task.engineVersion)&&!terminal(task))return 'Historical research';
+  if(task.status==='BLOCKED'&&task.code===DAILY_RESEARCH_PAUSE)return DAILY_RESEARCH_MESSAGE;
   if(task.status==='BLOCKED')return ({TOOL_LIFECYCLE_INCOMPLETE:'Research paused — Tool outcome unknown',RATE_LIMITED:'Rate limited — Retry scheduled',OFFLINE:'Offline — Research paused',INFORMATION_UNSUPPORTED:'Research paused — Search tool unsupported',INFORMATION_UNAUTHORIZED:'Research paused — Search access unavailable',PERMISSION_REQUIRED:'Awaiting consent',ACCESS_DISABLED:'Planning disabled',QUERY_REVIEW:'Review public topic',MODEL_CLARIFICATION:'Clarification needed',TOOLS_UNAVAILABLE:'Research paused — Information access unavailable',INFORMATION_UNCONFIGURED:'Research paused — Information access unavailable',INFORMATION_PERMISSION:'Awaiting information-access consent',INFORMATION_DISABLED:'Research paused — Information access disabled',SOURCE_UNSUPPORTED:'Research paused — No suitable source',NO_EVIDENCE:'Research paused — Insufficient evidence',BUDGET_EXHAUSTED:'Research paused — Budget reached',PLANNING_UNAVAILABLE:'Planning unavailable',CLARIFICATION:'Clarification needed',INTERRUPTED:'Research paused'})[task.code]||'Research unavailable';
   return ({PREPARED:'Preparing research',QUEUED:'Mindling planning',RESEARCHING:task.code==='SEARCHING'?'Searching sources':'Retrieving sources',EVALUATING:'Evaluating evidence',COMMITTING:'Integrating knowledge',COMPLETED:'Completed',CANCELLED:'Cancelled',FAILED:'Research unavailable'})[task.status]||'Research paused';
 }

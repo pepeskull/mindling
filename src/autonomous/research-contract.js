@@ -6,6 +6,7 @@ import { passageIssue } from '../memory/passage-integrity.js';
 import { citedPassages, supportsClaimDate } from './evidence-dates.js';
 import { limitationSchema, limitationFailureFor } from './research-limitations.js';
 import { materialize, sentenceSpans } from '../semantic/evidence-spans.js';
+import { canonicalMatchSchema, groundedCanonicalMatch } from './canonical-match.js';
 // Shared by the existing inference endpoint and browser. No external tool is
 // inferred from model output; source access is a separate configured capability.
 export const INFORMATION_CAPABILITY='mindling-web-search-v1';
@@ -96,7 +97,7 @@ const claimSchema={type:'object',additionalProperties:false,required:['sourceId'
 export const sourceEvaluationSchema={type:'object',additionalProperties:false,required:['claims','limitations','nextQuestion'],properties:{claims:{type:'array',items:claimSchema,maxItems:3},limitations:{type:'array',items:limitationSchema,maxItems:3},nextQuestion:{type:['string','null'],minLength:1,maxLength:120}}};
 const paragraphId=index=>`p${index+1}`;
 export const numberedParagraphs=source=>citedPassages(source).map((passage,index)=>({id:paragraphId(index),sentences:sentenceSpans(passage).map(({quote},number)=>({number,text:quote}))}));
-export function sourceEvaluationSchemaFor(sources,{subjectCheck=false,hypotheses=[],selection=false}={}){
+export function sourceEvaluationSchemaFor(sources,{subjectCheck=false,hypotheses=[],selection=false,existingCandidates=[]}={}){
   const schema=structuredClone(sourceEvaluationSchema);
   if(hypotheses.length){schema.required.push('hypothesisReview');schema.properties.hypothesisReview=reviewSchema(hypotheses);}
   const claim=schema.properties.claims.items;
@@ -107,6 +108,9 @@ export function sourceEvaluationSchemaFor(sources,{subjectCheck=false,hypotheses
     Object.assign(claim.properties,{paragraphId:{type:'string'},first:{type:'integer'},last:{type:'integer'},support:{type:'string',enum:['supported','insufficient','contradicted']}});
   }
   if(subjectCheck){claim.required.push('relevance');claim.properties.relevance={type:'string',enum:['direct','background','off_topic','uncertain']};}
+  if(existingCandidates.some(candidate=>candidate.complete)){
+    claim.required.push('canonicalMatch');claim.properties.canonicalMatch=canonicalMatchSchema;
+  }
   return schema;
 }
 // The schema constrains shape/length/IDs; exact attribution and calendar support
@@ -149,12 +153,17 @@ export function validateSourceEvaluation(value,sources){
   validateLimitations(value.limitations);
   if(!(value.nextQuestion===null||validQuery(value.nextQuestion)))evaluationFailure('FOLLOWUP_INVALID');
   if(value.hypothesisReview!==undefined)validateHypothesisReview(value.hypothesisReview,value.claims);
-  for(const claim of value.claims){const rule=claimRejection(claim,sources);if(rule)evaluationFailure(rule);}
+  for(const claim of value.claims){
+    if(!object(claim))evaluationFailure('CLAIM_FIELDS_INVALID');
+    const {canonicalMatch,...evidence}=claim,rule=claimRejection(evidence,sources);
+    if(rule)evaluationFailure(rule);
+    if(canonicalMatch!==undefined&&!groundedCanonicalMatch(canonicalMatch,evidence.quote))evaluationFailure('CANONICAL_MATCH_INVALID');
+  }
   return value;
 }
 // At the model boundary only, reject individual proposals independently. Return
 // fixed rule/index diagnostics; never disclose or rewrite the rejected content.
-export function selectSourceEvaluation(value,sources,{allowFollowup=true,subjectCheck=false,hypotheses=[]}={}){
+export function selectSourceEvaluation(value,sources,{allowFollowup=true,subjectCheck=false,hypotheses=[],existingCandidates=[]}={}){
   evaluationShape(value);
   // Limitations may qualify the whole assessment. Never silently erase them.
   validateLimitations(value.limitations);
@@ -163,12 +172,15 @@ export function selectSourceEvaluation(value,sources,{allowFollowup=true,subject
   if(hypotheses.length)validateHypothesisReview(value.hypothesisReview,value.claims,hypotheses.map(h=>h.id));
   const claims=[],acceptedIndices=[];
   value.claims.forEach((proposal,index)=>{
-    let claim=proposal,rule=null;
+    let claim=proposal,rule=null,canonicalMatch;
+    if(existingCandidates.some(candidate=>candidate.complete)&&object(claim)){
+      ({canonicalMatch,...claim}=claim);
+    }
     if(subjectCheck){
       if(!object(proposal)||!Object.hasOwn(proposal,'relevance'))rule='SUBJECT_RELEVANCE_MISSING';
       else if(!['direct','background','off_topic','uncertain'].includes(proposal.relevance))rule='SUBJECT_RELEVANCE_INVALID';
       else if(proposal.relevance!=='direct')rule='SUBJECT_MISMATCH';
-      if(object(proposal)){const {relevance,...supported}=proposal;claim=supported;}
+      if(object(claim)){const {relevance,...supported}=claim;claim=supported;}
     }
     // Older quote-only assessments use the same verbatim validator below.
     // Selection proposals must materialize their own range in the named source.
@@ -182,7 +194,10 @@ export function selectSourceEvaluation(value,sources,{allowFollowup=true,subject
       if(!rule)claim={...metadata,quote:span.quote};
     }
     rule=rule||claimRejection(claim,sources);
-    if(rule)validation.rejections.push({index,rule});else{claims.push(claim);acceptedIndices.push(index);}
+    if(rule)validation.rejections.push({index,rule});else{
+      claims.push(groundedCanonicalMatch(canonicalMatch,claim.quote,existingCandidates)?{...claim,canonicalMatch}:claim);
+      acceptedIndices.push(index);
+    }
   });
   const validFollowup=value.nextQuestion===null||allowFollowup&&validQuery(value.nextQuestion);
   if(!validFollowup)validation.metadataRejections.push({field:'nextQuestion',rule:'FOLLOWUP_INVALID'});

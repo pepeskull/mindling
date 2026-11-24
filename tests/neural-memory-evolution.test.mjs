@@ -33,14 +33,51 @@ test('minimal task summary preserves actual completed, paused, failed and unknow
 test('exact repeat and independently cited support reuse one memory and cannot farm strength',async()=>{
  const app=harness();await integrate(app,[[old,'https://rules.org/board']]);const before=structuredClone(app.state.mind.memories[0]);
  await integrate(app,[[old,'https://rules.org/board']]);assert.deepEqual(app.state.mind.memories[0],before);
- const supportedTask=await integrate(app,[[old,'https://manual.net/board']]);const supported=structuredClone(app.state.mind.memories[0]);assert.equal(supported.strength,before.strength+.05);assert.equal(supported.researchSupport.length,1);assert.deepEqual(supported.research,before.research);
+ const supportedTask=await integrate(app,[[old,'https://manual.net/board']]);const supported=structuredClone(app.state.mind.memories[0]);assert.equal(supported.strength,before.strength+.08*(1-before.strength));assert.equal(supported.researchSupport.length,1);assert.deepEqual(supported.research,before.research);
  assert.equal(AutonomousLearningEngine.prototype.reply.call({app},supportedTask).sources[0].url,'https://manual.net/board');
- await integrate(app,[[old,'https://manual.net/board']]);assert.deepEqual(app.state.mind.memories[0],supported);assert.equal(app.state.mind.memories.length,1);assert.equal(app.state.mind.lifetimeXP,0);assert.equal(app.state.mind.energy.remaining,10);
+ await integrate(app,[[old,'https://manual.net/board']]);assert.deepEqual(app.state.mind.memories[0],supported);assert.equal(app.state.mind.memories.length,1);assert.equal(app.state.mind.lifetimeXP,10);assert.equal(app.state.mind.energy.remaining,10);
 });
 test('new complementary knowledge stays distinct and creates real associations',async()=>{
  const app=harness();await integrate(app,[['A chessboard has alternating light and dark squares arranged in a regular grid.','https://rules.org/board']]);
  await integrate(app,[['The light and dark squares on a chessboard provide visual contrast for players.','https://manual.net/contrast']]);
  assert.equal(app.state.mind.memories.length,2);assert.ok(app.state.mind.memories[1].relatedMemoryIds.includes(app.state.mind.memories[0].id));assert.ok(app.state.mind.memories[0].relatedMemoryIds.includes(app.state.mind.memories[1].id));
+});
+const waggle='The duration of a waggle run increases with the distance to the food source.';
+const paraphrase='A longer waggle run indicates that the food source is farther away.';
+const rangeCondition='The relationship between the duration of a waggle run and distance varies with visual conditions experienced in flight.';
+const decisionFor=(memoryId,existingClaim,overrides={})=>({
+ memoryId,existingClaim,sharedSubject:'waggle run',relation:'equivalent',confidence:'high',scopeDifference:null,
+ reason:'The same change in waggle run duration identifies a corresponding change in the distance to the food source.',
+ polarityPreserved:true,modalityPreserved:true,scopePreserved:true,evidenceSufficient:true,...overrides
+});
+test('waggle paraphrase reuses its canonical ID and condition-dependent expansion becomes a validated separate memory',async()=>{
+ const app=harness();await integrate(app,[[waggle,'https://research.org/duration']]);
+ const previous=structuredClone(app.state.mind.memories[0]);
+ const match=decisionFor(previous.id,waggle);
+ await integrate(app,[[paraphrase,'https://manual.net/behavior']],{mutate:(_,task)=>task.pendingEvidence[0].canonicalMatch=match});
+ let [memory]=app.state.mind.memories;assert.equal(app.state.mind.memories.length,1);
+ assert.equal(memory.id,previous.id);assert.equal(memory.content,previous.content);assert.deepEqual(memory.research,previous.research);
+ assert.equal(memory.strength,.1+.08*(1-.1));assert.equal(memory.activations,2);assert.equal(memory.researchSupport[0].quote,paraphrase);
+ assert.ok(memory.lastActivatedAt&&memory.lastEvidenceAt&&memory.lastReinforcedAt);
+ const snap=structuredClone(memory);
+ await integrate(app,[[paraphrase,'https://manual.net/behavior']],{mutate:(_,task)=>task.pendingEvidence[0].canonicalMatch=match});
+ assert.deepEqual(app.state.mind.memories[0],snap);
+ const complementary={...match,relation:'complementary',scopeDifference:'The newer claim adds a flight-condition limitation without restating the original relationship.',reason:'Both passages concern waggle duration as a distance signal. The new passage qualifies how visual conditions affect that signal.'};
+ await integrate(app,[[rangeCondition,'https://guide.edu/analysis']],{mutate:(_,task)=>task.pendingEvidence[0].canonicalMatch=complementary});
+ const [retained,expansion]=app.state.mind.memories;
+ assert.equal(retained.researchSupport.length,1);assert.equal(retained.content,previous.content);
+ assert.equal(expansion.research.evidenceText,rangeCondition);assert.equal(expansion.strength,.1);assert.equal(expansion.activations,1);
+ assert.ok(expansion.semanticAssociations.some(edge=>edge.memoryId===retained.id&&edge.type==='complements'));
+ assert.ok(retained.relatedMemoryIds.includes(expansion.id));assert.equal(retained.activations,3);
+});
+
+test('Research mitigates ambiguous equivalence without losing accepted source material',async()=>{
+ const app=harness();await integrate(app,[[waggle,'https://research.org/duration']]);
+ const before=structuredClone(app.state.mind.memories[0]);
+ const unsupported='The duration of a waggle run usually increases with the distance to the food source.';
+ const task=await integrate(app,[[unsupported,'https://manual.net/behavior']],{mutate:(_,task)=>task.pendingEvidence[0].canonicalMatch=decisionFor(before.id,waggle)});
+ assert.deepEqual(app.state.mind.memories[0],before);
+ assert.ok(app.state.mind.memories.slice(1).some(m=>m.research.evidenceText===unsupported)||task.unintegratedEvidence?.some(e=>e.quote===unsupported));
 });
 test('one contradictory report preserves incumbent and records unresolved evidence',async()=>{
  const app=harness();await integrate(app,[[old,'https://rules.org/board']]);const original=structuredClone(app.state.mind.memories[0]);
@@ -51,7 +88,7 @@ test('corroborated same-frame correction creates one source-attributed successor
  await integrate(app,[[fresh,'https://manual.net/board']]);await integrate(app,[[fresh,'https://guide.edu/board']]);
  const [parent,neighbor,child]=app.state.mind.memories;assert.equal(parent.supersededBy,child.id);assert.equal(child.correctsMemoryId,parent.id);assert.equal(parent.content,original.content);assert.deepEqual(parent.research,original.research);assert.equal(child.research.evidenceText,fresh);assert.equal(child.research.sourceURL,'https://guide.edu/board');assert.equal(child.research.verification,'tool-cited-unverified-synthesis');assert.equal(child.researchSupport.length,2);assert.equal(child.category,'Gaming');assert.equal(child.topic,'Chessboard structure');assert.ok(child.relatedMemoryIds.includes(parent.id));assert.ok(child.relatedMemoryIds.includes(neighbor.id));assert.deepEqual(neighbor.relatedMemoryIds,[parent.id,child.id]);assert.equal(parent.contradictions.every(c=>c.status==='resolved'),true);
  assert.deepEqual(app.state.mind.nodes,nodes);assert.deepEqual(app.state.mind.synapses,synapses);assert.equal(graphData(app.state.mind).stats.current,2);
- const stable=JSON.stringify(app.state.mind.memories);await integrate(app,[[fresh,'https://guide.edu/board']]);assert.equal(JSON.stringify(app.state.mind.memories),stable);assert.equal(app.state.mind.energy.remaining,10);assert.equal(app.state.mind.lifetimeXP,0);
+ const stable=JSON.stringify(app.state.mind.memories);await integrate(app,[[fresh,'https://guide.edu/board']]);assert.equal(JSON.stringify(app.state.mind.memories),stable);assert.equal(app.state.mind.energy.remaining,10);assert.equal(app.state.mind.lifetimeXP,10);
 });
 for(const kind of ['limitations','same-publisher','verified','time-sensitive','third-value','different-topic'])test(`automatic replacement refuses ${kind}`,async()=>{
  const app=harness();await integrate(app,[[old,'https://rules.org/board']]);
@@ -72,7 +109,7 @@ test('altered pending quote hash fails before any integration or counter mutatio
 });
 test('material limitations remain attached to support without increasing strength or verification',async()=>{
  const app=harness();await integrate(app,[[old,'https://rules.org/board']]);const original=structuredClone(app.state.mind.memories[0]);
- await integrate(app,[[old,'https://manual.net/board']],{limitations:['This count applies only to a particular variant.']});const memory=app.state.mind.memories[0];assert.equal(memory.strength,original.strength);assert.equal(memory.activations,original.activations);assert.deepEqual(memory.research,original.research);assert.deepEqual(memory.researchSupport[0].limitations,['This count applies only to a particular variant.']);
+ await integrate(app,[[old,'https://manual.net/board']],{limitations:['This count applies only to a particular variant.']});const memory=app.state.mind.memories[0];assert.equal(memory.strength,original.strength);assert.equal(memory.activations,original.activations+1);assert.deepEqual(memory.research,original.research);assert.deepEqual(memory.researchSupport[0].limitations,['This count applies only to a particular variant.']);
 });
 test('identical text with a different as-of date remains an unresolved temporal context',async()=>{
  const app=harness();await integrate(app,[[old,'https://rules.org/board']]);
@@ -86,5 +123,5 @@ test('a competing canonical paraphrase still blocks a proposed numeric successor
 test('replacing a user claim never upgrades the original provenance or claims independent verification',async()=>{
  const app=harness();app.state.mind.memories.push({id:'player-claim',content:old,category:'Gaming',topic:'Chessboard structure',source:'SERVICE',intelligence:{kind:'claim',current:true,verification:'unverified-player-claim'},neuronIds:[],synapseIds:[],relatedMemoryIds:[]});
  await integrate(app,[[fresh,'https://manual.net/board'],[fresh,'https://guide.edu/board']]);const [parent,child]=app.state.mind.memories;
- assert.equal(parent.content,old);assert.equal(parent.source,'SERVICE');assert.equal(parent.research,undefined);assert.equal(parent.intelligence.verification,'unverified-player-claim');assert.equal(parent.supersededBy,child.id);assert.equal(child.source,'AUTONOMOUS');assert.equal(child.research.verification,'tool-cited-unverified-synthesis');assert.equal(app.state.mind.lifetimeXP,0);
+ assert.equal(parent.content,old);assert.equal(parent.source,'SERVICE');assert.equal(parent.research,undefined);assert.equal(parent.intelligence.verification,'unverified-player-claim');assert.equal(parent.supersededBy,child.id);assert.equal(child.source,'AUTONOMOUS');assert.equal(child.research.verification,'tool-cited-unverified-synthesis');assert.equal(app.state.mind.lifetimeXP,5);
 });

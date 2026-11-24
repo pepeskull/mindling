@@ -1,3 +1,4 @@
+import {applyMemoryEvolution,connectionEvolution} from '../memory/evolution-policy.js';
 import {editableMemoryText,submittedCorrectionText,unchangedCorrection} from './correction-content.js';
 import {learningContext} from '../preview/sandbox/learning-assessment.js';
 import {requestLearningAssessment} from '../preview/sandbox/learning-service.js';
@@ -59,6 +60,7 @@ export async function correctMemory(app,{memoryId,text},{guard=()=>{},journal=fa
       replacement.relatedMemoryIds=[...new Set([...(replacement.relatedMemoryIds||[]),...(original.relatedMemoryIds||[]).filter(id=>!original.semanticAssociations?.some(edge=>edge.memoryId===id)),memoryId])].filter(value=>typeof value==='string'&&value!==id);
       for(const neighbor of mind.memories)if(neighbor.id!==memoryId&&neighbor.id!==id&&replacement.relatedMemoryIds.includes(neighbor.id))neighbor.relatedMemoryIds=[...new Set([...(neighbor.relatedMemoryIds||[]),id])];
       original.supersededBy=id;original.supersededAt=at;original.intelligence={...original.intelligence,current:false};connectSemanticMemory(mind,replacement.id);
+      applyMemoryEvolution(mind.memories,connectionEvolution(state.mind.memories,mind.memories),at);
       if(original.research?.quoteHash)mind.researchExclusions=[...new Set([...(mind.researchExclusions||[]),original.research.quoteHash])].slice(-1000);
       mind.energy=spendEnergy(energy,cost,state.now);stimulatePreviewLife(mind.life,'TEACH',state.now);mind.lastLearning=state.now;
       mind.stageXP+=award;mind.lifetimeXP+=award;mind.processed.push(id);

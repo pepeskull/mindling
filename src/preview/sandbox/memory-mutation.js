@@ -1,3 +1,4 @@
+import {applyMemoryEvolution,connectionEvolution,reinforcementEvent} from '../../memory/evolution-policy.js';
 import { activityReward, cappedXPAward } from '../../economy/xp.js';
 import { recordPathwayLearning } from '../../pathways/pathways.js';
 import { capturedContent } from '../../memory/content-integrity.js';
@@ -18,16 +19,18 @@ export function applyMemoryDecision(state,event,assessment) {
   const operations=assessment.version===3?assessment.operations:compatibilityOperations(assessment,statements);
   const next=structuredClone(state),mind=next.mind,at=new Date(state.now).toISOString();
   const affected=new Set();let formed=null,updated=false,changed=false,associations=null;
-  const results=[];
+  const results=[],evolution=[];
+  const priorIds=new Set(state.mind.memories.map(memory=>memory.id));
+  const reinforce=(target,text)=>{if(priorIds.has(target.id)&&reinforceMemory(mind,target,text))evolution.push([target.id,reinforcementEvent(event.activity)]);};
   for(const item of operations){
     const d=item.decision,text=statements[item.statement],operation=d.operation;
     let target=mind.memories.find(memory=>memory.id===d.relatedMemoryId);
     if(operation==='REINFORCE_EXISTING'){
-      reinforceMemory(mind,target,text,at);affected.add(target.id);
+      reinforce(target,text);affected.add(target.id);
     }else if(operation==='CREATE_NEW'||operation==='LINK_TO_EXISTING'){
       // Legacy single-decision compound responses cannot duplicate an existing atomic value.
       const existing=mind.memories.find(memory=>!memory.supersededBy&&memory.intelligence?.current!==false&&normalize(memory.content)===normalize(text));
-      if(existing){reinforceMemory(mind,existing,text,at);affected.add(existing.id);results.push('REINFORCE_EXISTING');continue;}
+      if(existing){reinforce(existing,text);affected.add(existing.id);results.push('REINFORCE_EXISTING');continue;}
       associations??=formationAssociations(mind,event.id);
       const id=formed?`${event.id}:${item.statement}`:event.id;
       const memory=recordMemory(mind,{id,text,decision:d,event,at,associations});
@@ -37,7 +40,7 @@ export function applyMemoryDecision(state,event,assessment) {
       const selection=updatePart({...target,kind:target.intelligence?.kind||target.kind||'claim'},d.kind,item.targetPart);
       if(!selection)throw Error('Preference or goal target changed. No Energy or XP changed.');
       const content=updateInput(text,d.kind),prior=selection.parts[selection.index],beforeValue=mutableValue(prior),afterValue=mutableValue(content);
-      if(normalize(prior)===normalize(content)||(beforeValue&&afterValue&&beforeValue===afterValue)){reinforceMemory(mind,target,content,at);affected.add(target.id);results.push('REINFORCE_EXISTING');continue;}
+      if(normalize(prior)===normalize(content)||(beforeValue&&afterValue&&beforeValue===afterValue)){reinforce(target,content);affected.add(target.id);results.push('REINFORCE_EXISTING');continue;}
       if(selection.parts.length>1)target=decomposeLegacy(mind,target,at)[selection.index];
       target.valueHistory=[...(target.valueHistory||[]),{content:target.content,concept:target.concept,category:target.category,categoryId:target.categoryId,topic:target.topic,intelligence:target.intelligence||null,native:target.native||null,analysis:target.analysis||null,source:target.source||null,at:target.updatedAt||target.createdAt,eventId:event.id}];
       Object.assign(target,{content,contentIntegrity:capturedContent(content),normalized:normalize(content),concept:d.concept,normalizedConcept:normalize(d.concept),updatedAt:at,source:'SERVICE',analysis:serviceMetadata(d,event.activity,at),
@@ -67,7 +70,8 @@ export function applyMemoryDecision(state,event,assessment) {
   mind.processed.push(event.id);
   const operation=results.length===1?results[0]:'BATCH';
   const stored=operations.filter(item=>['CREATE_NEW','LINK_TO_EXISTING','UPDATE_EXISTING','FLAG_CONTRADICTION'].includes(item.decision.operation));
-  const history={id:event.id,activity:event.activity,day,at:state.now,xp:award,kind:updated?'correction':formed?'concept':results.includes('REINFORCE_EXISTING')?'reinforcement':'decision',source:'SERVICE',operation,operations:results,energySpent:cost,memoryIds:[...affected],concept:formed?.concept,responseAction:operations.find(item=>item.decision.responseAction==='CLARIFY')?.decision.responseAction||operations[0].decision.responseAction};
+  const strengthenedMemoryIds=applyMemoryEvolution(mind.memories,[...evolution,...connectionEvolution(state.mind.memories,mind.memories)],at);
+  const history={strengthenedMemoryIds,id:event.id,activity:event.activity,day,at:state.now,xp:award,kind:updated?'correction':formed?'concept':results.includes('REINFORCE_EXISTING')?'reinforcement':'decision',source:'SERVICE',operation,operations:results,energySpent:cost,memoryIds:[...affected],concept:formed?.concept,responseAction:operations.find(item=>item.decision.responseAction==='CLARIFY')?.decision.responseAction||operations[0].decision.responseAction};
   // Do not retain unrelated no-change/rejected fragments as raw personal provenance.
   if(changed)history.input=stored.length===operations.length?event.text:stored.map(item=>statements[item.statement]).join(' ');
   mind.history.push(history);

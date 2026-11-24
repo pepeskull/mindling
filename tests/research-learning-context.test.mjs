@@ -65,7 +65,7 @@ try{
  const resumed=await api(retryContext,{mode:'research-evaluate'});assert.equal(resumed.res.code,200);assert.equal(resumed.searches,0);assert.equal(resumed.inferences,1);
  const forged=await api(input,{forgedQuote:true});assert.equal(forged.res.body.acquisition.evaluation.claims.length,0,'existing private memory cannot substitute for retrieved source evidence');
  // Actual canonical integration receives the model-selected area, with no extra
- // model call, no merging of the overlapping records and no autonomous XP.
+ // model call and no merging of the overlapping records. Foundation uses Teach XP.
  const app={state:newMindling(createSandbox(),{confirmed:true,id:'neuron-integration'}),async change(fn){this.state=fn(structuredClone(this.state));},renderState(){}};
  app.state.mind.memories=[structuredClone(taught)];app.state.mind.categories=structuredClone(mind.categories);
  const at=Date.now(),id=sha('neuron-task'),source=res.body.acquisition.sources[0];
@@ -74,7 +74,7 @@ try{
  app.state.mind.learningTasks=[task];const energy=structuredClone(app.state.mind.energy),xp=app.state.mind.lifetimeXP;
  const engine={app,loadPermissions:async()=>({enabled:true}),grant:()=>null,assertLive(){},notify(){},recover(){},async patch(id,run,fn){await app.change(s=>{fn(s.mind.learningTasks[0]);return s;});return app.state.mind.learningTasks[0];}};
  await AutonomousLearningEngine.prototype.integrate.call(engine,task,'run',new AbortController(),{enabled:true});
- assert.equal(app.state.mind.memories.length,2);assert.equal(app.state.mind.memories[1].categoryId,taught.categoryId);assert.equal(app.state.mind.memories[1].research.evidenceText,claim.quote);assert.equal(app.state.mind.lifetimeXP,xp);assert.deepEqual(app.state.mind.energy,energy);assert.deepEqual(app.state.mind.memories[0],taught);
+ assert.equal(app.state.mind.memories.length,2);assert.equal(app.state.mind.memories[1].categoryId,taught.categoryId);assert.equal(app.state.mind.memories[1].research.evidenceText,claim.quote);assert.equal(app.state.mind.lifetimeXP,xp+5);assert.deepEqual(app.state.mind.energy,energy);assert.deepEqual(app.state.mind.memories[0],taught);
  // Existing separate semantic contract can represent the overlap without
  // equivalence; mocked reasoning is not evidence of live model performance.
  const semanticMind={memories:structuredClone([taught,researched])},context=semanticCandidates(semanticMind,[researched.id]),pair=context.pairs[0];assert(pair);

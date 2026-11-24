@@ -40,6 +40,8 @@ export function developmentData(state = {}, life = null) {
     energyText:state.energy?`${state.energy.remaining-(state.energy.bonus||0)} / ${energyCapacityForStage(stageNumber)}${state.energy.bonus?` + ${state.energy.bonus} bonus`:''}`:'—',
     stageXP: number(state.stageXP), lifetimeXP: number(state.lifetimeXP),
     dailyXP: Math.min(XP.daily,dailyXPEarned(list(state.history),timestamp(state.developmentNow)??Date.now())),
+    researchAvailable:state.autonomousStatus==='IDLE'&&state.researchPermissions?.enabled===true&&state.researchPermissions.loaded===true&&
+      list(state.learningTasks).some(task=>task.sourcePlan?.available===true&&task.status==='COMPLETED'),
     targetXP: stage && stage.number < 7 ? RULES[stage.number - 1].xp : null,
     milestones: Array.isArray(state.milestones) ? new Set(state.milestones).size : null,
     pathways: [...new Set(list(state.pathways).filter(value => typeof value === 'string' && value.trim()))],

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
-import {numberedParagraphs,selectSourceEvaluation,validateSourceEvaluation} from '../src/autonomous/research-contract.js';
+import {numberedParagraphs,selectSourceEvaluation,sourceEvaluationSchemaFor,validateSourceEvaluation} from '../src/autonomous/research-contract.js';
 import {scenario} from './support/research-success-harness.mjs';
 
 const {quotes}=createRequire(import.meta.url)('./support/research-success-fixture.cjs');
@@ -30,6 +30,30 @@ test('sentence selection materializes the exact range in one paragraph and indep
   ]),[source]);
   assert.deepEqual(fabricated.validation.rejections.map(r=>r.rule),['SENTENCE_RANGE_INVALID','SOURCE_ID_UNKNOWN','CLAIM_FIELDS_INVALID']);
   validateSourceEvaluation(assessment([{sourceId:source.id,quote:quotes[0],category:'Gaming',topic:'Game rules',reason:'Legacy quote.',validAt:null}]),[source]);
+});
+
+test('canonical matching is optional for legacy receipts and cannot substitute for selected source evidence',()=>{
+ const existingClaim='The duration of a waggle run increases with the distance to the food source.';
+ const passage='A longer waggle run indicates that the food source is farther away.';
+ const source={id:'waggle-source',text:passage,passages:[passage]};
+ const existingCandidates=[{id:'current',content:existingClaim,complete:true}];
+ const canonicalMatch={memoryId:'current',existingClaim,sharedSubject:'waggle run',relation:'equivalent',
+  confidence:'high',reason:'The complete propositions have the same meaning.',scopeDifference:null,
+  polarityPreserved:true,modalityPreserved:true,scopePreserved:true,evidenceSufficient:true};
+ const selected=selectSourceEvaluation(assessment([
+  claim(source,{canonicalMatch}),
+  claim(source,{canonicalMatch:{...canonicalMatch,memoryId:'unknown'}}),
+  claim(source,{canonicalMatch,last:2})
+ ]),[source],{existingCandidates});
+ const enriched=sourceEvaluationSchemaFor([source],{selection:true,existingCandidates}).properties.claims.items;
+ assert.ok(enriched.required.includes('canonicalMatch'));
+ assert.equal(enriched.properties.canonicalMatch.anyOf[1].additionalProperties,false);
+ assert.equal(selected.evaluation.claims[0].quote,passage);
+ assert.deepEqual(selected.evaluation.claims[0].canonicalMatch,canonicalMatch);
+ assert.equal(selected.evaluation.claims[1].canonicalMatch,undefined);
+ assert.equal(selected.validation.rejections[0].rule,'SENTENCE_RANGE_INVALID');
+ validateSourceEvaluation(selected.evaluation,[source]);
+ assert.throws(()=>validateSourceEvaluation(assessment([{...selected.evaluation.claims[0],canonicalMatch:{...canonicalMatch,sharedSubject:'not in the passage'}}]),[source]),{detail:'CANONICAL_MATCH_INVALID'});
 });
 
 test('partial success reloads with its checkpoint and adds only new validated claims in one refinement',async()=>{

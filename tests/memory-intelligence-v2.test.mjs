@@ -54,11 +54,11 @@ for(const [name,text,d,outcome] of scenarios)test(`synthetic decision: ${name}`,
   if(outcome==='create'||outcome==='link'){
     assert.equal(n.mind.memories.length,6);const memory=n.mind.memories.at(-1);
     assert.equal(memory.content,text);assert.equal(memory.intelligence.certainty,d.certainty);assert.equal(memory.intelligence.verification,'unverified-player-claim');
-    assert.equal(memory.intelligence.current,d.kind!=='historical');assert.equal(n.mind.lifetimeXP,50);assert.equal(n.mind.energy.remaining,8);
+    assert.equal(memory.intelligence.current,d.kind!=='historical');assert.equal(n.mind.lifetimeXP,5);assert.equal(n.mind.energy.remaining,8);
     if(outcome==='link'){assert.ok(memory.relatedMemoryIds.includes('neuron'));assert.ok(n.mind.memories.find(m=>m.id==='neuron').relatedMemoryIds.includes('new-event'));}
   }else if(outcome==='update'){
     const previous=s.mind.memories.find(m=>m.id===d.relatedMemoryId),memory=n.mind.memories.find(m=>m.id===d.relatedMemoryId);
-    assert.equal(memory.content,text);assert.equal(memory.valueHistory[0].content,previous.content);assert.equal(n.mind.memories.length,5);assert.equal(n.mind.lifetimeXP,60);assert.equal(n.mind.energy.remaining,8);
+    assert.equal(memory.content,text);assert.equal(memory.valueHistory[0].content,previous.content);assert.equal(n.mind.memories.length,5);assert.equal(n.mind.lifetimeXP,5);assert.equal(n.mind.energy.remaining,8);
   }else if(outcome==='reinforce'){assert.equal(n.mind.memories.length,5);assert.equal(n.mind.lifetimeXP,0);assert.equal(n.mind.energy.remaining,10);}
   else {assert.equal(n.mind.energy.remaining,outcome==='flag'?8:10);assert.equal(n.mind.lifetimeXP,0);assert.equal(n.mind.memories.length,5);if(outcome==='flag')assert.equal(n.mind.memories.find(m=>m.id==='earth').content,'Earth orbits the Sun.');}
   assert.throws(()=>run(n,text,d),/processed/);

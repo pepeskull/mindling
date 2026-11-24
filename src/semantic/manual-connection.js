@@ -47,7 +47,7 @@ export async function connectMemories(app,ids,identity){
    live(s);const record=s.mind.manualSemanticAttempts?.find(a=>a.fingerprint===fingerprint);
    if(record?.state!=='DISPATCHED')fail('STALE_EVIDENCE');
    if(JSON.stringify(connectionContext(s.mind,ids))!==JSON.stringify(context))fail('STALE_EVIDENCE');
-   const outcomes=persistSemantic(s.mind,verdict.accepted);
+   const outcomes=persistSemantic(s.mind,verdict.accepted,Number.isFinite(s.now)?new Date(s.now).toISOString():undefined);
    code=outcomes.some(o=>o.code==='RELATIONSHIP_PERSISTED')?'CONNECTED':verdict.accepted.length?'REJECTED':verdict.rejected?'REJECTED':'INSUFFICIENT_EVIDENCE';
    record.state='COMPLETED';record.outcome=code;record.rejections=verdict.rejections;record.completedAt=Date.now();
    settleSemanticDispatch(s.mind,fingerprint);return s;

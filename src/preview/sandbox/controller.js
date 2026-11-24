@@ -3,6 +3,8 @@ import { repairCorrectionMetadata } from '../../learning/correction-metadata-rep
 import { knowledgeTalk } from '../../cognition/talk-response.js';
 import { interpretInteraction } from '../../learning/clarification.js';
 import { learningEngine, stopLearning, learningSession, researchPermissions, syncResearchPermissions } from '../../autonomous/learning-engine.js';
+import { DAILY_RESEARCH_PAUSE } from '../../autonomous/research-xp.js';
+import { conversationCopy } from '../../cognition/conversation-language.js';
 import { CognitiveEngine } from '../../cognition/cognitive-engine.js';
 import { EVENTS } from '../../app/events.js';
 import { energyCapacityForStage } from '../../economy/energy.js';
@@ -158,7 +160,11 @@ export class SandboxPreview extends EvolutionPreview {
       const {event,message,refused}=await teachMemory(this,{id,text,activity,taskId:input.taskId},{guard:input.guard});
       this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:refused?'cancel':'accepted',activity});
       return {accepted:true,message,learningEvent:event};
-    } catch(error){this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});throw error;}
+    } catch(error){
+      this.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'cancel'});
+      if(error.code===DAILY_RESEARCH_PAUSE)return {accepted:false,reason:error.code,message:conversationCopy(text).pause};
+      throw error;
+    }
   }
   async care(type){await this.change(s=>carePreview(s,type));}
   setActivity(type){

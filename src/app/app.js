@@ -3,6 +3,8 @@ import { repairCorrectionMetadata } from '../learning/correction-metadata-repair
 import { knowledgeTalk } from '../cognition/talk-response.js';
 import { interpretInteraction } from '../learning/clarification.js';
 import { learningEngine, stopLearning, learningSession, researchPermissions, syncResearchPermissions } from '../autonomous/learning-engine.js';
+import { DAILY_RESEARCH_PAUSE } from '../autonomous/research-xp.js';
+import { conversationCopy } from '../cognition/conversation-language.js';
 import { CognitiveEngine } from '../cognition/cognitive-engine.js';
 import { energyCapacityForStage } from '../economy/energy.js';
 import { EvolutionPreview } from '../preview/evolution-preview.js';
@@ -131,6 +133,7 @@ export class MindlingApp extends EvolutionPreview {
       }
     } catch (error) {
       if (!this.disposed) await this.refreshState();
+      if(error.code===DAILY_RESEARCH_PAUSE)return {accepted:false,reason:error.code,message:conversationCopy(text).pause};
       return { accepted: false, reason: 'ACTIVITY_UNAVAILABLE', message: error.message?.replaceAll('virtual time', 'time').replaceAll('virtual day', 'UTC day').replaceAll('test Mindling', 'Mindling').replace('Sandbox memory capacity', 'Local memory capacity') || 'Activity is unavailable. No Energy or rewards changed.' };
     }
   }

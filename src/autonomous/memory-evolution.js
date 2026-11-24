@@ -2,6 +2,9 @@ import { editableMemoryText, correctionComparison } from '../learning/correction
 import { analyzeNative } from '../learning/native-learning.js';
 import { features, overlap } from '../learning/text.js';
 import { candidateMetadata } from '../preview/sandbox/memory-retrieval.js';
+import { groundedCanonicalMatch, sameCanonicalScope } from './canonical-match.js';
+import { eligibleSemanticMemory, semanticSnapshot, semanticPairReceipt, validateSemanticResult, persistSemantic, VERSION } from '../semantic/model-contract.js';
+import { sourceStatus } from '../memory/content-integrity.js';
 
 export const currentMemory=m=>m&&!m.supersededBy&&m.intelligence?.current!==false&&m.kind!=='historical'&&m.intelligence?.kind!=='historical';
 // Conservative publisher grouping: shared suffixes (e.g. co.uk) undercount
@@ -12,7 +15,8 @@ const key=e=>`${e.sourceURL}|${e.sourceHash}|${e.quoteHash}`;
 export function claimEvidence(claim,task){
   const source=task.sourceReferences.find(s=>s.url===claim.sourceURL&&s.hash===claim.sourceHash);
   if(!source)throw Error('Research evidence source changed.');
-  return {...claim,taskId:task.id,title:source.title||null,type:source.type||null,publisher:source.publisher||null,publishedAt:source.publishedAt||null,responseId:source.responseId||null,verification:'tool-cited-unverified-synthesis',limitations:[...(task.limitations||[])]};
+  const {canonicalMatch,...attribution}=claim;
+  return {...attribution,taskId:task.id,title:source.title||null,type:source.type||null,publisher:source.publisher||null,publishedAt:source.publishedAt||null,responseId:source.responseId||null,verification:'tool-cited-unverified-synthesis',limitations:[...(task.limitations||[])]};
 }
 function originalEvidence(memory){
   const r=memory.research;return r?[{sourceURL:r.sourceURL,sourceHash:r.sourceHash,quoteHash:r.quoteHash,observedAt:r.observedAt}]:[];
@@ -32,16 +36,38 @@ export function researchRelation(mind,claim){
   if(exact)return {kind:(exact.research?.validAt??null)===claim.validAt?'support':'conflict',target:exact};
   const frame=quantityFrame(claim.quote),numeric=frame?active.filter(m=>quantityFrame(editableMemoryText(m))===frame):[];
   if(numeric.length===1)return {kind:'conflict',target:numeric[0]};
+  const match=claim.canonicalMatch,target=active.find(m=>m.id===match?.memoryId);
+  const equivalent=target&&sourceStatus(target)==='captured'&&!['preference','goal','intention'].includes(target.intelligence?.kind||target.kind)&&
+    !(target.contradictions||[]).some(item=>item.status!=='resolved')&&editableMemoryText(target)===match.existingClaim&&
+    (target.research?.validAt??null)===claim.validAt&&groundedCanonicalMatch(match,claim.quote)&&sameCanonicalScope(match,claim.quote);
   // Existing native checks supply conservative conflict/uncertain handling.
   // Their lexical relationships are never used as authority for replacement.
   const view={...mind,memories:active.map(m=>({...m,content:editableMemoryText(m)}))};
-  try{analyzeNative(claim.quote,view);return {kind:'new',target:null};}catch(error){
+  try{analyzeNative(claim.quote,view);}catch(error){
     if(/conflict/i.test(error.message)){
       const target=active.find(m=>{try{analyzeNative(claim.quote,{...mind,memories:[{...m,content:editableMemoryText(m)}]});return false;}catch(e){return /conflict/i.test(e.message);}});
       return {kind:'conflict',target};
     }
-    return {kind:'uncertain',target:null};
+    if(!equivalent||!error.message.startsWith('This may repeat existing knowledge.'))return {kind:'uncertain',target:null};
   }
+  return equivalent?{kind:'support',target}:{kind:'new',target:null};
+}
+
+export function linkComplementaryResearch(mind,memory,claim,at){
+  const match=claim.canonicalMatch;
+  if(match?.relation!=='complementary'||match.confidence!=='high'||!match.scopeDifference||!groundedCanonicalMatch(match,claim.quote))return;
+  const target=mind.memories.find(m=>m.id===match.memoryId);
+  if(target===memory||!eligibleSemanticMemory(memory)||!eligibleSemanticMemory(target)||editableMemoryText(target)!==match.existingClaim)return;
+  const pair={a:semanticSnapshot(memory),b:semanticSnapshot(target)},receipt=semanticPairReceipt(pair);
+  const attempts=[...(mind.manualSemanticAttempts||[]),...(mind.learningTasks||[]).flatMap(t=>t.semanticAttempts||[])];
+  if(attempts.some(a=>['DISPATCHED','OUTCOME_UNKNOWN'].includes(a.state)&&a.pairs?.includes(receipt)))return;
+  const fullSpan=text=>({start:0,end:text.length,quote:text});
+  const proposed={memoryA:memory.id,memoryB:target.id,type:'complements',direction:'symmetric',
+    evidenceA:fullSpan(pair.a.text),evidenceB:fullSpan(pair.b.text),
+    assessment:{support:'supported',reason:match.reason,qualifications:[match.scopeDifference],polarityPreserved:match.polarityPreserved,
+      modalityPreserved:match.modalityPreserved,scopePreserved:match.scopePreserved,noEquivalence:true,evidenceSufficient:match.evidenceSufficient}};
+  const verdict=validateSemanticResult({version:VERSION,relationships:[proposed]},{version:VERSION,pairs:[pair]});
+  persistSemantic(mind,verdict.accepted,at,{evolve:false});
 }
 export function addSupportingEvidence(memory,evidence){
   const prior=memory.researchSupport||[];
@@ -49,9 +75,11 @@ export function addSupportingEvidence(memory,evidence){
   if(prior.length>=6)return 'capacity';
   const seenHosts=new Set([...originalEvidence(memory),...prior].map(e=>host(e.sourceURL)));
   memory.researchSupport=[...prior,evidence];
-  // Same-publisher corroboration remains recorded, but cannot farm strength.
-  if(!seenHosts.has(host(evidence.sourceURL))&&!evidence.limitations.length){memory.strength=Math.min(1,(memory.strength||0)+.05);memory.activations=(memory.activations||0)+1;}
-  return 'retained';
+  if(Number.isFinite(evidence.observedAt)&&evidence.observedAt>(Date.parse(memory.lastEvidenceAt)||0)){
+    memory.lastEvidenceAt=new Date(evidence.observedAt).toISOString();
+  }
+  const publisher=host(evidence.sourceURL);
+  return publisher&&!seenHosts.has(publisher)&&!evidence.limitations.length?'independent':'retained';
 }
 export function retainConflict(memory,evidence){
   const prior=memory.contradictions||[];
