@@ -1,10 +1,13 @@
 import {learningContext} from '../preview/sandbox/learning-assessment.js';
+import {editableMemoryText} from './correction-content.js';
+import {sourceStatus} from '../memory/content-integrity.js';
 // The same bounded retrieval/category projection as direct Teach/Deep. Only the
 // tool-free evaluation completion receives this private context, never search.
 export function researchLearningContext(topic,mind,plan=[]){
- const current={...mind,memories:(mind.memories||[]).filter(m=>!m.supersededBy&&m.intelligence?.current!==false&&(m.intelligence?.kind||m.kind)!=='historical')};
+ const originals=(mind.memories||[]).filter(m=>!m.supersededBy&&m.intelligence?.current!==false&&(m.intelligence?.kind||m.kind)!=='historical');
+ const current={...mind,memories:originals.map(m=>({...m,content:editableMemoryText(m)})).filter(m=>m.content)};
  const {candidates,categories}=learningContext(`Learn about ${topic}. ${plan.join(' ')}`,current,{includeUnranked:true});
- return validateResearchLearningContext({candidates:candidates.map(({id,content,categoryId,category,topic,complete})=>({id,content,categoryId,category,topic,complete})),categories});
+ return validateResearchLearningContext({candidates:candidates.map(({id,content,categoryId,category,topic,complete})=>({id,content,categoryId,category,topic,complete:complete&&sourceStatus(originals.find(m=>m.id===id))==='captured'})),categories});
 }
 export function validateResearchLearningContext(value){
  const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).sort().join(',')===[...keys].sort().join(',');

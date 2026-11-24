@@ -4,6 +4,8 @@ import { requestTalkReasoning } from './reasoning-client.js';
 import { EVENTS } from '../app/events.js';
 import { understandInput, knowledgeGap } from '../learning/input-understanding.js';
 import { learningEngine } from '../autonomous/learning-engine.js';
+import { DAILY_RESEARCH_PAUSE, hasAcquiredResearch, researchXPCapped } from '../autonomous/research-xp.js';
+import { conversationCopy, conversationLanguage, detectedLanguage } from './conversation-language.js';
 
 // Thin explicit Talk orchestration over existing retrieval/transport/gameplay.
 // This is neither a second cognitive engine nor an evaluation/training session.
@@ -20,26 +22,29 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
     if(app.state.mind?.id!==identity)throw Error('Mindling identity changed. No Energy was spent.');
     interpretation??=understandInput(text,'TALK');
     guard();if(interpretation.clarification)throw Error('Resolve the pending clarification before Talk. No Energy was spent.');
-    if(interpretation.intent==='QUESTION'){
-      const existing=await learningEngine(app).existing(interpretation);
+    const talkText=interpretation.requestText||text;
+    const context=trainingContext(talkText,app.state.mind);
+    const language=conversationLanguage(text),copy=conversationCopy(text);
+    if(interpretation.intent==='QUESTION'&&!context.candidates.length){
+      const engine=learningEngine(app),existing=await engine.existing(interpretation);
       if(app.disposed||signal.aborted||app.state.mind?.id!==identity||app.state.mind?.life.lifeState!=='ALIVE')throw Error('Talk was closed or the Mindling is unavailable. No Energy was spent.');
-      if(existing){const resumed=await learningEngine(app).requested(existing,interpretation);learningEngine(app).follow(resumed,id);learningEngine(app).startIfAuthorized(resumed);return {...learningEngine(app).reply(resumed),energySpent:0};}
+      if(existing){
+        if(researchXPCapped(app)&&!hasAcquiredResearch(existing))return {answer:copy.unknown,insufficientInformation:true,memoryIds:[],energySpent:0,researchDeferred:DAILY_RESEARCH_PAUSE,researchMessage:copy.pause};
+        const resumed=await engine.requested(existing,interpretation);
+        engine.follow(resumed,id);engine.startIfAuthorized(resumed);
+        return {...engine.reply(resumed),energySpent:0};
+      }
     }
     // Pure preflight: validates life, text, replay ID, repetition and spendable
     // Energy using the authoritative existing reducer, without saving this clone.
-    const talkText=interpretation.requestText||text;
     talk(app.state,talkText,{id});
-    const context=trainingContext(interpretation.requestText||text,app.state.mind);
-    const initialGap=knowledgeGap(interpretation,context,null,Date.now(),app.state.mind);
     app.events.emit(EVENTS.NEURAL_INPUT,{id,phase:'start',activity:'TALK'});
     let reasoning;
     if(interpretation.intent==='CONVERSATION'&&interpretation.selfInquiry){
       reasoning={answer:`Hi, I’m ${app.state.mind.name}. I’m learning as we spend time together.`,memoryIds:[],uncertainty:'low',insufficientInformation:false};
-    }else if(interpretation.intent==='QUESTION'&&(initialGap.needsResearch||interpretation.clarification)){
-      reasoning={answer:interpretation.clarification||"I don't know that yet.",memoryIds:[],uncertainty:'high',insufficientInformation:true};
     }else if(!context.candidates.length){
       // An honest empty-knowledge state, not a simulated provider answer.
-      reasoning={answer:"I don't know that yet.",memoryIds:[],uncertainty:'high',insufficientInformation:true};
+      reasoning={answer:copy.unknown,memoryIds:[],uncertainty:'high',insufficientInformation:true};
     }else{
       const bytes=new TextEncoder().encode(JSON.stringify({mode:'talk',identity,id,context}));
       const digest=await crypto.subtle.digest('SHA-256',bytes);
@@ -47,6 +52,17 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
       reasoning=(await requestTalkReasoning({id:requestId,context:{...context,agentName:app.state.mind.name},signal})).reasoning;
     }
     if(app.disposed||signal.aborted)throw Error('Talk was cancelled. No Energy was spent.');
+    const coverage=interpretation.intent==='QUESTION'?knowledgeGap(interpretation,context,reasoning,Date.now(),app.state.mind):null;
+    const gap=coverage?.needsResearch===true;
+    // Preserve the evidence's language. When the prose clearly uses another
+    // language, provide the exact validated quotes with a localized summary.
+    const prose=reasoning.answer.replace(/(?:“[^”]*”|"[^"]*")/gu,'');
+    const actual=detectedLanguage(prose);
+    if(coverage?.freshnessGap||(coverage?.conflicted&&!reasoning.insufficientInformation)||(language&&actual&&actual!==language)){
+      const facts=reasoning.facts?.map(fact=>fact.quote)||[];
+      const introduction=coverage?.freshnessGap?copy.stale:coverage?.conflicted?copy.conflict:copy.recalled;
+      reasoning={...reasoning,answer:facts.length?`${introduction}\n\n${facts.join('\n\n')}`:copy.unknown};
+    }
     // Commit only after a validated reply (or genuine empty-knowledge state).
     // Fresh transactional validation prevents stale answers, double spending,
     // identity changes and failed writes from partially accepting a Talk.
@@ -55,16 +71,20 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
       if(app.disposed||signal.aborted)throw Error('Talk was cancelled. No Energy was spent.');
       if(state.mind?.id!==identity)throw Error('Mindling identity changed. No Energy was spent.');
       assertTrainingContext(context,state.mind);
-      return talk(state,talkText,{id,rewardEligible:reasoning.insufficientInformation===false});
+      return talk(state,talkText,{id,rewardEligible:reasoning.insufficientInformation===false&&!gap,usedMemoryIds:reasoning.memoryIds});
     },journal?{journal:{id,type:'TALK'}}:{});
-    let reply={answer:reasoning.answer,memoryIds:reasoning.memoryIds,uncertainty:reasoning.uncertainty,insufficientInformation:reasoning.insufficientInformation,energySpent:1};
-    if(interpretation.intent==='QUESTION'&&!signal.aborted&&knowledgeGap(interpretation,context,reasoning,Date.now(),app.state.mind).needsResearch){
+    let reply={answer:reasoning.answer,memoryIds:reasoning.memoryIds,uncertainty:gap?'high':reasoning.uncertainty,insufficientInformation:gap||reasoning.insufficientInformation,energySpent:1};
+    if(gap&&!signal.aborted){
       try{
+        if(researchXPCapped(app))return {...reply,researchDeferred:DAILY_RESEARCH_PAUSE,researchMessage:copy.pause};
         const task=await learningEngine(app).prepare(interpretation,id,{reply:reasoning,guard});
         learningEngine(app).follow(task,id);
         learningEngine(app).startIfAuthorized(task);
         reply={...reply,researchTaskId:task.id,...(reply.memoryIds.length?{conversationalAnswer:reply.answer}:{})};
-      }catch{reply.researchPreparationFailed=true;}
+      }catch(error){
+        if(error.code===DAILY_RESEARCH_PAUSE)return {...reply,researchDeferred:DAILY_RESEARCH_PAUSE,researchMessage:copy.pause};
+        reply.researchPreparationFailed=true;
+      }
     }
     return reply;
   });

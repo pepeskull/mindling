@@ -1,3 +1,4 @@
+import {applyMemoryEvolution} from '../memory/evolution-policy.js';
 import {validateDiscoveryContext,validateParents} from './parent-discovery.js';
 import {graphData} from '../memory/graph-data.js';
 import {validateAreaContext,validateAreaResults} from './area-relations.js';
@@ -132,16 +133,19 @@ export function semanticCandidateReport(mind,ids,{limit=SEMANTIC_BATCH_PAIRS,inc
   generated:pairs.length,decisions,context:areaContext(mind,{version:VERSION,pairs:pairs.slice(0,limit)})};
 }
 export function semanticCandidates(mind,ids,options){return semanticCandidateReport(mind,ids,options).context;}
-export function persistSemantic(mind,accepted){
- const outcomes=[];for(const r of accepted){
+export function persistSemantic(mind,accepted,at=new Date().toISOString(),{evolve=true}={}){
+ const outcomes=[],evolution=[];for(const r of accepted){
  const a=mind.memories.find(m=>m.id===r.memoryA),b=mind.memories.find(m=>m.id===r.memoryB);
  let code=!a||!b?'UNKNOWN_MEMORY':!eligibleSemanticMemory(a)||!eligibleSemanticMemory(b)?'MEMORY_INELIGIBLE':JSON.stringify(semanticSnapshot(a))!==JSON.stringify(r.snapshotA)||JSON.stringify(semanticSnapshot(b))!==JSON.stringify(r.snapshotB)?'STALE_EVIDENCE':null;
  if(!code&&(a.relatedMemoryIds?.includes(b.id)||b.relatedMemoryIds?.includes(a.id)))code='DUPLICATE_RELATION';
  if(!code&&[a,b].some(m=>new Set((m.semanticAssociations||[]).map(e=>e.memoryId)).size>=CONNECTION_LIMITS.links))code='DEGREE_LIMIT';
  if(code){outcomes.push({code});continue;}
  for(const [self,other]of [[a,b],[b,a]]){self.relatedMemoryIds=[...new Set([...(self.relatedMemoryIds||[]),other.id])];self.semanticAssociations||=[];self.semanticAssociations.push({version:1,memoryId:other.id,rule:'model-assessed-relation',entity:r.type,analysisVersion:VERSION,type:r.type,direction:r.direction,from:r.memoryA,to:r.memoryB,trust:'model-assessed-not-independently-verified',evidenceCoordinateSpace:'provenance-stripped-canonical-passage',evidenceA:r.evidenceA,evidenceB:r.evidenceB,sourceHashA:r.snapshotA.sourceHash,sourceHashB:r.snapshotB.sourceHash,...(r.snapshotA.provenance?{provenanceA:r.snapshotA.provenance}:{}),...(r.snapshotB.provenance?{provenanceB:r.snapshotB.provenance}:{})});}
+ evolution.push([a.id,'SEMANTIC_CONNECTION'],[b.id,'SEMANTIC_CONNECTION']);
  outcomes.push({code:'RELATIONSHIP_PERSISTED'});
- }return outcomes;
+ }
+ if(evolve)applyMemoryEvolution(mind.memories,evolution,at);
+ return outcomes;
 }
 
 function areaContext(mind,context){

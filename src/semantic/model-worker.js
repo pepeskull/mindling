@@ -67,7 +67,7 @@ export async function runSemantic(engine,task){
     current.semanticAreaAnalysis={status:'COMPLETED',persisted:areaOutcomes.filter(c=>c==='AREA_PERSISTED').length,rejections:verdict.areas.rejections,outcomes:areaOutcomes};
     current.semanticParentAnalysis={rejections:verdict.parents.rejections,outcomes:persistParents(next.mind,verdict.parents.accepted,context)};
    }
-   const outcomes=persistSemantic(next.mind,verdict.accepted),persisted=outcomes.filter(o=>o.code==='RELATIONSHIP_PERSISTED').length;
+   const outcomes=persistSemantic(next.mind,verdict.accepted,Number.isFinite(next.now)?new Date(next.now).toISOString():undefined),persisted=outcomes.filter(o=>o.code==='RELATIONSHIP_PERSISTED').length;
    if(current.semanticWork?.fingerprint!==fingerprint||current.semanticWork.state!=='DISPATCHED')throw error('STALE_EVIDENCE');
    current.semanticWork.state='COMPLETED';current.semanticWork.updatedAt=now();
    const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='COMPLETED';if(context.parentDiscovery){attempt.areaPairs=context.pairs.map(semanticPairReceipt);attempt.parentPairs=attempt.areaPairs;}attempt.completedAt=now();attempt.result={proposed:result.result.relationships.length,accepted:verdict.accepted.length,persisted,rejections:[...verdict.rejections,...outcomes.filter(o=>o.code!=='RELATIONSHIP_PERSISTED')],pairs:context.pairs.map((pair,index)=>{

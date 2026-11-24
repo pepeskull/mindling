@@ -2,6 +2,7 @@ import {currentAreaRelation} from '../semantic/area-relations.js';
 import {renderHierarchy} from './merge-projection.js';
 import {projectHierarchy,areaRadius} from './knowledge-hierarchy.js';
 import { memoryLabel, contextualLabel } from './memory-label.js';
+import { editableMemoryText } from '../learning/correction-content.js';
 // Read-only presentation projection. Never opens a database, classifies text or
 // guesses a relationship from similarity. Saved IDs are the only memory identity.
 const string=value=>typeof value==='string'?value.trim():'';
@@ -11,6 +12,25 @@ const key=(type,value)=>`${type}:${JSON.stringify(value)}`;
 const fold=value=>value.normalize('NFC').toLocaleLowerCase('en');
 const compare=(a,b)=>a<b?-1:a>b?1:0;
 export const memoryNodeId=id=>key('memory',id);
+const MEMORY_CIRCLE = Object.freeze({base:5.5,historical:4,growth:2.7,limit:.85});
+export function memoryCircleRadius(node,ownerRadius){
+  return node.historical?MEMORY_CIRCLE.historical:Math.min(
+    MEMORY_CIRCLE.base+MEMORY_CIRCLE.growth*Math.sqrt(node.connectionDegree||0),ownerRadius*MEMORY_CIRCLE.limit);
+}
+export function memoryCircleRing(node,strokeWidth){
+  return Math.min(node.r+6,node.ownerRadius-strokeWidth/2-.1);
+}
+function hasCurrentAssociation(memory,target){
+  if(list(memory.modelAssociations).some(link=>link?.memoryId===target.id&&link.operation==='LINK_TO_EXISTING'))return true;
+  return list(memory.semanticAssociations).some(link=>{
+    if(link?.memoryId!==target.id||link.version!==1||!string(link.rule)||!string(link.entity))return false;
+    if(link.rule!=='model-assessed-relation')return true;
+    const a=link.from===memory.id?memory:target,b=a===memory?target:memory;
+    const exact=(record,span,sourceHash)=>span&&string(span.quote)&&editableMemoryText(record).slice(span.start,span.end)===span.quote&&
+      (record.research?.sourceHash??null)===sourceHash;
+    return link.from===a.id&&link.to===b.id&&exact(a,link.evidenceA,link.sourceHashA)&&exact(b,link.evidenceB,link.sourceHashB);
+  });
+}
 export function graphData(state={}) {
   const records=new Map(),categories=new Map(),topics=new Map(),nodes=[],edges=[],pairs=new Set(),edgeKeys=new Set();
   let ignoredRecords=list(state?.memories).filter(value=>!value||typeof value!=='object').length,dangling=0;
@@ -68,6 +88,15 @@ export function graphData(state={}) {
   // Keep unreadable records inspectable in the graph, but exclude them from
   // acquired-knowledge counts alongside historical and superseded records.
   const current=nodes.filter(node=>!node.historical&&string(node.raw.content)),totals=new Map();
+  const currentNodes=new Map(current.map(node=>[node.id,node]));
+  for(const node of nodes)node.connectionDegree=0;
+  for(const edge of edges){
+    if(edge.kind!=='association'||!edge.persisted||!['semanticAssociations','modelAssociations'].includes(edge.origin))continue;
+    const from=currentNodes.get(edge.from),to=currentNodes.get(edge.to);
+    if(from&&to&&(hasCurrentAssociation(from.raw,to.raw)||hasCurrentAssociation(to.raw,from.raw))){
+      from.connectionDegree++;to.connectionDegree++;
+    }
+  }
   for(const node of current)totals.set(node.areaId,(totals.get(node.areaId)||0)+1);
   const counts=areas.map(area=>({id:area.id,label:area.label,count:totals.get(area.id)||0})).filter(axis=>axis.count).sort((a,b)=>b.count-a.count||compare(a.id,b.id));
   const distribution=counts.map(area=>({...area,share:current.length?area.count/current.length:0}));
@@ -109,7 +138,7 @@ export function layoutGraph(graph) {
       const x=cx+Math.cos(angle)*orbit,y=cy+Math.sin(angle)*orbit;
       result.set(topic.id,{...topic,x,y,r:8});
       const members=(membersByTopic.get(topic.id)||[]).slice().sort((a,b)=>compare(a.id,b.id));
-      members.forEach((node,k)=>{const theta=k*2.399963229728653+angle,dist=35+22*Math.sqrt(k);result.set(node.id,{...node,x:x+Math.cos(theta)*dist,y:y+Math.sin(theta)*dist,r:node.historical?4:5.5});});
+      members.forEach((node,k)=>{const theta=k*2.399963229728653+angle,dist=35+22*Math.sqrt(k),ownerRadius=topic.hierarchyArea?8:areaRadius(area);result.set(node.id,{...node,x:x+Math.cos(theta)*dist,y:y+Math.sin(theta)*dist,ownerRadius,r:memoryCircleRadius(node,ownerRadius)});});
     });
   }
   return {nodes:[...result.values()],edges:graph.edges.filter(edge=>byId.has(edge.from)&&byId.has(edge.to)),width:Math.max(300,widths.reduce((a,b)=>a+b,0)),height:Math.max(260,heights.reduce((a,b)=>a+b,0))};

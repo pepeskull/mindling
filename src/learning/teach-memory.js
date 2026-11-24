@@ -26,7 +26,7 @@ export async function teachMemory(app,{id,text,activity,taskId=null},{guard=()=>
   },journal?{journal:{id,type:activity}}:{});
   const event=app.state.mind.history.find(item=>item.id===id);
   const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered.',NO_MEMORY_CHANGE:'No memory change was needed.',FLAG_CONTRADICTION:'Conflicting claim recorded; existing knowledge was preserved.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.',BATCH:'Independent statements processed together; existing history was preserved.'};
-  const message=event?.kind==='reinforcement'?'Already learned. Memory reinforced.':messages[event?.operation]||'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.';
+  const message=event?.kind==='reinforcement'?(event.strengthenedMemoryIds?.length?'Already learned. Memory reinforced.':'Already learned.'):messages[event?.operation]||'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.';
   const operations=event?.operations||[event?.operation];
   return {event,message,refused:operations.every(operation=>['REJECT_UNSAFE_INSTRUCTION','VERIFY_BEFORE_STORAGE','ASK_FOR_CLARIFICATION'].includes(operation))};
 }

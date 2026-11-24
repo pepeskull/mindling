@@ -340,6 +340,10 @@ export class Dashboard {
     const interaction=this.#interaction,reply=result?.talkResponse;
     if(result?.needsClarification&&reply?.clarification){this.#showQuestion(id,reply.clarification);return;}
     if(interaction.clarification)return;
+    if(reply?.researchDeferred&&reply.researchMessage){
+      this.#showResponse(id,{state:'ready',message:reply.researchMessage,answer:reply.answer});
+      return;
+    }
     const taskId=result?.learningTaskId||reply?.researchTaskId;
     if(taskId){
       interaction.taskId=taskId;
@@ -349,7 +353,7 @@ export class Dashboard {
     }else{
       const message=activityResult(interaction.activity,result,this.#state?.memories);
       const answer=result?.accepted&&interaction.activity==='TALK'&&reply?.answer===message?message:undefined;
-      this.#showResponse(id,{state:result?.accepted?'ready':'error',message:answer?'':message,answer});
+      this.#showResponse(id,{state:result?.accepted||result?.reason==='DAILY_XP_LIMIT_REACHED'?'ready':'error',message:answer?'':message,answer});
     }
   }
   canContinueResearch(id){return this.#current(id)&&this.primaryView==='dashboard';}

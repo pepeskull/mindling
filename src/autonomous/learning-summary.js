@@ -1,6 +1,8 @@
 import {refinementMessage} from './evidence-refinement.js';
 import { taskProgress } from './tasks.js';
+import { DAILY_RESEARCH_PAUSE, DAILY_RESEARCH_MESSAGE } from './research-xp.js';
 const PAUSES={
+ [DAILY_RESEARCH_PAUSE]:DAILY_RESEARCH_MESSAGE,
  NO_MODEL_CANDIDATES:'The search returned cited passages, but the evaluator proposed no candidate claims. No claims were rejected or saved.',
  EVALUATION_IN_PROGRESS:'This exact research request is already running. Its reserved budget is protected; it will not be automatically repeated.',
  ACCESS_DISABLED:'Research authorization is off. Existing knowledge is preserved.',

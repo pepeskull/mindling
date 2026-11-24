@@ -69,15 +69,17 @@ export function understandInput(text, activity, {answers={}}={}) {
 }
 
 export function knowledgeGap(interpretation,context,reply=null,now=Date.now(),mind=null) {
-  const relevant=context.candidates.filter(item=>item.ranking.score>0);
-  const reasons=[];
-  if(!relevant.length)reasons.push('No relevant current stored knowledge was retrieved.');
-  if(relevant.some(item=>item.contradictions.length))reasons.push('Relevant stored claims contain recorded conflicts.');
+  const cited=new Set(reply?.memoryIds||[]);
+  const relevant=context.candidates.filter(item=>reply?cited.has(item.id):item.ranking.score>0);
+  const reasons=[],conflicted=relevant.some(item=>item.contradictions.length);
+  if(!relevant.length)reasons.push(reply?'No current stored claims were cited in the answer.':'No relevant current stored knowledge was retrieved.');
+  if(conflicted)reasons.push('Relevant stored claims contain recorded conflicts.');
   if(relevant.some(item=>item.integrity.sourceStatus==='incomplete'||!item.complete))reasons.push('Some relevant source text or retrieval context is incomplete.');
   const datedSource=relevant.some(item=>{const source=mind?.memories?.find(memory=>memory.id===item.id)?.research;return source&&Number.isSafeInteger(source.validAt)&&source.validAt<=now&&now-source.validAt<=86400000&&source.observedAt<=now&&now-source.observedAt<=86400000;});
-  if(interpretation.timeSensitive&&!datedSource)reasons.push('A current answer needs a freshly dated source; saved text alone does not establish freshness.');
+  const freshnessGap=interpretation.timeSensitive&&!datedSource;
+  if(freshnessGap)reasons.push('A current answer needs a freshly dated source; saved text alone does not establish freshness.');
   if(interpretation.requiresResearch)reasons.push('Topic coverage and requested depth cannot be established from lexical matches alone.');
   if(reply?.insufficientInformation||reply?.uncertainty==='high')reasons.push('The reasoning response reports missing or uncertain support.');
   // Lexical relevance is a hint, not a sufficient-knowledge certificate.
-  return {needsResearch:reasons.length>0,reasons,referenceIds:relevant.slice(0,24).map(item=>item.id),assessedAt:now,sourceQuality:'Stored claims are not independent source verification.'};
+  return {needsResearch:reasons.length>0,reasons,conflicted,freshnessGap,referenceIds:relevant.slice(0,24).map(item=>item.id),assessedAt:now,sourceQuality:'Stored claims are not independent source verification.'};
 }

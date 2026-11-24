@@ -1,3 +1,4 @@
+import {newMemoryEvolution} from '../../memory/evolution-policy.js';
 import { connectSemanticMemory } from '../../semantic/memory-connections.js';
 import { recordPathwayLearning } from '../../pathways/pathways.js';
 import { capturedContent, sourceStatus } from '../../memory/content-integrity.js';
@@ -11,7 +12,7 @@ export function serviceMetadata(decision,activity,at) {
 }
 export function recordMemory(mind,{id,text,decision,event,at,associations,connect=true}) {
   if(id.length>100||mind.memories.some(memory=>memory.id===id))throw Error('Memory identifier conflict. No Energy or XP changed.');
-  const memory={id,content:text,contentIntegrity:capturedContent(text),concept:decision.concept,normalized:normalize(text),normalizedConcept:normalize(decision.concept),createdAt:at,strength:.3,activations:1,
+  const memory={id,content:text,contentIntegrity:capturedContent(text),concept:decision.concept,normalized:normalize(text),normalizedConcept:normalize(decision.concept),createdAt:at,...newMemoryEvolution(at),
     neuronIds:[...associations.neuronIds],synapseIds:[...associations.synapseIds],relatedMemoryIds:[],source:'SERVICE',areaSuggestion:decision.category,
     analysis:serviceMetadata(decision,event.activity,at),submissionId:event.id,
     intelligence:{kind:decision.kind,certainty:decision.certainty,current:decision.kind!=='historical',verification:'unverified-player-claim',operation:decision.operation,relationship:decision.relationship}};
@@ -35,15 +36,15 @@ export function decomposeLegacy(mind,parent,at) {
   parent.intelligence={...parent.intelligence,kind:parent.intelligence?.kind||parent.kind||'claim',current:false};
   mind.memories.push(...children);return children;
 }
-export function reinforceMemory(mind,target,text,at) {
+export function reinforceMemory(mind,target,text) {
   const revision=normalize(target.content),key=normalize(text);
   if(target.reinforcementRevision!==revision){target.reinforcementRevision=revision;target.reinforcementVariants=[];}
   const variants=target.reinforcementVariants||[];
   // At most three distinct reinforcements per saved value, never one per retry or day.
   if(!variants.includes(key)&&variants.length<3){
-    target.reinforcementVariants=[...variants,key];target.strength=Math.min(1,(target.strength||0)+.05);
-    target.activations=(target.activations||0)+1;target.reinforcementCount=(target.reinforcementCount||0)+1;
+    target.reinforcementVariants=[...variants,key];target.reinforcementCount=(target.reinforcementCount||0)+1;
     for(const edge of mind.synapses.filter(edge=>target.synapseIds?.includes(edge.id))){edge.strength=Math.min(1,edge.strength+.05);edge.activations++;}
+    return true;
   }
-  target.lastReinforcedAt=at;
+  return false;
 }

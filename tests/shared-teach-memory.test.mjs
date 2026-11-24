@@ -54,7 +54,7 @@ test('replay is rejected before another inference; exact reinforcement reuses th
 });
 test('the shared Deep Training branch retains Stage Preview metadata and existing activity cost',async()=>{
  const originalFetch=globalThis.fetch,example=cases[1];globalThis.fetch=async()=>Response.json({service:'mindling-learning-service',assessment:assessment(example)});
- try{for(const a of [app('normal-deep'),app('preview-deep')]){await teachMemory(a,{id:'deep-event',text:example.text,activity:'DEEP_TRAINING'});assert.equal(a.state.mind.memories[0].category,example.category);assert.equal(a.state.mind.memories[0].analysis.activity,'DEEP_TRAINING');assert.equal(a.state.mind.energy.remaining,7);assert.equal(a.state.mind.lifetimeXP,XP.concept);}}finally{globalThis.fetch=originalFetch;}
+ try{for(const a of [app('normal-deep'),app('preview-deep')]){await teachMemory(a,{id:'deep-event',text:example.text,activity:'DEEP_TRAINING'});assert.equal(a.state.mind.memories[0].category,example.category);assert.equal(a.state.mind.memories[0].analysis.activity,'DEEP_TRAINING');assert.equal(a.state.mind.energy.remaining,7);assert.equal(a.state.mind.lifetimeXP,XP.understanding);}}finally{globalThis.fetch=originalFetch;}
 });
 test('existing production hydration/migration remains compatible with service-classified new memories',async()=>{
  const {migrateGameplay}=await import('../src/app/gameplay-state.js');

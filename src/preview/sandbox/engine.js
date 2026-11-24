@@ -1,3 +1,4 @@
+import {MEMORY_POLICY,applyMemoryEvolution,connectionEvolution,newMemoryEvolution,reinforcementEvent} from '../../memory/evolution-policy.js';
 import { XP, activityReward, cappedXPAward } from '../../economy/xp.js';
 export { XP } from '../../economy/xp.js';
 import { connectSemanticMemory } from '../../semantic/memory-connections.js';
@@ -82,7 +83,7 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
   const associations=replaced?{neuronIds:[...(replaced.neuronIds||[])],synapseIds:[...(replaced.synapseIds||[])]}:growCanonical(n,id);
   // Lexical retrieval candidates are not authority for persistent links.
   const related=[];
-  n.memories.push({id,content:a.memory,contentIntegrity:capturedContent(a.memory),concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),strength:.3,activations:1,neuronIds:associations.neuronIds,synapseIds:associations.synapseIds,relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
+  n.memories.push({id,content:a.memory,contentIntegrity:capturedContent(a.memory),concept:a.concept,normalized:key,createdAt:new Date(next.now).toISOString(),...newMemoryEvolution(new Date(next.now).toISOString()),neuronIds:associations.neuronIds,synapseIds:associations.synapseIds,relatedMemoryIds:related,source:a.service?'SERVICE':'NATIVE',areaSuggestion:a.area});
   const memory=n.memories.at(-1);
   assignCategory(n,memory,a);memory.relationship=a.relationship;memory.normalizedConcept=normalize(a.concept);
   if(a.native)memory.native={...a.native,provenance:{...a.native.provenance,activity,learnedAt:memory.createdAt}};
@@ -97,6 +98,8 @@ export function learn(state,{id,text,mindId=state.mind?.id,activity='TEACH',asse
 
   if(replaced)linkResearchSuccessor(n,n.memories.find(item=>item.id===replaced.id),memory);
   connectSemanticMemory(n,memory.id);
+  if(!research)applyMemoryEvolution(n.memories,connectionEvolution(m.memories,n.memories),memory.createdAt);
+  if(research)memory.lastEvidenceAt=new Date(autonomous.observedAt).toISOString();
   recordPathwayLearning(n,memory,{eventId:id,activity,at:next.now});
   n.nativeKnowledge=developmentStatistics(n.memories);
   n.areas=[...new Set([...(n.areas||[]),...n.memories.map(v=>v.areaSuggestion).filter(Boolean)])];
@@ -116,16 +119,17 @@ export function reinforce(state,{id,text,memoryId,mindId=state.mind?.id,activity
   if(energy.remaining<cost)throw Error('Not enough Energy');
   const next=structuredClone(state),n=next.mind,target=n.memories.find(v=>v.id===memoryId);
   stimulatePreviewLife(n.life,activity,next.now);n.energy=spendEnergy(energy,cost,next.now);n.lastLearning=next.now;n.processed.push(id);
-  target.strength=Math.min(1,(target.strength||0)+.05);target.activations=(target.activations||0)+1;
-  target.reinforcementCount=(target.reinforcementCount||0)+1;target.lastReinforcedAt=new Date(next.now).toISOString();
+  const qualifying=normalize(editableMemoryText(target))!==key&&!(target.matchedVariants||[]).some(variant=>normalize(variant)===key);
+  const strengthenedMemoryIds=qualifying?applyMemoryEvolution(n.memories,[[target.id,reinforcementEvent(activity)]],new Date(next.now).toISOString()):[];
+  target.reinforcementCount=(target.reinforcementCount||0)+1;
   target.matchedVariants=[...new Set([...(target.matchedVariants||[]),text])].slice(-5);
   for(const edge of n.synapses.filter(e=>target.synapseIds?.includes(e.id))){edge.strength=Math.min(1,edge.strength+.05);edge.activations++;}
   n.activityHistory=[...(n.activityHistory||[]),{at:next.now,key,type:activity}].slice(-200);
-  n.history.push({id,day,at:next.now,xp:0,kind:'reinforcement',memoryId,concept:target.concept});
+  n.history.push({id,day,at:next.now,xp:0,kind:'reinforcement',strengthenedMemoryIds,memoryId,concept:target.concept});
   n.nativeKnowledge=developmentStatistics(n.memories);
   return next;
 }
-export function talk(state,text,{id=crypto.randomUUID(),rewardEligible=false}={}) {
+export function talk(state,text,{id=crypto.randomUUID(),rewardEligible=false,usedMemoryIds=[]}={}) {
   const m=state.mind,key=normalize(text);
   if(!m||m.life.lifeState!=='ALIVE'||state.tombstones.some(t=>t.id===m.id))throw Error('No living matching test Mindling');
   if(typeof id!=='string'||!id||id.length>100||m.processed.includes(id)||m.memories.some(v=>v.id===id))throw Error('Activity event already processed or invalid');
@@ -137,8 +141,12 @@ export function talk(state,text,{id=crypto.randomUUID(),rewardEligible=false}={}
   stimulatePreviewLife(n.life,'TALK',next.now);n.processed.push(id);n.energy=spendEnergy(energy,1,next.now);
   n.activityHistory=[...(n.activityHistory||[]),{at:next.now,key,type:'TALK'}].slice(-200);
   n.stageXP+=award;n.lifetimeXP+=award;
-  n.history.push({id,day,at:next.now,xp:award,kind:'talk',activity:'TALK',energySpent:1});
+  const recalledIds=[...new Set(usedMemoryIds)];
+  const recent=new Set(n.history.filter(event=>event.kind==='talk'&&next.now-event.at<MEMORY_POLICY.recallIntervalMs).flatMap(event=>event.activatedMemoryIds||[]));
+  const activatedMemoryIds=recalledIds.filter(memoryId=>!recent.has(memoryId));
+  n.history.push({id,day,at:next.now,xp:award,rewardEligible,kind:'talk',activity:'TALK',energySpent:1,activatedMemoryIds});
   const recalled=retrieveMemories(text,n.memories);
+  applyMemoryEvolution(n.memories,activatedMemoryIds.map(memoryId=>[memoryId,'TALK_RECALL']),new Date(next.now).toISOString());
   n.nativeRecall={at:next.now,memoryIds:recalled.map(item=>item.memory.id),method:'lexical',verification:'unverified-player-claims'};
   return next;
 }

@@ -59,7 +59,7 @@ test('real case 4: finance preference keeps its category, starting strength, act
   const s=fresh();s.mind.categories=[{id:CATEGORY,name:'personal profile'}];
   const d=decision({kind:'preference',concept:'Enjoys finance',categoryId:CATEGORY,topic:'finance interest',confidence:.9});
   const n=apply(s,'Jag tycker om finans',d,'aaad0828-8e0d-4240-b790-ed9d8b827b54');
-  const m=n.mind.memories[0];assert.equal(m.id,'aaad0828-8e0d-4240-b790-ed9d8b827b54');assert.equal(m.intelligence.kind,'preference');assert.equal(m.categoryId,CATEGORY);assert.equal(m.strength,.3);assert.equal(m.activations,1);assert.equal(m.neuronIds.length,2);assert.equal(m.synapseIds.length,1);assert.equal(n.mind.energy.remaining,8);
+  const m=n.mind.memories[0];assert.equal(m.id,'aaad0828-8e0d-4240-b790-ed9d8b827b54');assert.equal(m.intelligence.kind,'preference');assert.equal(m.categoryId,CATEGORY);assert.equal(m.strength,.1);assert.equal(m.activations,1);assert.equal(m.neuronIds.length,2);assert.equal(m.synapseIds.length,1);assert.equal(n.mind.energy.remaining,8);
 });
 for(const [activity,cost,xp] of [['TALK',1,0],['TEACH',2,5],['DEEP_TRAINING',3,10]])test(`${activity} charges exactly ${cost} for committed new learning and awards ${xp} XP`,()=>{
   const n=apply(fresh(),'Jag tycker om finans',decision({kind:'preference'}),'paid',activity);

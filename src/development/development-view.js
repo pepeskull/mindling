@@ -67,7 +67,8 @@ export class DevelopmentView {
     const dailyProgress = element('progress', `${data.dailyXP} of ${XP.daily} XP today`, 'daily-xp-progress');
     dailyProgress.max = XP.daily; dailyProgress.value = data.dailyXP;
     dailyProgress.setAttribute('aria-label', 'Daily XP earned today'); xp.append(dailyProgress);
-    if (data.dailyXP === XP.daily) xp.append(element('p', 'Daily XP cap reached', 'daily-xp-cap'));
+    if (data.dailyXP === XP.daily) xp.append(element('p', 'Research paused — Daily XP limit reached', 'daily-xp-cap'));
+    else if(data.researchAvailable&&!data.deceased)xp.append(element('p','Research available','daily-xp-cap'));
     const areas = this.root.querySelector('[data-development-areas]'); areas.replaceChildren();
     for (const area of data.areas) { const item = element('li'); item.append(element('span', area.label), element('strong', String(area.count))); areas.append(item); }
     if (!data.areas.length) areas.append(element('li', 'No current knowledge areas yet.', 'development-muted'));

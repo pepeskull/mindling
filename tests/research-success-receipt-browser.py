@@ -25,13 +25,13 @@ with sync_playwright() as p:
           let store=await (preview?new PreviewStore():new MindlingDatabase()).open();
           const read=async()=>preview?store.read():(await store.get('gameplay','primary')).state;
           const write=(reducer,options)=>preview?store.change(reducer,options):store.changeGameplay(reducer,options);
-          await write(()=>newMindling(createSandbox(),{id:'receipt-browser',confirmed:true,pathways:['Gaming','Developer','Social']}));
+          await write(()=>newMindling(createSandbox(Date.now()),{id:'receipt-browser',confirmed:true,pathways:['Gaming','Developer','Social']}));
           const prior={id:'previous',content:'An existing retained teaching claim remains unchanged.',category:'History',categoryId:'prior-area',topic:'History',source:'NATIVE',neuronIds:[],synapseIds:[],relatedMemoryIds:[]};
           if(kind!=='success')await write(s=>{s.mind.memories.push(prior);return s;});
           const capped=kind==='daily_cap';
           if(capped)await write(s=>{
-            s.mind.stageXP=s.mind.lifetimeXP=100;
-            s.mind.history.push({id:'previous-xp',at:s.now,day:Math.floor(s.now/86400000),xp:100,kind:'concept'});
+            s.mind.stageXP=s.mind.lifetimeXP=99;
+            s.mind.history.push({id:'previous-xp',at:s.now,day:Math.floor(s.now/86400000),xp:99,kind:'concept'});
             return s;
           });
           let injected=false;
@@ -53,6 +53,11 @@ with sync_playwright() as p:
           globalThis.fetch=async(url,options)=>{
             networkCalls++;const request=url==='/api/mindling/reason'?JSON.parse(options.body):null;
             if(request?.mode==='research-acquire')calls++;
+            if(capped&&request?.mode==='research-acquire')await app.change(s=>{
+              s.mind.stageXP++;s.mind.lifetimeXP++;
+              s.mind.history.push({id:'in-flight-cap',at:s.now,day:Math.floor(s.now/86400000),xp:1,kind:'talk'});
+              return s;
+            });
             const pendingResponse=originalFetch(url,options);
             if(request?.mode==='research-acquire'&&['hidden_inflight','visibility_cycles'].includes(kind)){
               Object.defineProperty(document,'hidden',{value:true,configurable:true});document.dispatchEvent(new Event('visibilitychange'));
@@ -131,7 +136,8 @@ with sync_playwright() as p:
             check(JSON.stringify(app.state.mind.memories)===initial.memories,'failure changed previous knowledge');
           }
           check(calls===1&&value.sourceRequests===4&&value.modelCalls===3,'duplicate dispatch or changed ceilings');
-          check(app.state.mind.energy.remaining===initial.energy-(capped?2:0)&&app.state.mind.lifetimeXP===initial.xp&&JSON.stringify(app.state.player)===initial.player&&JSON.stringify(app.state.mind.pathways)===initial.origins,'identity/economy/origins changed');
+          const expectedXP=initial.xp+(capped?1:value.status==='COMPLETED'?5:0);
+          check(app.state.mind.energy.remaining===initial.energy-(capped?2:0)&&app.state.mind.lifetimeXP===expectedXP&&JSON.stringify(app.state.player)===initial.player&&JSON.stringify(app.state.mind.pathways)===initial.origins,'identity/economy/origins changed');
           if(kind!=='success')check(JSON.stringify(app.state.mind.memories.find(m=>m.id==='previous'))===JSON.stringify(prior),'existing memory changed');
           if(value.status==='COMPLETED')for(const memory of app.state.mind.memories.filter(m=>m.research)){const source=value.sourceReferences.find(s=>s.url===memory.research.sourceURL);check(source.passages.includes(memory.research.evidenceText)&&source.hash===memory.research.sourceHash&&memory.research.verification==='tool-cited-unverified-synthesis','provenance changed');}
           engine.destroy();store.close();globalThis.fetch=originalFetch;return 'PASS';

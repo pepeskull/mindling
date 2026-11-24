@@ -27,6 +27,10 @@ SEED = """async preview=>{
   state.mind.stageXP=53;
   state.mind.lifetimeXP=189;
   state.mind.history=[{id:'yesterday',at:now-86400000,day:day-1,xp:90},{id:'today',at:now,day,xp:99}];
+  const content='The duration of a waggle run increases with the distance to the food source.';
+  state.mind.memories=[{id:'saved-waggle',content,concept:'Waggle run duration',category:'Behavior',kind:'claim',source:'NATIVE',
+    createdAt:new Date(now).toISOString(),contentIntegrity:{version:1,status:'captured',length:content.length},
+    strength:.3,activations:1,neuronIds:['origin'],synapseIds:[],relatedMemoryIds:[]}];
   if(preview)await store.change(()=>state);
   else await store.changeGameplay(()=>state);
   store.close();
@@ -51,7 +55,7 @@ def check_xp(page, stage, daily):
     assert panel.get_by_text(f'{daily} / 100 XP today', exact=True).is_visible()
     assert (stage_bar.get_attribute('max'), stage_bar.get_attribute('value')) == ('125', str(stage))
     assert (daily_bar.get_attribute('max'), daily_bar.get_attribute('value')) == ('100', str(daily))
-    assert panel.get_by_text('Daily XP cap reached', exact=True).count() == (1 if daily == 100 else 0)
+    assert panel.get_by_text('Research paused — Daily XP limit reached', exact=True).count() == (1 if daily == 100 else 0)
     assert panel.evaluate("""el=>{
       const [stage,daily]=el.querySelectorAll('progress'),counter=el.querySelector('.daily-xp-counter');
       const a=stage.getBoundingClientRect(),b=daily.getBoundingClientRect();
@@ -81,15 +85,44 @@ with sync_playwright() as playwright:
           await fixtureApp.change(s=>talk(s,'I would like to learn about memory today.',{id:'one-point',rewardEligible:true}));
         }""")
         check_xp(page, 54, 100)
+        assert page.evaluate("""async preview=>{
+          const {knowledgeTalk}=await import('/src/cognition/talk-response.js');
+          const {learningEngine}=await import('/src/autonomous/learning-engine.js');
+          const {understandInput}=await import('/src/learning/input-understanding.js');
+          const app=fixtureApp,original=window.fetch,content=app.state.mind.memories[0].content;
+          let calls=0;
+          window.fetch=async(url,options)=>{
+            if(url!=='/api/mindling/reason')return original(url,options);
+            const request=JSON.parse(options.body);
+            if(request.mode!=='talk')throw Error('No research may be dispatched at the cap');
+            calls++;
+            return Response.json({service:'mindling-reasoning-service',kind:'talk',reasoning:{answer:content,explanation:'The saved claim explains the direction of change.',
+              facts:[{memoryId:'saved-waggle',quote:content,basis:'stored_claim'}],inferences:[],memoryIds:['saved-waggle'],
+              uncertainty:'low',insufficientInformation:false,missingInformation:[]}});
+          };
+          try{
+            const reply=await knowledgeTalk(app,'How does waggle run duration relate to food source distance?','grounded-at-cap',{journal:!preview});
+            let paused=false;
+            try{await learningEngine(app).prepare(understandInput('Learn about honeybee habitats','TEACH'),'blocked-at-cap');}
+            catch(error){paused=error.code==='DAILY_XP_LIMIT_REACHED';}
+            return paused&&calls===1&&!reply.researchTaskId&&reply.answer===content&&app.state.mind.memories[0].activations===2;
+          }finally{window.fetch=original;}
+        }""", preview)
+        page.reload()
+        page.wait_for_function('window.fixtureReady')
+        page.locator('[data-view=development]').click()
+        check_xp(page, 54, 100)
         page.set_viewport_size({'width': 390, 'height': 760})
         check_xp(page, 54, 100)
         page.evaluate('async()=>{window.fixtureWall+=60000;await fixtureApp.change(s=>s);}')
         check_xp(page, 54, 0)
         assert page.evaluate("""async preview=>{
           const app=fixtureApp,state=preview?await app.store.read():(await app.db.get('gameplay','primary')).state;
-          return state.mind.stageXP===54&&state.mind.lifetimeXP===190&&state.mind.history.at(-1).xp===1;
+          const memory=state.mind.memories.find(m=>m.id==='saved-waggle');
+          return state.mind.stageXP===54&&state.mind.lifetimeXP===190&&state.mind.history.find(e=>e.id==='one-point').xp===1&&
+            state.mind.history.find(e=>e.id==='grounded-at-cap').xp===0&&memory.strength===.3+.01*(1-.3)&&memory.activations===2;
         }""", preview)
         assert not errors, errors
         context.close()
-        print(f'{"Stage Preview" if preview else "Normal"}: capped award, separate accessible bars, mobile layout and daily reset passed')
+        print(f'{"Stage Preview" if preview else "Normal"}: capped award, grounded Talk, blocked Research, reload, accessible bars and daily reset passed')
     browser.close()

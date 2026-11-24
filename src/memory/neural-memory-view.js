@@ -1,3 +1,4 @@
+import {displayMemoryStrength} from './evolution-policy.js';
 import {areaPairVisualState} from '../semantic/area-pair-contract.js';
 import {mergeProposal,commitHierarchy} from './knowledge-hierarchy.js';
 import {cleanView} from './view-state.js';
@@ -5,7 +6,8 @@ import {clusterPositions,ElasticAreaDrag} from './cluster-drag.js';
 import {NEUTRAL_COLOR,colors,areaColor} from './area-colors.js';
 import { VIEW_ZOOM } from '../ui/view-zoom.js';
 import { memoryLabel, memoryButton } from './memory-label.js';
-import {graphData,filterGraph,layoutGraph,memorySignature,memoryNodeId} from './graph-data.js';
+import {graphData,filterGraph,layoutGraph,memorySignature,memoryNodeId,memoryCircleRadius,memoryCircleRing} from './graph-data.js';
+import {renderHierarchy} from './merge-projection.js';
 import { researchPresentation } from '../ui/player-communication.js';
 import { learningSummary } from '../autonomous/learning-summary.js';
 import { tasksFor } from '../autonomous/tasks.js';
@@ -98,7 +100,22 @@ export class NeuralMemoryView {
   setVisible(visible){if(this.abort.signal.aborted)return;this.visible=visible;if(visible){if(this.dirty)this.queueBuild();else this.drawSoon();}else{this.cancelDrag?.();this.capturePositions();this.scheduleSave();this.stopFlow();cancelAnimationFrame(this.frame);this.frame=null;this.hideTooltip();}}
   queueBuild(){if(this.pending||!this.state||document.hidden||this.loadingView||this.abort.signal.aborted)return;this.pending=true;const token=this.generation;setTimeout(()=>{this.pending=false;if(token!==this.generation||!this.visible||document.hidden||this.loadingView||!this.state)return;this.graph=graphData(this.state);this.renderStats();this.rebuild(!this.fitted);this.renderRadar();this.dirty=false;},0);}
   renderStats(){const strip=this.root.querySelector('.memory-stat-strip');strip.replaceChildren();for(const [value,name] of [[this.graph.stats.canonical,'Canonical memories'],[this.graph.stats.areas,'Knowledge areas'],[this.graph.stats.associations,'Stored associations']]){const item=el('div');if(name==='Stored associations')item.title='Unique undirected persisted memory associations. Reciprocal links count once; organization, history and submission groups are excluded.';item.append(el('strong',value),el('span',name));strip.append(item);}}
-  rebuild(fit=false){if(!this.graph||!this.state||this.loadingView||this.abort.signal.aborted)return;this.cancelDrag?.();this.hover=null;this.hideTooltip();this.filtered=withResearch(filterGraph(this.graph,{area:this.area,query:this.query}),this.state,this.graph);this.taskNodes=new Map(learningNodes(this.state,this.graph).map(node=>[node.id,node]));this.capturePositions();this.layout=layoutResearch(layoutGraph(this.filtered),this.filtered);this.applyPositions();this.layoutHierarchyRevision=this.state.knowledgeHierarchy?.revision||0;this.positions=new Map(this.layout.nodes.map(node=>[node.id,node]));this.colors=new Map(this.graph.areas.map(area=>[area.id,area.label==='Uncategorized'?NEUTRAL_COLOR:areaColor(area.id)]));if(this.selected&&!this.positions.has(this.selected)&&!this.taskNodes.has(this.selected))this.selected=null;
+  rebuild(fit=false){if(!this.graph||!this.state||this.loadingView||this.abort.signal.aborted)return;this.filtered=withResearch(filterGraph(this.graph,{area:this.area,query:this.query}),this.state,this.graph);this.taskNodes=new Map(learningNodes(this.state,this.graph).map(node=>[node.id,node]));
+    const geometry=JSON.stringify(this.filtered.nodes.map(node=>[node.id,node.kind,node.areaId,node.topicId,node.parentId,node.rootId,node.descendantMemoryIds]));
+    if(this.layout&&geometry===this.layoutGeometry){
+      const projected=renderHierarchy(this.filtered),byId=new Map(projected.nodes.map(node=>[node.id,node]));
+      for(const node of this.layout.nodes){
+        Object.assign(node,byId.get(node.id));
+        if(node.kind==='memory')node.r=memoryCircleRadius(node,node.ownerRadius);
+      }
+      this.layout.edges=projected.edges.filter(edge=>this.positions.has(edge.from)&&this.positions.has(edge.to));
+    }else{
+      this.cancelDrag?.();this.hover=null;this.hideTooltip();this.capturePositions();
+      this.layout=layoutResearch(layoutGraph(this.filtered),this.filtered);this.applyPositions();
+      this.positions=new Map(this.layout.nodes.map(node=>[node.id,node]));
+      this.layoutGeometry=geometry;
+    }
+    this.layoutHierarchyRevision=this.state.knowledgeHierarchy?.revision||0;this.colors=new Map(this.graph.areas.map(area=>[area.id,area.label==='Uncategorized'?NEUTRAL_COLOR:areaColor(area.id)]));if(this.selected&&!this.positions.has(this.selected)&&!this.taskNodes.has(this.selected))this.selected=null;
     const empty=this.root.querySelector('.graph-empty');empty.hidden=Boolean(this.filtered.memories.length||this.filtered.nodes.some(node=>node.kind==='research'));empty.querySelector('p').textContent=this.graph.stats.canonical?'No memories in this view.':'Your first connection starts here.';empty.querySelector('span').textContent=this.graph.stats.canonical?'Try another area or a different search.':'Teach your Mindling something worth remembering.';
     this.root.querySelector('.graph-message').textContent=`${this.filtered.memories.length} of ${this.graph.stats.canonical} canonical memories in view${this.layout.nodes.length>400?' · Zoom in for fine edges; select a memory to highlight stored associations.':''}${this.graph.stats.ignoredRecords?` · ${this.graph.stats.ignoredRecords} records without unique IDs were not plotted.`:''}`;
     this.renderIndex();this.renderTaskIndex();this.renderInspector();if(fit||this.autoFit)this.fit();else this.drawSoon();}
@@ -146,7 +163,11 @@ export class NeuralMemoryView {
       ctx.strokeStyle=visual.state==='valid'?'#83dba6':visual.state==='paused'?'#c5af84':'#969a9f';
       ctx.lineWidth=1.5/this.zoom;
       if(visual.state==='pending'||visual.state==='paused')ctx.setLineDash([4/this.zoom,5/this.zoom]);
-      for(const node of nodes){ctx.beginPath();ctx.arc(node.x,node.y,node.r+6/this.zoom,0,Math.PI*2);ctx.stroke();}
+      for(const node of nodes){
+        const bounded=node.kind==='memory'&&!node.historical;
+        ctx.lineWidth=bounded?Math.min(1.5/this.zoom,(node.ownerRadius-node.r)/2):1.5/this.zoom;
+        ctx.beginPath();ctx.arc(node.x,node.y,bounded?memoryCircleRing(node,ctx.lineWidth):node.r+6/this.zoom,0,Math.PI*2);ctx.stroke();
+      }
       ctx.setLineDash([]);
     }
     const labelCells=new Set();let labelCount=0;
@@ -157,7 +178,7 @@ export class NeuralMemoryView {
       ctx.font=`${10/this.zoom}px Inter, sans-serif`;ctx.textAlign='center';ctx.fillStyle='#c3c6ca';ctx.fillText(compact(node.label,25),node.x,node.y+node.r+20/this.zoom);
       if(node.root){ctx.fillStyle='#92959b';ctx.font=`${8/this.zoom}px Inter, sans-serif`;ctx.fillText(`${learningSummary(node.task).status} · ${Math.round(node.progress*100)}%`,node.x,node.y+node.r+34/this.zoom);}
       ctx.restore();continue;
-    }if(overview&&node.kind==='memory'&&!lit&&!muted.has(node.id)){const tone=node.historical?'#577970':color+'bb';if(!dotBatches.has(tone))dotBatches.set(tone,[]);dotBatches.get(tone).push(node);continue;}ctx.beginPath();ctx.arc(node.x,node.y,node.r,0,Math.PI*2);ctx.globalAlpha=muted.has(node.id)?.45:1;ctx.fillStyle=node.historical?'#122127':color+(lit?'ff':node.kind==='memory'?'bb':'ee');ctx.shadowColor=color;ctx.shadowBlur=lit?20:node.kind==='area'?18:0;ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=muted.has(node.id)?color:lit?'#d9fff4':color;ctx.lineWidth=lit?2:1;ctx.stroke();if(lit||node.kind==='area'){ctx.beginPath();ctx.arc(node.x,node.y,node.r+6,0,Math.PI*2);ctx.strokeStyle=color+'66';ctx.lineWidth=.7;ctx.stroke();}
+    }if(overview&&node.kind==='memory'&&!lit&&!muted.has(node.id)){const tone=node.historical?'#577970':color+'bb';if(!dotBatches.has(tone))dotBatches.set(tone,[]);dotBatches.get(tone).push(node);continue;}ctx.beginPath();ctx.arc(node.x,node.y,node.r,0,Math.PI*2);ctx.globalAlpha=muted.has(node.id)?.45:1;ctx.fillStyle=node.historical?'#122127':color+(lit?'ff':node.kind==='memory'?'bb':'ee');ctx.shadowColor=color;ctx.shadowBlur=node.kind==='memory'&&!node.historical?0:lit?20:node.kind==='area'?18:0;ctx.fill();ctx.shadowBlur=0;ctx.strokeStyle=muted.has(node.id)?color:lit?'#d9fff4':color;ctx.lineWidth=lit?2:1;ctx.stroke();if(lit||node.kind==='area'){ctx.beginPath();ctx.lineWidth=.7;ctx.arc(node.x,node.y,node.kind==='memory'&&!node.historical?memoryCircleRing(node,ctx.lineWidth):node.r+6,0,Math.PI*2);ctx.strokeStyle=color+'66';ctx.stroke();}
       const show=node.kind==='area'||(node.kind==='topic'&&this.zoom>.3)||node.id===selected?.id||node.id===hover?.id;if(show){ctx.font=`${node.kind==='area'?'500':'400'} ${(node.kind==='area'?11:10)/this.zoom}px Inter, sans-serif`;ctx.fillStyle=muted.has(node.id)?color:lit?'#eefff9':node.kind==='area'?'#d5ece7':'#9bb3b0';ctx.textAlign='center';const text=compact(node.kind==='memory'?memoryLabel(node).title:(node.displayLabel||node.label),node.kind==='memory'?42:25),width=ctx.measureText(text).width*this.zoom,baseline=sy+node.r*this.zoom+19,row=Math.floor(baseline/20),cells=[];for(let col=Math.floor((sx-width/2)/80);col<=Math.floor((sx+width/2)/80);col++)cells.push(`${col}:${row}`);if(lit||(labelCount<80&&!cells.some(cell=>labelCells.has(cell)))){ctx.fillText(text,node.x,node.y+node.r+19/this.zoom);cells.forEach(cell=>labelCells.add(cell));labelCount++;}}}
     for(const [color,dots] of dotBatches){ctx.beginPath();for(const node of dots){ctx.moveTo(node.x+node.r,node.y);ctx.arc(node.x,node.y,node.r,0,Math.PI*2);}ctx.fillStyle=color;ctx.fill();}
     ctx.globalAlpha=1;ctx.restore();if(this.flowPaths.length)this.startFlow();else this.stopFlow();this.root.querySelector('[data-zoom-level]').textContent=`${Math.round(this.zoom*100)}%`;}
@@ -211,7 +232,7 @@ export class NeuralMemoryView {
     host.append(el('span',node.historical?'Historical memory':'Current memory',`memory-status-chip ${node.historical?'historical':''}`));
     const dl=el('dl',undefined,'inspector-facts');const field=(name,value)=>{const row=el('div');row.append(el('dt',name),el('dd',value));dl.append(row);};
     field('Knowledge area',node.areaPath?.join(' › ')||label.subtitle);if(label.topic&&label.topic!==label.title)field('Topic',label.topic);
-    field('Strength',Number.isFinite(memory.strength)&&memory.strength>=0&&memory.strength<=1?`${Math.round(memory.strength*100)}%`:'Not recorded');field('Activations',Number.isSafeInteger(memory.activations)&&memory.activations>=0?String(memory.activations):'Not recorded');host.append(dl);
+    field('Strength',displayMemoryStrength(memory.strength));field('Activations',Number.isSafeInteger(memory.activations)&&memory.activations>=0?String(memory.activations):'Not recorded');host.append(dl);
     const related=this.graph.edges.filter(edge=>edge.kind!=='hierarchy'&&(edge.from===node.id||edge.to===node.id)),seen=new Set();
     if(related.length){host.append(el('h4','Connected memories'));for(const edge of related){const id=edge.from===node.id?edge.to:edge.from;if(seen.has(id))continue;seen.add(id);const target=byId.get(id);if(target?.kind==='memory')host.append(memoryButton(target));}}
   }
