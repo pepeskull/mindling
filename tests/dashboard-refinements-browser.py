@@ -233,22 +233,17 @@ with sync_playwright() as playwright:
         expect(network.get_by_role('heading', name='Network', exact=True)).to_be_visible()
         assert page.locator('[data-view=network]').count() == 1
         assert page.locator('[data-view=integration], [data-mobile-view=integration], .network-bars, .network-lines').count() == 0
-        expect(network.locator('[data-brain-accessible]')).to_contain_text('positioned neurons')
-        assert page.locator('canvas[data-cloud]').count() == 1
-        for width in (1500, 390):
-            page.set_viewport_size({'width': width, 'height': 940})
-            assert page.evaluate("""()=>{const map=document.querySelector('.integration-map'),cloud=map.querySelector('.network-cloud-plot'),orbit=map.querySelector('.orbit-streams');
-              const a=map.getBoundingClientRect(),b=cloud.getBoundingClientRect();
-              return b.left>a.left+a.width/2&&b.right<=a.right+1&&b.width>100&&
-                getComputedStyle(cloud).pointerEvents==='none'&&+getComputedStyle(cloud).zIndex<+getComputedStyle(orbit).zIndex&&
-                document.documentElement.scrollWidth<=innerWidth+1;}""")
+        assert network.locator('canvas[data-cloud]').count() == 0
+        assert page.locator('#development-view canvas[data-cloud]').count() == 1
+        page.set_viewport_size({'width': 390, 'height': 940})
+        assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
         network.locator('[data-platform=github]').click()
         expect(network.locator('[data-detail-name]')).to_have_text('GitHub')
         expect(network.locator('.integration-detail')).to_contain_text('Coming soon')
         page.locator('[data-mobile-view=dashboard]').click()
         expect(network).to_be_hidden()
         assert page.evaluate("""()=>window.mainBrain&&document.querySelector('#scene canvas')===window.mainBrain
-          &&app.dashboard.integration.cloud.frame===null&&app.dashboard.integration.frame===null""")
+          &&app.dashboard.integration.frame===null""")
         page.goto(url + '#integration')
         page.wait_for_function("location.hash==='#network'&&!document.querySelector('#network-view').hidden")
         page.evaluate("app.destroy()")

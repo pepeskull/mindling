@@ -1,7 +1,7 @@
 import { AdaptivePathwaysView } from '../pathways/pathway-view.js';
 import { XP } from '../economy/xp.js';
 import { developmentData } from './development-data.js';
-import { NeuralDevelopmentScene } from './neural-development-scene.js';
+import { NetworkView } from '../network/network-view.js';
 
 const element = (tag, text, className) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; if (className) node.className = className; return node; };
 const date = value => value === null ? 'Not recorded' : new Date(value).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -16,8 +16,10 @@ export class DevelopmentView {
         <section class="development-evolution development-panel" aria-labelledby="evolution-title">
           <div class="development-panel-heading"><div><p class="development-eyebrow">01 / NEURAL EVOLUTION</p><h3 id="evolution-title" data-development-name>Your Mindling</h3></div><span class="development-presence" data-development-presence>Living architecture</span></div>
           <p class="development-stage" data-development-stage></p>
-          <div class="development-scene" tabindex="0" role="img" aria-label="Interactive Mindling neural development"><div class="development-network-empty" hidden><p>A network waiting to grow.</p><span>No saved neurons are available yet.</span></div></div>
-          <div class="graph-view-tools development-zoom-tools glass-line" aria-label="Brain zoom controls"><button type="button" data-brain-action="out" aria-label="Zoom out">−</button><span data-brain-zoom>100%</span><button type="button" data-brain-action="in" aria-label="Zoom in">+</button><button type="button" data-brain-action="fit">Fit brain</button><button type="button" data-brain-action="reset">Reset view</button></div>
+          <div class="development-scene">
+            <div class="network-cloud-plot"></div>
+            <div class="development-network-empty" hidden><p>A network waiting to grow.</p><span>No saved neurons are available yet.</span></div>
+          </div>
           <div class="development-progression"><dl class="development-metrics" data-development-metrics></dl><div class="development-xp" data-development-xp></div></div>
         </section>
         <section class="development-pathways development-panel" aria-labelledby="pathways-title">
@@ -29,25 +31,26 @@ export class DevelopmentView {
         </section>
       </div>`;
     this.pathways = new AdaptivePathwaysView(root.querySelector('[data-adaptive-pathways]'));
-    this.scene = new NeuralDevelopmentScene(root.querySelector('.development-scene'),zoom=>{root.querySelector('[data-brain-zoom]').textContent=`${Number((zoom*100).toFixed(1))}%`;});
-    root.addEventListener('click',event=>{const action=event.target.closest('[data-brain-action]')?.dataset.brainAction;if(action)this.scene.control(action);},{signal:this.abort.signal});
+    this.cloud = new NetworkView(root.querySelector('.network-cloud-plot'));
   }
   update(state = {}, life = null) {
     if (this.abort.signal.aborted) return;
     this.state = state; this.life = life; this.dirty = true;
+    this.cloud.update(state);
     if (this.visible) this.refresh();
   }
+  ingest(event) { return this.cloud.ingest(event); }
   setVisible(visible) {
     this.visible = visible;
     if (visible && this.dirty) this.refresh();
-    this.scene.setVisible(visible);
+    this.cloud.setVisible(visible);
   }
   refresh() {
     this.dirty = false;
     const data = developmentData(this.state, this.life), signature = JSON.stringify(data);
     this.pathways.update(this.state, data.livePathways);
     if (signature === this.signature) return;
-    this.signature = signature; this.data = data; this.scene.update(data);
+    this.signature = signature; this.data = data;
     this.root.querySelector('.development-network-empty').hidden = Boolean(data.nodes.length);
     this.root.querySelector('.development-network-empty span').textContent = data.neuronCount ? 'Saved neurons have no drawable positions.' : 'No saved neurons are available yet.';
     this.root.querySelector('[data-development-name]').textContent = data.name;
@@ -76,5 +79,5 @@ export class DevelopmentView {
     for (const event of data.events) { const item = element('li'), time = element('time', eventDate(event)); if (!event.simulated) time.dateTime = new Date(event.recordedAt ?? event.at).toISOString(); else time.title = 'The real save date was not recorded for this older preview event.'; item.append(time, element('strong', event.title), element('p', event.detail)); if (event.xp !== undefined && event.xp !== null) item.append(element('span', `${event.xp} XP recorded`)); events.append(item); }
     if (!data.events.length) events.append(element('li', 'No development events recorded yet.', 'development-muted'));
   }
-  destroy() { if (this.abort.signal.aborted) return; this.abort.abort(); this.pathways.destroy(); this.scene.destroy(); this.state = null; this.life = null; this.data = null; this.root.replaceChildren(); }
+  destroy() { if (this.abort.signal.aborted) return; this.abort.abort(); this.pathways.destroy(); this.cloud.destroy(); this.state = null; this.life = null; this.data = null; this.root.replaceChildren(); }
 }

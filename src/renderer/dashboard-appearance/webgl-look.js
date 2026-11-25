@@ -1,25 +1,16 @@
 import { BUDGET } from '../../preview/evolution-model.js';
 
-function makeTexture(T, ring=false){
+function makeTexture(T){
   const canvas=document.createElement('canvas');
   canvas.width=canvas.height=128;
   const c=canvas.getContext('2d');
-  if(ring){
-    c.strokeStyle='rgba(255,255,255,.88)';c.lineWidth=1.4;
-    c.beginPath();c.arc(64,64,48,0,Math.PI*2);c.stroke();
-    for(let i=0;i<4;i++){
-      const a=i*Math.PI/2;
-      c.beginPath();c.moveTo(64+Math.cos(a)*44,64+Math.sin(a)*44);c.lineTo(64+Math.cos(a)*55,64+Math.sin(a)*55);c.stroke();
-    }
-  }else{
-    const gradient=c.createRadialGradient(64,64,0,64,64,63);
-    gradient.addColorStop(0,'rgba(255,255,255,1)');
-    gradient.addColorStop(.12,'rgba(255,255,255,.84)');
-    gradient.addColorStop(.39,'rgba(255,255,255,.23)');
-    gradient.addColorStop(.72,'rgba(255,255,255,.035)');
-    gradient.addColorStop(1,'rgba(255,255,255,0)');
-    c.fillStyle=gradient;c.fillRect(0,0,128,128);
-  }
+  const gradient=c.createRadialGradient(64,64,0,64,64,63);
+  gradient.addColorStop(0,'rgba(255,255,255,1)');
+  gradient.addColorStop(.12,'rgba(255,255,255,.84)');
+  gradient.addColorStop(.39,'rgba(255,255,255,.23)');
+  gradient.addColorStop(.72,'rgba(255,255,255,.035)');
+  gradient.addColorStop(1,'rgba(255,255,255,0)');
+  c.fillStyle=gradient;c.fillRect(0,0,128,128);
   return new T.CanvasTexture(canvas);
 }
 
@@ -35,11 +26,10 @@ export class WebGLLook {
     this.T=T;this.scene=scene;this.stageView=stageView;
     this.root=scene.children.find(object=>object.isGroup);
     this.overlay=new T.Group();this.root.add(this.overlay);
-    this.texture=makeTexture(T);this.ringTexture=makeTexture(T,true);
+    this.texture=makeTexture(T);
     this.objects=new Map();this.lights=[];this.wires=new Map();this.nodes=new Map();this.paths=new Map();
     this.point=new T.Vector3();this.to=new T.Vector3();
     if(stageView.seed)this.captureSeed();else this.captureEvolution(stageView.scene);
-    this.selection=this.sprite(this.ringTexture);this.selection.material.depthTest=false;this.selection.renderOrder=10;
     this.tracks=[];
   }
 
@@ -107,8 +97,8 @@ export class WebGLLook {
     view.canonicalFibers.geometry.setAttribute('color',this.edgeColors);
   }
 
-  sprite(texture=this.texture){
-    const sprite=new this.T.Sprite(new this.T.SpriteMaterial({map:texture,color:neutral,transparent:true,depthWrite:false,blending:this.T.AdditiveBlending}));
+  sprite(){
+    const sprite=new this.T.Sprite(new this.T.SpriteMaterial({map:this.texture,color:neutral,transparent:true,depthWrite:false,blending:this.T.AdditiveBlending}));
     sprite.visible=false;
     this.overlay.add(sprite);
     return sprite;
@@ -196,7 +186,6 @@ export class WebGLLook {
       }
     }
     if(this.evolution)this.applyEvolution(mode,look,selected,renderer);
-    this.applySelection(selected);
     this.applyActivity(frame);
   }
 
@@ -255,15 +244,6 @@ export class WebGLLook {
     }else if(this.pickedEdge)this.pickedEdge.visible=false;
   }
 
-  applySelection(selected){
-    const ring=this.selection;
-    ring.visible=selected?.type==='neuron'&&Boolean(this.nodePosition(selected.id,ring.position));
-    if(ring.visible){
-      ring.material.opacity=.86;
-      ring.scale.setScalar(this.evolution?.22:this.nodes.get(selected.id).scale.x*.78);
-    }
-  }
-
   applyActivity(frame){
     this.tracks.forEach(({line,sparks,glow})=>{line.visible=glow.visible=false;sparks.forEach(sprite=>sprite.visible=false);});
     frame.forEach((event,index)=>{
@@ -319,6 +299,6 @@ export class WebGLLook {
     this.overlay.traverse(object=>{object.geometry?.dispose();object.material?.dispose();});
     this.overlay.removeFromParent();
     for(const {variant} of this.objects.values())variant.dispose();
-    this.texture.dispose();this.ringTexture.dispose();
+    this.texture.dispose();
   }
 }

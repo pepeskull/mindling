@@ -1,9 +1,9 @@
 const FILTERS={
-  soft:'grayscale(1) brightness(1.24)',neon:'grayscale(1) brightness(1.7)',
-  holo:'grayscale(1) brightness(1.2)',synapses:'grayscale(1) brightness(.82)',
+  soft:'grayscale(1) brightness(1.24)',
+  synapses:'grayscale(1) brightness(.82)',
   activity:'grayscale(1) brightness(1.08)',xray:'grayscale(1) brightness(.73)'
 };
-const ALPHAS={holo:.73,synapses:.46,xray:.49};
+const ALPHAS={synapses:.46,xray:.49};
 
 export class CanvasLook {
   constructor(view){
@@ -61,10 +61,7 @@ export class CanvasLook {
       }
       c.stroke();
     }
-    if(selected?.type==='neuron'){
-      const p=this.position(selected.id);
-      if(p){c.strokeStyle='#fff';c.lineWidth=1;c.beginPath();c.arc(p.x,p.y,p.radius+3,0,Math.PI*2);c.stroke();}
-    }else if(selected?.type==='synapse'){
+    if(selected?.type==='synapse'){
       const edge=this.view.data.canonicalNetwork.synapses.find(edge=>edge.id===selected.id);
       if(edge)this.traceSegment(edge,0,1,'#fff',1.8);
     }

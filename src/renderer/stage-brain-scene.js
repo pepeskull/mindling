@@ -53,6 +53,13 @@ export class StageBrainScene {
     if(!this.three&&this.width>0&&this.height>0)this.appearance?.drawCanvas();
   }
   selectAt(event){const hit=this.seed?this.seed.selectAt(event):this.scene.pickCanonicalElement(event);this.setSelection(hit);if(!this.seed)this.onSelection?.(hit);return hit;}
+  selectSynapseAt(event){
+    const hit=this.hoverAt(event);
+    if(hit?.type==='neuron')return undefined;
+    this.setSelection(hit);
+    this.onSelection?.(hit);
+    return hit;
+  }
   hoverAt(event){if(this.seed)return this.seed.hoverAt(event);this.scene.hoverCanonical=this.scene.pickCanonicalElement(event);return this.scene.hoverCanonical;}
   setSelection(selection){this.selection=selection;this.seed?.setSelection(selection);this.scene.selectedCanonical=selection?.type==='neuron'?selection.id:null;this.scene.selectedCanonicalEdge=selection?.type==='synapse'?selection.id:null;}
   focusSelection(selection){

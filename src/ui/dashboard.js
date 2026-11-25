@@ -72,7 +72,7 @@ export class Dashboard {
     this.#onNewMindling = onNewMindling;
     this.#unsubscribe = events.on(EVENTS.STATE_READY, (state) => this.render(state));
     this.#eventUnsubscribes = [
-      events.on(EVENTS.NEURAL_INPUT, event => this.integration.ingest(event)),
+      events.on(EVENTS.NEURAL_INPUT, event => this.#development.ingest(event)),
       events.on(EVENTS.LIFE_UPDATED, life => this.#renderLife(life))
     ];
     this.notifications=new ClarificationNotifications(document.querySelector('.header-status'),{canAct:()=>!this.locked,onTask:!readOnly&&onLearningTask?async id=>{

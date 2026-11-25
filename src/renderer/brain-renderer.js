@@ -45,6 +45,7 @@ export class BrainRenderer {
   update(model) { this.model = {...canonicalBrain(model),stage:model.stage}; this.view?.update(this.model); this.request(); }
   resize(width, height) { this.view?.resize(width, height); this.request(); }
   selectAt(event) { return this.view?.selectAt(event) || null; }
+  selectSynapseAt(event) { return this.view?.selectSynapseAt(event); }
   hoverAt(event) { return this.view?.hoverAt?.(event) || null; }
   setSelection(selection) { this.view?.setSelection(selection); this.request(); }
   focusSelection(selection){const focused=this.view?.focusSelection?.(selection);this.request();return focused;}

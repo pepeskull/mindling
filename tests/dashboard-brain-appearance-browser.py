@@ -6,6 +6,7 @@ from playwright.sync_api import sync_playwright
 
 BASE = os.getenv('MINDLING_TEST_URL', 'http://127.0.0.1:8774')
 THREE = Path(os.getenv('MINDLING_THREE_DIR', '/tmp/mindling-three-0180'))
+ARTIFACTS = os.getenv('MINDLING_UI_ARTIFACTS')
 CDN = 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/'
 BOOT = """
 const params=new URLSearchParams(location.search);
@@ -73,17 +74,46 @@ def test_case(browser,preview,canvas,viewport):
     page.wait_for_function('()=>window.fixtureReady')
     page.wait_for_function("()=>fixtureApp.brainAppearance.webgl||fixtureApp.brainAppearance.canvas")
     assert page.evaluate('Boolean(fixtureApp.view.three)')== (not canvas)
-    if viewport['width']>800:
-        page.get_by_label('Neural appearance').select_option('holo')
-        assert page.evaluate('fixtureApp.brainAppearance.profile')=='holo'
-        page.get_by_label('Neural appearance').select_option('soft')
+    assert page.locator('[data-brain-preset],.brain-activity-legend').count()==0
     assert page.evaluate('fixtureApp.brainAppearance.profile')=='soft'
+    assert page.locator('.view-list button').first.evaluate("(button)=>getComputedStyle(button).cursor")=='pointer'
+    if ARTIFACTS and not preview:
+        page.screenshot(path=Path(ARTIFACTS)/'dashboard.png')
     pose=page.evaluate("""()=>{
       const app=fixtureApp;
       app.interaction.restorePose({rotation:{x:-.25,y:.32},zoom:1.12,targetZoom:1.12});
       app.seed.setSelection({type:'synapse',id:'origin-upper'});
       return app.interaction.capturePose();
     }""")
+    node=page.evaluate("fixtureApp.seed.inputTarget()")
+    assert page.evaluate("(node)=>fixtureApp.seed.hoverAt({clientX:node.x,clientY:node.y})?.type",node)=='neuron'
+    page.mouse.click(node['x'],node['y'])
+    assert page.evaluate('fixtureApp.seed.view.selection.id')=='origin-upper'
+    if viewport['width']>800:
+        edge=page.evaluate('''node=>{
+          const {seed}=fixtureApp;
+          for(let radius=40;radius<=280;radius+=10){
+            for(let angle=0;angle<2*Math.PI;angle+=.08){
+              const x=Math.round(node.x+radius*Math.cos(angle)),y=Math.round(node.y+radius*Math.sin(angle));
+              const pick=(dx,dy)=>seed.hoverAt({clientX:x+dx,clientY:y+dy});
+              const hit=pick(0,0);
+              if(hit?.type==='synapse'&&document.elementFromPoint(x,y)?.closest('#scene')&&
+                [[-1,0],[1,0],[0,-1],[0,1]].every(([dx,dy])=>pick(dx,dy)?.id===hit.id))return {x,y,id:hit.id};
+            }
+          }
+          return null;
+        }''',node)
+        assert edge
+        page.evaluate("fixtureApp.seed.setSelection(null)")
+        page.mouse.click(edge['x'],edge['y'])
+        assert page.evaluate('fixtureApp.seed.view.selection?.id')==edge['id'], edge
+        page.evaluate("fixtureApp.seed.setSelection({type:'synapse',id:'origin-upper'})")
+        page.mouse.move(node['x'],node['y'])
+        page.mouse.down()
+        page.mouse.move(node['x']+28,node['y']+15,steps=4)
+        page.mouse.up()
+        assert page.evaluate('fixtureApp.interaction.rotation')!=pose['rotation']
+        page.evaluate('(pose)=>fixtureApp.interaction.restorePose(pose)',pose)
     model=page.evaluate('fixtureApp.seed.model')
     for name in ('synapses','activity','xray','neural','activity'):
         # Mobile manages collapse of the enclosing panel separately.
@@ -110,12 +140,94 @@ def test_case(browser,preview,canvas,viewport):
     page.evaluate("fixtureApp.primaryViewChanged('dashboard')")
     page.wait_for_function('()=>fixtureApp.brainAppearance.webgl||fixtureApp.brainAppearance.canvas')
     assert page.locator('[data-brain-mode=xray]').get_attribute('aria-pressed')=='true'
+    if not preview:
+        verify_navigation(page)
     assert not errors, errors
     assert not api, api
     page.evaluate('fixtureApp.destroy()')
-    assert page.locator('#scene .dashboard-brain-effects').count()==0
+    assert page.locator('#scene .dashboard-brain-effects,[data-cloud],[data-fallback]').count()==0
     print(f'{"Stage Preview" if preview else "Dashboard"} · {"Canvas" if canvas else "WebGL 2"} · {viewport["width"]}px passed',flush=True)
     context.close()
+
+
+def verify_navigation(page):
+    page.emulate_media(reduced_motion='no-preference')
+    page.locator('[data-view=development]').click()
+    cloud=page.locator('#development-view canvas[data-cloud]')
+    assert cloud.is_visible()
+    assert page.locator('#development-view canvas').count()==2  # WebGL and its existing fallback
+    assert page.locator('#development-view [data-brain-backend]').count()==0
+    assert 'positioned neurons' in page.locator('#development-view [data-brain-accessible]').text_content()
+    assert page.locator('#network-view canvas[data-cloud]').count()==0
+    page.evaluate("window.initialCloud=document.querySelector('[data-cloud]')")
+    if ARTIFACTS:
+        page.screenshot(path=Path(ARTIFACTS)/'development.png')
+    page.locator('[data-view=network]').click()
+    assert cloud.is_hidden()
+    detail=page.locator('.integration-detail')
+    panel=page.locator('.integration-detail-motion')
+    assert panel.is_hidden()
+
+    telegram=page.locator('[data-platform=telegram]')
+    discord=page.locator('[data-platform=discord]')
+    github=page.locator('[data-platform=github]')
+    transition=page.evaluate("""()=>{
+      const button=document.querySelector('[data-platform=telegram]');
+      button.focus();
+      button.click();
+      const panel=document.querySelector('.integration-detail-motion'),detail=panel.firstElementChild;
+      const [height]=panel.getAnimations(),[content]=detail.getAnimations();
+      const keyframes=height.effect.getKeyframes();
+      return {from:keyframes[0].height,to:keyframes[1].height,opacity:content.effect.getKeyframes()[0].opacity,
+        duration:height.effect.getTiming().duration};
+    }""")
+    assert transition['from']=='0px' and float(transition['to'][:-2])>0
+    assert transition['opacity']=='0' and transition['duration']==340
+    page.wait_for_function("!document.querySelector('.integration-detail').getAnimations().length")
+    assert detail.locator('h3').text_content()=='Telegram'
+    switched=page.evaluate("""()=>{
+      const panel=document.querySelector('.integration-detail-motion'),height=panel.getBoundingClientRect().height;
+      document.querySelector('[data-platform=discord]').click();
+      return {height,from:parseFloat(panel.getAnimations()[0].effect.getKeyframes()[0].height),
+        name:panel.querySelector('h3').textContent};
+    }""")
+    assert switched['name']=='Discord' and switched['from']==switched['height']>0
+    page.evaluate("""()=>{
+      for(const name of ['discord','telegram','github'])document.querySelector('[data-platform='+name+']').click();
+    }""")
+    page.wait_for_function("!document.querySelector('.integration-detail').getAnimations().length")
+    assert detail.locator('h3').text_content()=='GitHub'
+    assert detail.locator('[data-detail-permissions] li').all_text_contents()==['Selected repositories','Explicit write approval']
+    assert github.get_attribute('aria-pressed')=='true' and telegram.get_attribute('aria-pressed')=='false'
+    if ARTIFACTS:
+        page.screenshot(path=Path(ARTIFACTS)/'network.png')
+    github.press('Enter')
+    panel.wait_for(state='hidden')
+    assert github.get_attribute('aria-pressed')=='false'
+    for _ in range(2):
+        page.locator('[data-view=development]').click()
+        assert cloud.is_visible()
+        assert cloud.evaluate('(node)=>node===window.initialCloud')
+        page.locator('[data-view=network]').click()
+        assert cloud.is_hidden()
+    page.emulate_media(reduced_motion='reduce')
+    discord.press('Enter')
+    assert detail.locator('h3').text_content()=='Discord' and panel.is_visible()
+    assert panel.evaluate('(node)=>node.getAnimations({subtree:true}).length')==0
+    discord.press('Enter')
+    assert panel.is_hidden()
+    page.set_viewport_size({'width':390,'height':844})
+    page.locator('[data-mobile-view=development]').click()
+    assert cloud.is_visible()
+    page.wait_for_function("""()=>{
+      const canvas=document.querySelector('[data-cloud]');
+      return Math.abs(canvas.width-canvas.clientWidth*devicePixelRatio)<=1;
+    }""")
+    page.locator('[data-mobile-view=network]').click()
+    telegram.click()
+    assert detail.locator('h3').text_content()=='Telegram'
+    assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1')
+    print('Cloud relocation, repeated navigation, responsive resizing, transition, rapid switching and reduced motion passed',flush=True)
 
 
 if __name__=='__main__':

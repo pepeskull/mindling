@@ -59,9 +59,10 @@ export class MindlingApp extends EvolutionPreview {
       onTap: event => {
         if(this.external?.tap(event))return;
         if (!this.state.mind) return;
-        const hit = this.seed.selectAt(event);
+        const hit = this.seed.selectSynapseAt(event);
+        if (hit === undefined) return;
         if (!hit?.id) {this.events.emit(EVENTS.SCENE_SELECTION,null);return;}
-        this.view.selectedCanonical = hit.type === 'neuron' ? hit.id : null;
+        this.view.selectedCanonical = null;
         this.events.emit(EVENTS.SCENE_SELECTION, hit);
       },
       onHover: event => { this.seed.hoverAt?.(event); }
