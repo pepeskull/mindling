@@ -262,14 +262,14 @@ export class EvolutionScene {
       this.camera.updateProjectionMatrix(); }
     else { const dpr = Math.min(devicePixelRatio, 1.5); this.canvas.width = width * dpr; this.canvas.height = height * dpr; this.context.setTransform(dpr, 0, 0, dpr, 0, 0); }
   }
-  render(elapsed, delta, network) {
+  render(elapsed, delta, network, appearance) {
     if (this.morph.progress < 1) { this.morph.tick(delta); this.buffers.rebuild(this.morph); this.centralSegments = this.buffers.segmentCount; }
     this.buffers.segmentCount = this.centralSegments; this.buffers.animate(this.morph, network, elapsed, this.reduced, this.hideCanonicalCenter);
     this.updateCanonicalBuffers();
     if(this.useSharedFraming)this.updateFraming(network);
-    if (this.three) this.renderThree(elapsed, network); else this.renderCanvas(elapsed, network);
+    if (this.three) this.renderThree(elapsed, network, appearance); else this.renderCanvas(elapsed, network);
   }
-  renderThree(elapsed, network) {
+  renderThree(elapsed, network, appearance) {
     this.claimRenderer();
     const b = this.buffers;
     this.root.rotation.set(this.interaction.rotation.x, this.interaction.rotation.y, 0);
@@ -285,6 +285,7 @@ export class EvolutionScene {
     for (const [object, count] of [[this.fibers, b.segmentCount * 2], [this.links, b.networkCount * 2], [this.pulses, b.pulseCount]]) { object.geometry.setDrawRange(0, count); object.geometry.attributes.position.needsUpdate = true; }
     this.discovery.visible = network.state === 'DISCOVERING' && !this.reduced;
     this.discovery.scale.setScalar(1 + network.elapsed * 1.6); this.discovery.material.opacity = Math.max(0, .35 - network.elapsed * .16);
+    appearance?.drawThree(this.scene,this.renderer);
     this.renderer.render(this.scene, this.camera);
   }
   project(array, k, out, offset = 0) {

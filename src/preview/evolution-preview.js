@@ -7,6 +7,8 @@ import { ExternalView } from '../network/external-view.js';
 import { PreviewTimeline, smooth } from "./evolution-model.js";
 import { EvolutionScene } from "./evolution-scene.js";
 import { SceneInteraction } from "../renderer/scene-interaction.js";
+import { DashboardBrainAppearance } from '../renderer/dashboard-appearance/appearance.js';
+import { DashboardBrainControls } from '../ui/dashboard-brain-controls.js';
 import { BrainRenderer } from "../renderer/brain-renderer.js";
 import { createNeuralSeedState } from "../brain/neural-seed-state.js";
 
@@ -67,7 +69,18 @@ export class EvolutionPreview {
       this.seed = new BrainRenderer(this.seedHost, null, { interaction:this.interaction, framing, mode:'dashboard', externallyScheduled:true,stageScene:this.canonicalBrain?this.view:null,seedOnly:!this.canonicalBrain }); this.seed.mount(this.canonicalBrain?this.growthHost:this.seedHost, seedModel);
     }
     this.external=new ExternalView(this);
-    this.inputFeedback=new NeuralInputFeedback(document.querySelector('#app'),document.querySelector('#interaction-form'),()=>this.seed.inputTarget(),()=>this.seed.receiveInput(),this.motion);
+    if(this.canonicalBrain){
+      this.brainAppearance=new DashboardBrainAppearance();
+      this.seed.view.appearance=this.brainAppearance;
+      this.brainControls=new DashboardBrainControls(document,this.brainAppearance,()=>this.schedule());
+      this.unsubscribeBrainActivity=this.events.on(EVENTS.BRAIN_ACTIVITY,event=>{
+        if(document.hidden||this.external?.locked||this.deceased||(this.primaryView&&this.primaryView!=='dashboard')||
+          event.identity!==this.state?.mind?.id)return;
+        this.brainAppearance.record(event,performance.now()/1000);
+        this.schedule();
+      });
+    }
+    this.inputFeedback=new NeuralInputFeedback(document.querySelector('#app'),document.querySelector('#interaction-form'),()=>this.seed.inputTarget(),()=>this.seed.receiveInput(),this.motion,{neutral:this.canonicalBrain});
     this.unsubscribeInput=this.events.on(EVENTS.NEURAL_INPUT,event=>{
       if(this.external?.locked||document.hidden||['development','memories','network','onboarding'].includes(this.primaryView))return;
       this.inputFeedback.handle(event);this.schedule();
@@ -126,10 +139,14 @@ export class EvolutionPreview {
   }
   primaryViewChanged = view => {
     this.primaryView = view;this.external?.refresh();
-    if(view!=='dashboard'){this.inputFeedback?.clear();this.talkAbort.abort();this.talkAbort=new AbortController();}
+    if(view!=='dashboard'){this.clearBrainActivity();this.inputFeedback?.clear();this.talkAbort.abort();this.talkAbort=new AbortController();}
     if (view === 'development' || view === 'memories' || view === 'network' || view === 'integration' || view === 'onboarding') { cancelAnimationFrame(this.frame); this.frame = null; }
     else { this.lastTime = null; this.schedule(); }
   };
+  clearBrainActivity(){
+    this.brainAppearance?.clear();
+    this.brainAppearance?.release();
+  }
   schedule() { if (!this.disposed && this.view && this.seed && !document.hidden && !['development','memories','network','onboarding'].includes(this.primaryView) && this.frame === null) this.frame = requestAnimationFrame(this.render); }
   render = now => {
     this.frame = null; if (this.disposed || document.hidden || ['development','memories','network','onboarding'].includes(this.primaryView)) return;
@@ -143,7 +160,10 @@ export class EvolutionPreview {
       const visiting=Boolean(this.external?.locked);
       this.seedWeight=0;this.seedHost.style.opacity='0';this.growthHost.style.opacity='1';
       this.view.hideCanonicalCenter=false;
-      if(visiting)this.view.render(this.elapsed,delta,this.timeline.network);
+      if(visiting){
+        this.clearBrainActivity();
+        this.view.render(this.elapsed,delta,this.timeline.network);
+      }
       else this.seed.render(now/1000,delta,this.timeline.network);
     }else{
       const target = this.timeline.stage === 1 ? 1 : 0; this.seedWeight = this.seedFrom * (1 - smooth(this.transition)) + target * smooth(this.transition);
@@ -154,7 +174,7 @@ export class EvolutionPreview {
     if(this.external?.locked)this.inputFeedback?.clear();else this.inputFeedback?.render(now);
     this.refreshNetwork(); this.schedule();
   };
-  visibility = () => { if (document.hidden) { this.inputFeedback?.clear(); if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null; } else { this.lastTime = null; this.schedule(); } };
+  visibility = () => { if (document.hidden) { this.clearBrainActivity(); this.inputFeedback?.clear(); if (this.frame !== null) cancelAnimationFrame(this.frame); this.frame = null; } else { this.lastTime = null; this.schedule(); } };
   destroy() {
     if (this.disposed) return; this.disposed = true;
     stopLearning(this);
@@ -163,7 +183,7 @@ export class EvolutionPreview {
     this.observer?.disconnect(); document.removeEventListener('visibilitychange', this.visibility); this.motion.removeEventListener('change', this.motionChanged);
     window.removeEventListener('resize', this.resize);
     this.talkAbort.abort();
-    this.unsubscribeInput?.();this.inputFeedback?.destroy();
+    this.unsubscribeInput?.();this.unsubscribeBrainActivity?.();this.brainControls?.destroy();this.inputFeedback?.destroy();
     this.external?.destroy();
     this.modeLink?.remove();this.presentation?.destroy(); this.dashboard?.destroy();
     this.timeline.pause(); this.timeline.network.reset(); this.interaction.disconnect(); this.seed?.destroy(); this.view?.destroy();

@@ -192,7 +192,7 @@ export class SandboxPreview extends EvolutionPreview {
     this.cognition?.setActiveMindling(this.state.mind?.id || null);
     if(this.external?.locked)return;
     const m=this.state.mind;if(!m){this.dashboard.stageChip.setStage('—',{enabled:false});document.querySelectorAll('[data-stat]').forEach(el=>el.textContent='0');return;}
-    if(this.identityId!==m.id){this.identityId=m.id;this.countdown=new AutomaticNetworkCountdown();this.timeline.network.reset();}
+    if(this.identityId!==m.id){this.identityId=m.id;this.clearBrainActivity();this.seed.setSelection(null);this.countdown=new AutomaticNetworkCountdown();this.timeline.network.reset();}
     this.seed.update({nodes:m.nodes,synapses:m.synapses,stage:m.stage});
     const stage=m.stage;if(this.timeline.stage!==stage){this.timeline.select(stage);this.syncStage();this.host.dataset.stage=String(stage);}
     // Reuse the canonical Memory UI with sandbox records, never with invented demo counts.

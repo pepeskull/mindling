@@ -1,5 +1,6 @@
 import { learningContext } from '../preview/sandbox/learning-assessment.js';
 import { requestLearningAssessment } from '../preview/sandbox/learning-service.js';
+import { emitBrainActivity } from '../app/brain-activity.js';
 import { learn } from '../preview/sandbox/engine.js';
 
 // Shared Teach/Deep Training flow, promoted from Stage Preview. The caller owns
@@ -25,6 +26,9 @@ export async function teachMemory(app,{id,text,activity,taskId=null},{guard=()=>
     return next;
   },journal?{journal:{id,type:activity}}:{});
   const event=app.state.mind.history.find(item=>item.id===id);
+  if(event&&(event.kind==='concept'||event.kind==='correction'||event.strengthenedMemoryIds?.length)){
+    emitBrainActivity(app,identity,activity==='TEACH'?'teach':'deep',event.memoryIds||[event.memoryId||id]);
+  }
   const messages={VERIFY_BEFORE_STORAGE:'This claim needs verification before storage.',REJECT_UNSAFE_INSTRUCTION:'This instruction cannot be stored.',ASK_FOR_CLARIFICATION:'Please clarify the subject and what you want remembered.',NO_MEMORY_CHANGE:'No memory change was needed.',FLAG_CONTRADICTION:'Conflicting claim recorded; existing knowledge was preserved.',UPDATE_EXISTING:'Current preference or goal updated. Previous values were preserved.',BATCH:'Independent statements processed together; existing history was preserved.'};
   const message=event?.kind==='reinforcement'?(event.strengthenedMemoryIds?.length?'Already learned. Memory reinforced.':'Already learned.'):messages[event?.operation]||'Input learned through the Mindling learning service; the claim remains player-provided and is not fact-checked.';
   const operations=event?.operations||[event?.operation];

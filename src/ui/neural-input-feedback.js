@@ -1,7 +1,7 @@
 // Reception feedback follows presentation time, never inference latency.
 // The Dashboard's existing RAF owns this short-lived effect.
 export class NeuralInputFeedback {
-  constructor(root,input,target,impact,motion){Object.assign(this,{root,input,target,impact,motion});}
+  constructor(root,input,target,impact,motion,{neutral=false}={}){Object.assign(this,{root,input,target,impact,motion,neutral});}
   handle(event){
     if(event.phase==='start'){
       this.clear();const rect=this.input.getBoundingClientRect();
@@ -22,13 +22,14 @@ export class NeuralInputFeedback {
     const source={x:e.source.x-rect.left,y:e.source.y-rect.top},end={x:target.x-rect.left,y:target.y-rect.top};
     const eased=progress*progress*(3-2*progress),point=t=>({x:source.x+(end.x-source.x)*t,y:source.y+(end.y-source.y)*t});
     const p=point(eased),tail=point(Math.max(0,eased-.16)),fade=age<=duration?1:Math.max(0,1-(age-duration)/180);
+    const core=this.neutral?'255,255,255':'229,255,249',halo=this.neutral?'214,214,214':'163,232,215';
     // One continuous gradient stroke; no circular afterimages or particles.
     if(!this.motion.matches&&progress<1){
-      const trail=c.createLinearGradient(tail.x,tail.y,p.x,p.y);trail.addColorStop(0,'rgba(163,232,215,0)');trail.addColorStop(1,'rgba(183,242,225,.45)');
+      const trail=c.createLinearGradient(tail.x,tail.y,p.x,p.y);trail.addColorStop(0,`rgba(${halo},0)`);trail.addColorStop(1,`rgba(${this.neutral?'237,237,237':'183,242,225'},.45)`);
       c.strokeStyle=trail;c.lineWidth=2;c.lineCap='round';c.beginPath();c.moveTo(tail.x,tail.y);c.lineTo(p.x,p.y);c.stroke();
     }
     const radius=this.motion.matches?9:16,glow=c.createRadialGradient(p.x,p.y,0,p.x,p.y,radius);
-    glow.addColorStop(0,`rgba(229,255,249,${.8*fade})`);glow.addColorStop(.2,`rgba(163,232,215,${.5*fade})`);glow.addColorStop(1,'rgba(163,232,215,0)');
+    glow.addColorStop(0,`rgba(${core},${.8*fade})`);glow.addColorStop(.2,`rgba(${halo},${.5*fade})`);glow.addColorStop(1,`rgba(${halo},0)`);
     c.fillStyle=glow;c.fillRect(p.x-radius,p.y-radius,radius*2,radius*2);
   }
   clear(){this.canvas?.remove();this.canvas=null;this.context=null;this.effect=null;}

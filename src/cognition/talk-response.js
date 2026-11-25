@@ -1,6 +1,7 @@
 import { talk } from '../preview/sandbox/engine.js';
 import { trainingContext, assertTrainingContext } from '../training/retrieval.js';
 import { requestTalkReasoning } from './reasoning-client.js';
+import { emitBrainActivity } from '../app/brain-activity.js';
 import { EVENTS } from '../app/events.js';
 import { understandInput, knowledgeGap } from '../learning/input-understanding.js';
 import { learningEngine } from '../autonomous/learning-engine.js';
@@ -73,6 +74,8 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
       assertTrainingContext(context,state.mind);
       return talk(state,talkText,{id,rewardEligible:reasoning.insufficientInformation===false&&!gap,usedMemoryIds:reasoning.memoryIds});
     },journal?{journal:{id,type:'TALK'}}:{});
+    emitBrainActivity(app,identity,'talk',reasoning.memoryIds);
+    if(reasoning.memoryIds.length)emitBrainActivity(app,identity,'recall',reasoning.memoryIds);
     let reply={answer:reasoning.answer,memoryIds:reasoning.memoryIds,uncertainty:gap?'high':reasoning.uncertainty,insufficientInformation:gap||reasoning.insufficientInformation,energySpent:1};
     if(gap&&!signal.aborted){
       try{
