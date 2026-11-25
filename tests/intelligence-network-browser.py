@@ -43,7 +43,7 @@ with sync_playwright() as p:
           check(!document.querySelector('.research-settings-link'),'obsolete Settings link');dashboard.researchAccess.open();check(!document.querySelector('[data-research-enabled]').checked,'opt-out changed');document.querySelector('[data-save-research]').click();await wait(()=>document.querySelector('[data-access-status]').textContent==='Research access saved and disabled.');check((await db.researchPermissions(state.mindlingId)).automaticRequestLimit===20,'consent changed budget');document.querySelector('[data-close-research]').click();
           const snapshot=JSON.stringify(await read());events.emit(EVENTS.NEURAL_INPUT,{id:'dashboard-real-event',activity:'DEEP_TRAINING',phase:'start'});document.querySelector('[data-view=network]').click();
           check(!document.querySelector('#network-view').hidden&&document.querySelector('#memory-view').hidden,'navigation');
-          check(location.hash==='#network','route');check(!document.querySelector('[data-network-status]'),'custom heading remains');check(document.querySelectorAll('#network-view [data-cloud]').length===1&&!document.querySelector('[data-bars],[data-lines]'),'consolidated cloud');
+          check(location.hash==='#network','route');check(!document.querySelector('[data-network-status]'),'custom heading remains');check(document.querySelectorAll('#network-view [data-cloud]').length===0&&document.querySelectorAll('#development-view [data-cloud]').length===1&&!document.querySelector('[data-bars],[data-lines]'),'consolidated cloud');
           check(!document.querySelector('#network-view').textContent.includes('PRIVATE'),'private log');check(JSON.stringify(await read())===snapshot,'view wrote storage');
           check(!document.querySelector('[data-network-events]'),'postponed communication UI');
           dashboard.showClarification({clarification:{requestId:'clarify',id:'clarification',question:'Which league?',options:[{id:'league',label:'League table'}],freeText:false}});
@@ -70,7 +70,8 @@ with sync_playwright() as p:
         page.locator('[data-mobile-view=network]').click()
         assert page.evaluate("document.documentElement.scrollWidth<=innerWidth+1")
         assert page.locator('#network-view').is_visible()
-        assert page.locator('#network-view canvas[data-cloud]').count()==1
+        assert page.locator('#network-view canvas[data-cloud]').count()==0
+        assert page.locator('#development-view canvas[data-cloud]').count()==1
         page.locator('[data-mobile-view=memories]').click()
         assert page.locator('#network-view').is_hidden()
         page.locator('[data-mobile-view=network]').click()
@@ -83,7 +84,8 @@ with sync_playwright() as p:
 
         page.wait_for_function("document.querySelector('#network-view')?.hidden===false && document.querySelector('#network-view canvas')")
         assert page.locator('#network-view').is_visible()
-        assert page.locator('#network-view canvas[data-cloud]').count()==1
+        assert page.locator('#network-view canvas[data-cloud]').count()==0
+        assert page.locator('#development-view canvas[data-cloud]').count()==1
         assert not errors,errors
         assert not api_calls,api_calls
         context.close()

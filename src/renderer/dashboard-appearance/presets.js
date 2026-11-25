@@ -1,7 +1,5 @@
 export const LOOKS = {
   soft:     { surface:0xbcbcbc, emissive:.26, alpha:1, glow:.17, radius:1.07, detail:.31, fibers:.22, core:.42 },
-  neon:     { surface:0xc7c7c7, emissive:.55, alpha:1, glow:.37, radius:1.32, detail:.42, fibers:.34, core:.73 },
-  holo:     { surface:0xd1d1d1, emissive:.30, alpha:.49, glow:.19, radius:1.12, detail:.38, fibers:.31, core:.52 },
   synapses: { surface:0x777777, emissive:.10, alpha:.67, glow:.08, radius:.87, detail:.11, fibers:.12, core:.17 },
   activity: { surface:0xb5b5b5, emissive:.24, alpha:1, glow:.14, radius:1.08, detail:.25, fibers:.22, core:.35 },
   xray:     { surface:0xa9a9a9, emissive:.16, alpha:.11, glow:.08, radius:.88, detail:.21, fibers:.27, core:.13 }

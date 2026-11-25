@@ -12,7 +12,7 @@ with sync_playwright() as p:
         page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)));page.on('request',lambda r:requests.append(r.url) if '/api/' in r.url else None)
         page.goto(BASE+('/?stage-preview=1' if preview else '/'))
         print(page.evaluate('''async preview=>{
-          const {IntegrationView}=await import('/src/integration/integration-view.js');
+          const {DevelopmentView}=await import('/src/development/development-view.js');
           const {PreviewStore}=await import('/src/preview/sandbox/storage.js');const {MindlingDatabase}=await import('/src/storage/database.js');
           const {createSandbox,newMindling}=await import('/src/preview/sandbox/engine.js');
           const db=await(preview?new PreviewStore():new MindlingDatabase()).open();
@@ -22,19 +22,19 @@ with sync_playwright() as p:
           const read=()=>preview?db.read():db.get('gameplay','primary').then(x=>x.state);
           const before=JSON.stringify(await read());
           document.querySelectorAll('.installation,.onboarding-overlay').forEach(el=>el.remove());
-          document.querySelector('.dashboard-chrome').classList.remove('is-hidden');const root=document.querySelector('#network-view');root.hidden=false;document.querySelector('#app').classList.add('network-mode');
-          let now=1800000000000;const network=new IntegrationView(root),view=network.cloud;view.clock=()=>now;network.update(initial.mind);network.setVisible(true);
+          document.querySelector('.dashboard-chrome').classList.remove('is-hidden');const root=document.querySelector('#development-view');root.hidden=false;document.querySelector('#app').classList.add('development-mode');
+          let now=1800000000000;const development=new DevelopmentView(root),view=development.cloud;view.clock=()=>now;development.update(initial.mind);development.setVisible(true);
           const check=(ok,message)=>{if(!ok)throw Error(message);};
           // The visible baseline uses the stored fixture, with no interaction events.
           check(view.model.events.length===0&&view.brain.summary.memories===24,'not a stored baseline');
           const first=view.brain.height(.4,now);now+=6000;view.draw();check(view.brain.height(.4,now)!==first,'idle brain not living');
           check(view.model.values(now).every(v=>v===0),'baseline fabricated user activity');
-          check(root.querySelectorAll('.integration-map [data-cloud]').length===1,'cloud outside connection map');
+          check(root.querySelectorAll('.development-evolution [data-cloud]').length===1,'cloud outside Neural Evolution');
           check(view.spectrum.gl&&!view.spectrum.lost,'WebGL2 cloud unavailable');check(view.frame!==null,'RAF missing');
           check(!root.querySelector('[data-bars],[data-lines]'),'removed activity panels remain');
           check(JSON.stringify(await read())===before,'visualization mutated IndexedDB');
           view.setVisible(false);check(view.frame===null,'hidden frame leak');view.setVisible(true);
-          window.network=network;window.view=view;window.advance=ms=>{now+=ms;view.draw();};window.db=db;window.before=before;window.read=read;
+          window.development=development;window.view=view;window.advance=ms=>{now+=ms;view.draw();};window.db=db;window.before=before;window.read=read;
           return `${preview?'Preview':'Normal'}: WebGL2, shared fixture, one cloud, isolated read-only database passed`;
         }''',preview))
         page.wait_for_timeout(200)
@@ -56,7 +56,7 @@ with sync_playwright() as p:
         page.evaluate('window.advance(35000)')
         assert page.evaluate("window.view.model.values(0).every(v=>v===0)&&window.view.brain.alive&&window.view.frame!==null")
         assert page.evaluate('async()=>JSON.stringify(await window.read())===window.before')
-        page.evaluate('window.gpu=window.view.spectrum.gl;window.program=window.view.spectrum.program;window.network.destroy();window.db.close()')
+        page.evaluate('window.gpu=window.view.spectrum.gl;window.program=window.view.spectrum.program;window.development.destroy();window.db.close()')
         assert page.evaluate('!window.gpu.isProgram(window.program)')
         assert page.evaluate('window.view.frame===null')
         assert not requests,requests

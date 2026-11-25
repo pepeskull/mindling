@@ -1,4 +1,3 @@
-import {NetworkView} from '../network/network-view.js';
 import {orbitFrame,streamColor} from './orbit-motion.js';
 // Catalog describes potential connectors, never authentication or authorization.
 export const PLATFORMS=[
@@ -16,23 +15,59 @@ export const PLATFORMS=[
 ].map(([id,name,group,description,permissions])=>({id,name,group,description,permissions,status:'Coming soon'}));
 export class IntegrationView{
  constructor(root){this.root=root;this.abort=new AbortController();this.selected=null;this.paths=[];this.frame=null;
-  root.innerHTML=`<section class="integration-panel glass-panel"><header><div><p class="integration-eyebrow">CONNECTION ARCHITECTURE</p><h2>Network</h2></div><span class="integration-status">Connector preview</span></header><div class="integration-map"><div class="network-cloud-plot"></div><canvas class="orbit-streams" aria-hidden="true"></canvas><div class="integration-platforms" aria-label="Potential platforms">${PLATFORMS.map(p=>`<button type="button" data-platform="${p.id}" aria-pressed="false"><span class="integration-monogram" aria-hidden="true">${p.name.slice(0,1)}</span><span>${p.name}<small>${p.group}</small></span><span class="integration-dot" aria-hidden="true"></span></button>`).join('')}</div><div class="integration-hub"><div class="integration-orbit"></div><span class="integration-eyebrow">MINDLING</span><strong data-hub-name></strong><small>Identity · Knowledge · Permissions</small></div></div><section class="integration-detail" aria-live="polite"><div><span class="integration-eyebrow" data-detail-group></span><h3 data-detail-name></h3><p data-detail-description></p></div><div><h4>Permissions required</h4><ul data-detail-permissions></ul></div><div><span class="integration-status">Coming soon</span><p>No connector is available or authenticated. No permissions have been requested.</p></div></section><p class="integration-note">The orbit illustrates potential connections.</p></section>`;
-  this.cloud=new NetworkView(root.querySelector('.network-cloud-plot'));
+  root.innerHTML=`<section class="integration-panel glass-panel"><header><div><p class="integration-eyebrow">CONNECTION ARCHITECTURE</p><h2>Network</h2></div><span class="integration-status">Connector preview</span></header><div class="integration-map"><canvas class="orbit-streams" aria-hidden="true"></canvas><div class="integration-platforms" aria-label="Potential platforms">${PLATFORMS.map(p=>`<button type="button" data-platform="${p.id}" aria-pressed="false"><span class="integration-monogram" aria-hidden="true">${p.name.slice(0,1)}</span><span>${p.name}<small>${p.group}</small></span><span class="integration-dot" aria-hidden="true"></span></button>`).join('')}</div><div class="integration-hub"><div class="integration-orbit"></div><span class="integration-eyebrow">MINDLING</span><strong data-hub-name></strong><small>Identity · Knowledge · Permissions</small></div></div><div class="integration-detail-motion" hidden><section class="integration-detail" aria-live="polite"><div><span class="integration-eyebrow" data-detail-group></span><h3 data-detail-name></h3><p data-detail-description></p></div><div><h4>Permissions required</h4><ul data-detail-permissions></ul></div><div><span class="integration-status">Coming soon</span><p>No connector is available or authenticated. No permissions have been requested.</p></div></section></div><p class="integration-note">The orbit illustrates potential connections.</p></section>`;
   this.canvas=root.querySelector('.orbit-streams');
-  root.addEventListener('click',event=>{const button=event.target.closest('[data-platform]');if(button){const selected=PLATFORMS.find(p=>p.id===button.dataset.platform);this.selected=this.selected===selected?null:selected;this.renderSelection();}},{signal:this.abort.signal});this.motion=matchMedia('(prefers-reduced-motion: reduce)');this.motion.addEventListener('change',()=>this.syncMotion(),{signal:this.abort.signal});document.addEventListener('visibilitychange',()=>this.syncMotion(),{signal:this.abort.signal});this.update({});this.renderSelection();this.syncMotion();this.observer=new ResizeObserver(()=>{this.layoutPaths();this.syncMotion();});this.observer.observe(root.querySelector('.integration-map'));
+  this.detailMotion=root.querySelector('.integration-detail-motion');
+  this.detail=root.querySelector('.integration-detail');
+  root.addEventListener('click',event=>{const button=event.target.closest('[data-platform]');if(button){const selected=PLATFORMS.find(p=>p.id===button.dataset.platform);this.selected=this.selected===selected?null:selected;this.renderSelection();}},{signal:this.abort.signal});this.motion=matchMedia('(prefers-reduced-motion: reduce)');this.motion.addEventListener('change',()=>{this.finishDetailTransition();this.syncMotion();},{signal:this.abort.signal});document.addEventListener('visibilitychange',()=>this.syncMotion(),{signal:this.abort.signal});this.update({});this.renderSelection();this.syncMotion();this.observer=new ResizeObserver(()=>{this.layoutPaths();this.syncMotion();});this.observer.observe(root.querySelector('.integration-map'));
  }
- update(state){this.root.querySelector('[data-hub-name]').textContent=state.name||'Your Mindling';this.cloud.update(state);}
- ingest(event){return this.cloud.ingest(event);}
+ update(state){this.root.querySelector('[data-hub-name]').textContent=state.name||'Your Mindling';}
  renderSelection(){
   const platform=this.selected;
   for(const button of this.root.querySelectorAll('[data-platform]'))button.setAttribute('aria-pressed',String(button.dataset.platform===platform?.id));
-  const detail=this.root.querySelector('.integration-detail');
-  detail.hidden=!platform;
+  const panel=this.detailMotion;
+  const wasOpen=!panel.hidden&&!panel.inert;
+  const mayAnimate=this.visible&&!this.motion.matches&&typeof panel.animate==='function';
+  const start=mayAnimate?panel.getBoundingClientRect().height:0;
+  const current=mayAnimate&&!panel.hidden?getComputedStyle(this.detail):null;
+  const currentOpacity=current?Number(current.opacity):0;
+  const currentTransform=current?.transform||'translateY(12px)';
+  this.cancelDetailAnimations();
+  panel.inert=!platform;
   if(platform){
+   panel.hidden=false;
    for(const key of ['group','name','description'])this.root.querySelector(`[data-detail-${key}]`).textContent=platform[key];
    this.root.querySelector('[data-detail-permissions]').replaceChildren(...platform.permissions.map(value=>{const li=document.createElement('li');li.textContent=value;return li;}));
   }
+  const duration=340;
+  const easing='cubic-bezier(.2,.7,.2,1)';
+  if(platform){
+   if(mayAnimate){
+    const end=panel.getBoundingClientRect().height;
+    this.detailHeight=panel.animate([{height:`${start}px`},{height:`${end}px`}],{duration,easing});
+    this.detailContent=this.detail.animate(
+     [{
+      opacity:wasOpen?Math.min(.75,currentOpacity):currentOpacity,
+      transform:wasOpen?'translateY(3px)':currentTransform
+     },{opacity:1,transform:'translateY(0)'}],
+     {duration,easing}
+    );
+   }
+  }else if(mayAnimate&&start>0){
+   const height=panel.animate([{height:`${start}px`},{height:'0px'}],{duration,easing,fill:'forwards'});
+   this.detailHeight=height;
+   this.detailContent=this.detail.animate([{opacity:currentOpacity,transform:currentTransform},{opacity:0,transform:'translateY(8px)'}],{duration,easing,fill:'forwards'});
+   height.onfinish=()=>{if(this.detailHeight===height)this.finishDetailTransition();};
+  }else panel.hidden=true;
   if(this.visible)this.layoutPaths();
+ }
+ cancelDetailAnimations(){
+  this.detailHeight?.cancel();this.detailContent?.cancel();
+  this.detailHeight=this.detailContent=null;
+ }
+ finishDetailTransition(){
+  this.detailMotion.hidden=!this.selected;
+  this.cancelDetailAnimations();
  }
  layoutPaths(){
   if(this.abort.signal.aborted)return;
@@ -73,6 +108,6 @@ export class IntegrationView{
   const tick=now=>{this.time=now/1000;this.paint(this.time);this.frame=requestAnimationFrame(tick);};
   this.frame=requestAnimationFrame(tick);
  }
- setVisible(visible){this.visible=visible;this.root.hidden=!visible;this.cloud.setVisible(visible);if(visible)this.layoutPaths();this.syncMotion();}
- destroy(){this.visible=false;this.syncMotion();this.observer.disconnect();this.abort.abort();this.cloud.destroy();this.root.replaceChildren();this.ctx=null;this.paths=[];}
+ setVisible(visible){this.visible=visible;this.root.hidden=!visible;if(visible)this.layoutPaths();else this.finishDetailTransition();this.syncMotion();}
+ destroy(){this.visible=false;this.syncMotion();this.observer.disconnect();this.abort.abort();this.finishDetailTransition();this.root.replaceChildren();this.ctx=null;this.paths=[];}
 }

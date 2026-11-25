@@ -4,7 +4,7 @@ import {SpectrumRenderer} from './spectrum-renderer.js';
 
 const HISTORY_SECONDS=30;
 
-// Decorative cloud mounted inside the Network page's connection map.
+// Decorative projection of retained neural structure and recent activity.
 export class NetworkView {
  constructor(root,{clock=Date.now}={}){
   this.root=root;this.clock=clock;this.model=new ActivityModel();this.brain=new BrainStateModel();

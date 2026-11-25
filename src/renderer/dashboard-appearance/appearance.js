@@ -7,7 +7,6 @@ const IDLE_INTERVAL=10;
 
 export class DashboardBrainAppearance {
   mode='neural';
-  preset='soft';
   events=[];
   nextIdle=null;
 
@@ -54,7 +53,7 @@ export class DashboardBrainAppearance {
     this.canvas.draw(this.mode,this.profile,this.activeCues,this.selection);
   }
 
-  get profile(){return this.mode==='neural'?this.preset:this.mode;}
+  get profile(){return this.mode==='neural'?'soft':this.mode;}
 
   release(){
     this.webgl?.dispose();

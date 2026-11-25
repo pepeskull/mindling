@@ -66,10 +66,8 @@ export class SandboxPreview extends EvolutionPreview {
     this.interaction.connect(this.host,{onTap:event=>{
       if(this.external?.tap(event))return;
       if(!this.state.mind)return;
-      const hit=this.seed.selectAt(event);
-      this.events.emit(EVENTS.SCENE_SELECTION,hit);
-      const id=hit?.type==='neuron'?hit.id:null;
-      if(id){this.panel.querySelector('[data-node-selection]').value=id;this.inspectNode(id);}
+      const hit=this.seed.selectSynapseAt(event);
+      if(hit!==undefined)this.events.emit(EVENTS.SCENE_SELECTION,hit);
     },onHover:event=>this.seed.hoverAt(event)});
     this.walletUI=new TestWalletUI(this);
     this.renderState();

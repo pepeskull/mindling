@@ -14,9 +14,7 @@
 .development-view h4 { margin: 22px 0 12px; font-size: 10px; font-weight: 500; color: var(--text-primary); }
 .development-presence { color: var(--text-muted); font-size: 8px; }
 .development-evolution { display: flex; flex-direction: column; }
-.development-scene { flex: 1 0 180px; min-height: 180px; position: relative; cursor: grab; touch-action: none; }
-.development-scene.dragging { cursor: grabbing; }
-.development-scene canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; pointer-events: none; }
+.development-scene { flex: 1 0 180px; min-height: 180px; position: relative; }
 .development-view button { font: inherit; font-size: 9px; border-radius: 6px; border: 1px solid var(--border-subtle); background: rgba(255,255,255,.025); color: var(--text-secondary); padding: 7px 9px; cursor: pointer; transition: color .18s, background .18s, border-color .18s; }
 .development-view button:hover:enabled { border-color: var(--border-hover); color: var(--text-primary); background: rgba(255,255,255,.07); }
 .development-view button:active:enabled { background: var(--accent-muted); }
@@ -78,8 +76,6 @@
 .sandbox-origin-pathways label { margin: 5px 0; }
 .sandbox-origin-pathways input[type=checkbox] { accent-color: var(--accent); flex: none; }
 .development-stage { margin: 0 18px; color: var(--text-secondary); font-size: 10px; }
-.development-zoom-tools { position: static; transform: none; align-self: center; max-width: calc(100% - 32px); margin: 8px 16px 12px; flex: none; flex-wrap: wrap; justify-content: center; }
-.development-zoom-tools [data-brain-zoom] { min-width: 42px; text-align: center; font-size: 8px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .development-progression { display: grid; grid-template-columns: minmax(0, 2fr) minmax(150px, 1fr); align-items: center; gap: 24px; padding: 12px 18px 18px; border-top: 1px solid var(--border-subtle); flex: none; }
 .development-progression .development-metrics { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 0 20px; }
 .development-progression .development-metrics > div { padding: 8px 0; }
