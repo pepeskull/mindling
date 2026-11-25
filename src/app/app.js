@@ -170,7 +170,7 @@ export class MindlingApp extends EvolutionPreview {
     if (this.external?.locked || !this.view || !this.dashboard || !this.state.mind) return;
     const m = this.state.mind;
     this.deceased = m.life.lifeState === 'DECEASED';
-    if (this.identityId !== m.id) { this.identityId = m.id; this.countdown = new AutomaticNetworkCountdown(); this.timeline.network.reset(); this.view.selectedCanonical = null; this.events.emit(EVENTS.SCENE_SELECTION,null); }
+    if (this.identityId !== m.id) { this.identityId = m.id; this.clearBrainActivity(); this.seed.setSelection(null); this.countdown = new AutomaticNetworkCountdown(); this.timeline.network.reset(); this.view.selectedCanonical = null; this.events.emit(EVENTS.SCENE_SELECTION,null); }
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);
     this.seed.update({ nodes: m.nodes, synapses: m.synapses, stage:m.stage });

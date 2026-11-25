@@ -241,6 +241,11 @@ export class CanvasSeedScene {
     const point=this.#points.get('origin')||this.#points.values().next().value,rect=this.#canvas.getBoundingClientRect();
     return point&&this.#width&&this.#height?{x:rect.left+point.x*rect.width/this.#width,y:rect.top+point.y*rect.height/this.#height}:null;
   }
+  projectedNeuron(id) {
+    const point=this.#points.get(id);
+    return point?{x:point.x,y:point.y,radius:point.radius}:null;
+  }
+
   signal(route, ambient = false) { this.#signal = { route, ambient, startedAt: performance.now() / 1000, duration: ambient ? 1.8 : 2.5 }; }
 
   setReducedMotion(value) { this.#reducedMotion = value; }

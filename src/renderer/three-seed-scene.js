@@ -317,7 +317,7 @@ export class ThreeSeedScene {
     this.#camera.updateProjectionMatrix();
   }
 
-  render(elapsed, delta) {
+  render(elapsed, delta, appearance) {
     if (this.#ownsInteraction) this.#interaction.update(delta);
     const ambientTurn = this.#reducedMotion ? 0 : Math.sin(elapsed * 0.16) * 0.08;
     this.#seedGroup.rotation.set(
@@ -355,6 +355,7 @@ export class ThreeSeedScene {
     for (const [id, mesh] of this.#synapseVisuals) mesh.material.opacity = (0.22 + (mesh.userData.strength ?? .2) * .2) * (this.#routeHighlight.synapseIds.includes(id) || this.#selected?.type === "synapse" && this.#selected.id === id ? 1.8 : this.#hovered?.type === "synapse" && this.#hovered.id === id ? 1.3 : 1);
     this.#updateSignal(elapsed);
     if (!this.#reducedMotion) this.#particles.rotation.y = elapsed * 0.012;
+    appearance?.drawThree(this.#scene,this.#renderer);
     this.#renderer.render(this.#scene, this.#camera);
   }
 

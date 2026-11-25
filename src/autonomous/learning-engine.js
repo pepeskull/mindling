@@ -16,6 +16,7 @@ import { validateResearchClaim } from './tasks.js';
 import { correctMemory, belongsToResearchTask } from '../learning/memory-corrections.js';
 import { SERVICE_MESSAGES, canRetryResearch, retryableServiceFailure, matchingEvaluationFailure, researchFailureMessage } from './service-diagnostics.js';
 import { AUTONOMY, automaticPause, dayKey, nextOpportunity, autonomousStatus, autonomousDiagnostics } from './autonomous-schedule.js';
+import { emitBrainActivity } from '../app/brain-activity.js';
 import { EVENTS } from '../app/events.js';
 import { evidenceRejection, canonicalRejection, rejectionExplanation } from './research-evidence.js';
 import { learn } from '../preview/sandbox/engine.js';
@@ -572,7 +573,10 @@ export class AutonomousLearningEngine {
       this.notify(completed);this.recover();
       const memory=this.app.state.mind.memories.find(item=>item.id===completed.knowledgeIds[0]);
       if(memory)this.app.seed?.highlightRoute?.({neuronIds:memory.neuronIds||[],synapseIds:memory.synapseIds||[]});
-      if(completed.knowledgeIds.length)this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity,autonomous:!!task.autonomous});
+      if(completed.knowledgeIds.length){
+        emitBrainActivity(this.app,task.mindlingId,'research',completed.knowledgeIds);
+        this.app.events?.emit(EVENTS.NEURAL_INPUT,{id:task.id,phase:'accepted',activity,autonomous:!!task.autonomous});
+      }
     }catch{reportIntegrationFollowUp(completed,'COMPLETION_NOTIFICATION_FAILED');}
     return completed;
   }

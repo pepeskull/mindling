@@ -5,6 +5,10 @@ import { ThreeSeedScene } from './three-seed-scene.js';
 import { CanvasSeedScene } from './canvas-seed-scene.js';
 import { stagePresentation } from './stage-presentation.js';
 
+const shape=({stage,canonicalNetwork})=>JSON.stringify([stage,
+  canonicalNetwork.nodes.map(({id,position,size})=>[id,position,size]),
+  canonicalNetwork.synapses.map(({id,from,to})=>[id,from,to])]);
+
 // Adapter over the actual Replay scene, not a new morphology/rendering engine.
 // Seed and Replay share ONE canvas/WebGLRenderer; only the active scene draws.
 export class StageBrainScene {
@@ -19,7 +23,9 @@ export class StageBrainScene {
   }
   update(model) {
     const previous=this.data;
-    this.data=stagePresentation(model);
+    const data=stagePresentation(model);
+    if(this.appearance&&previous&&shape(previous)!==shape(data))this.appearance.release();
+    this.data=data;
     const {stage,canonicalNetwork,projection}=this.data;
     if(!previous||stage!==previous.stage){
       this.resetFocus();
@@ -41,12 +47,14 @@ export class StageBrainScene {
   }
   resize(width,height){this.width=width;this.height=height;this.scene.resize(width,height);this.seed?.resize(width,height);}
   render(elapsed,delta,network=this.network){
-    if(this.seed){this.scene.claimRenderer();this.seed.render(elapsed,delta);}
-    else this.scene.render(elapsed,delta,network);
+    this.appearance?.prepare(this,elapsed,Boolean(this.reduced));
+    if(this.seed){this.scene.claimRenderer();this.seed.render(elapsed,delta,this.appearance);}
+    else this.scene.render(elapsed,delta,network,this.appearance);
+    if(!this.three&&this.width>0&&this.height>0)this.appearance?.drawCanvas();
   }
-  selectAt(event){const hit=this.seed?this.seed.selectAt(event):this.scene.pickCanonicalElement(event);if(!this.seed){this.setSelection(hit);this.onSelection?.(hit);}return hit;}
+  selectAt(event){const hit=this.seed?this.seed.selectAt(event):this.scene.pickCanonicalElement(event);this.setSelection(hit);if(!this.seed)this.onSelection?.(hit);return hit;}
   hoverAt(event){if(this.seed)return this.seed.hoverAt(event);this.scene.hoverCanonical=this.scene.pickCanonicalElement(event);return this.scene.hoverCanonical;}
-  setSelection(selection){this.seed?.setSelection(selection);this.scene.selectedCanonical=selection?.type==='neuron'?selection.id:null;this.scene.selectedCanonicalEdge=selection?.type==='synapse'?selection.id:null;}
+  setSelection(selection){this.selection=selection;this.seed?.setSelection(selection);this.scene.selectedCanonical=selection?.type==='neuron'?selection.id:null;this.scene.selectedCanonicalEdge=selection?.type==='synapse'?selection.id:null;}
   focusSelection(selection){
     if(selection?.type!=='neuron')return false;
     const index=this.data.canonicalNetwork.nodes.findIndex(node=>node.id===selection.id);if(index<0)return false;
@@ -63,5 +71,5 @@ export class StageBrainScene {
   signal(route){this.seed?.signal(route);this.scene.signalCanonical(route);}
   highlightRoute(route){this.seed?.highlightRoute(route);this.scene.canonicalRoute=route;}
   setReducedMotion(value){this.reduced=value;this.scene.reduced=value;this.seed?.setReducedMotion(value);if(value&&this.scene.morph.progress<1){this.scene.morph.select(this.data.stage,true);this.scene.buffers.rebuild(this.scene.morph);this.scene.centralSegments=this.scene.buffers.segmentCount;}}
-  destroy(){if(this.disposed)return;this.disposed=true;this.seed?.destroy();if(this.ownsScene)this.scene?.destroy();for(const key of ['visualNeurons','canonicalNeurons'])delete this.host?.dataset[key];}
+  destroy(){if(this.disposed)return;this.disposed=true;this.appearance?.release();this.seed?.destroy();if(this.ownsScene)this.scene?.destroy();for(const key of ['visualNeurons','canonicalNeurons'])delete this.host?.dataset[key];}
 }
