@@ -13,7 +13,8 @@ const accepts=(kind,route,body)=>{
   if (route===LEARN) return LEARN_KINDS.has(kind)&&(kind==='correction')===Boolean(body.correction);
   if (RESEARCH.has(kind)) {
     if(!RESEARCH_MODES.has(body.mode))return false;
-    const request=body.mode==='research'?body.context:body.context?.request??body.context?.checkpoint?.request;
+    const request=body.mode==='research'?body.context:body.mode==='research-evaluate'?
+      body.context?.checkpoint?.request:body.context?.request;
     return body.mode==='research-capabilities'||(request?.mode===RESEARCH_DEPTH[kind]&&
       Boolean(request?.autonomous)===(kind==='autonomous'));
   }
@@ -60,11 +61,20 @@ function enabled(env) {
     env.HELIUS_API_KEY || env.MIND_TOKEN_MINT || env.WALLET_PRIVATE_KEY || env.ENCRYPTION_KEY);
 }
 
+function ledgerConfigured(env) {
+  return Boolean(env.UPSTASH_REDIS_REST_URL?.startsWith('https://')&&env.UPSTASH_REDIS_REST_TOKEN&&env.ENCRYPTION_KEY);
+}
+
+function energyCipher(env) {
+  if(!ledgerConfigured(env))throw failure('ENERGY_SERVICE_UNAVAILABLE',503);
+  try {return require('./payments.cjs').encryption(env.ENCRYPTION_KEY,'operation');}
+  catch {throw failure('ENERGY_SERVICE_UNAVAILABLE',503);}
+}
+
 function runtimeFor(env=process.env) {
+  const activityCipher=energyCipher(env);
   const store = redisStore({url:env.UPSTASH_REDIS_REST_URL,token:env.UPSTASH_REDIS_REST_TOKEN});
   const auth = authority(store);
-  const {encryption}=require('./payments.cjs');
-  const activityCipher=encryption(env.ENCRYPTION_KEY,'operation');
   return Promise.resolve(energyLedger(store)).then(ledger=>{
     let payment;
     return {store,auth,ledger,activityCipher,payment(){
@@ -141,8 +151,8 @@ function protect(route,handler,options={}) {
     try{
       body=parse(req);
       origin(req);
-      const {ledger,auth,activityCipher}=await (options.runtime||runtimeFor)();
-      const {fingerprint,operation}=await auth.verify(req.headers,route,body);
+      const {ledger,auth,store,activityCipher}=await (options.runtime||runtimeFor)();
+      const {fingerprint,operation}=await auth.verify(req.headers,route,body,()=>store.rate(clientKey(req,'authenticated'),90,60));
       if(route===REASON&&body.mode==='research-capabilities') {
         await ledger.get(fingerprint);
         return handler(req,res);
@@ -164,17 +174,15 @@ function protect(route,handler,options={}) {
         return res.status(cached.status).json({...body,energy});
       }
       let status, result;
-      const capture = new Proxy(res,{
-        get(target,property){
-          if(property==='status')return code=>{status=code;return capture;};
-          if(property==='json')return value=>{result=value;return capture;};
-          const value=Reflect.get(target,property,target);
-          return typeof value==='function'?value.bind(target):value;
-        }
-      });
-      // Keep settlement and upstream dispatch tied to the persisted request,
-      // even if the caller disconnects during the provider request.
-      await handler(req,capture);
+      const capture={
+        status(code){status=code;return capture;},
+        json(value){result=value;return capture;},
+        setHeader(name,value){if(!res.writableEnded&&!res.destroyed)res.setHeader(name,value);}
+      };
+      // Once admitted, the server owns this bounded attempt. Browser abort
+      // events must not stop its checkpoint or receipt from reaching Redis.
+      const input={method:req.method,headers:req.headers,body:req.body,socket:req.socket};
+      await handler(input,capture);
       if(!status||!result)throw failure('OUTCOME_UNKNOWN');
       const json=JSON.stringify(result);
       if(Buffer.byteLength(json)>120000)throw failure('OUTCOME_UNKNOWN');
@@ -204,16 +212,19 @@ function energyHandler(options={}) {
       if(Object.hasOwn(body,'cluster')||Object.hasOwn(body,'network'))throw failure('REQUEST_INVALID',400);
       origin(req);
       const active=Boolean(options.runtime)||enabled(process.env);
-      if(body.action==='availability')return res.status(200).json({active,cluster:active?'mainnet':null});
-      if(!active)throw failure('PAYMENT_UNAVAILABLE',503);
       res.setHeader('Cache-Control','no-store');
+      if(body.action==='availability'){
+        if(active&&!options.runtime)energyCipher(process.env);
+        return res.status(200).json({active,cluster:active?'mainnet':null});
+      }
+      if(!active)throw failure('ENERGY_SERVICE_UNAVAILABLE',503);
       const runtime=await (options.runtime||runtimeFor)();
       const {store,auth,ledger}=runtime;
       if(body.action==='challenge'){
         await store.rate(clientKey(req,'challenge'),90,60);
         return res.status(200).json(await auth.challenge(body.publicKey));
       }
-      const {fingerprint,publicKey,displayId}=await auth.verify(req.headers,ENERGY,body);
+      const {fingerprint,publicKey,displayId}=await auth.verify(req.headers,ENERGY,body,()=>store.rate(clientKey(req,'authenticated'),90,60));
       let data;
       switch(body.action){
         case 'register':
@@ -233,6 +244,16 @@ function energyHandler(options={}) {
              new Set(body.text.trim().split(/\s+/)).size<4)throw failure('REQUEST_INVALID',400);
           const admission=await ledger.admit(fingerprint,{id:body.id,kind:'talk',phase:'local-talk',requestId:'local',bodyHash:sha256(body.text)});
           data={energy:admission.cached?admission.energy:await ledger.record(fingerprint,body.id,'local',{status:200,body:{}},{qualification:{spend:true,xp:0}})};
+          break;
+        }
+        case 'payment-open': {
+          await store.rate(clientKey(req,'payment-open'),12,60);
+          const localOrigin=req.headers.origin;
+          if(typeof localOrigin!=='string'||!localOrigin.startsWith('https://'))throw failure('PAYMENT_HTTPS_REQUIRED',400);
+          const session=await runtime.payment().open(fingerprint,{fresh:body.fresh===true});
+          const link=new URL('/api/mindling/pay',localOrigin);
+          link.searchParams.set('session',session.id);
+          data={session:{...session,qrPayload:session.payable?'solana:'+encodeURIComponent(link.href):null}};
           break;
         }
         case 'payment-current':
@@ -264,7 +285,6 @@ function walletHandler(options={}) {
         return res.status(204).end();
       }
       if(!['GET','POST'].includes(req.method))throw failure('METHOD_NOT_ALLOWED',405);
-      res.setHeader('Cache-Control','no-store');
       const runtime=await (options.runtime||runtimeFor)();
       await runtime.store.rate(clientKey(req,'wallet-checkout'),12,60);
       if(req.method==='GET')return res.status(200).json({label:'Play Mindling · Mainnet'});

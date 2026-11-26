@@ -1,7 +1,8 @@
 """Offline Dashboard top-up, signing flow, and IndexedDB reload."""
 import json
+import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from playwright.sync_api import expect, sync_playwright
 
@@ -30,12 +31,13 @@ async()=>{
 """
 
 
-def run(browser):
-    page = browser.new_page(viewport={'width': 390, 'height': 820}, reduced_motion='reduce')
+def run(browser, width):
+    page = browser.new_page(viewport={'width': width, 'height': 820}, reduced_motion='reduce')
     seen = []
     unexpectedly_sent = []
     errors = []
     session = None
+    market_unavailable = False
     remaining, revision, pending, held = 2, 1, True, 0
 
     def route_request(route):
@@ -56,6 +58,8 @@ def run(browser):
             seen.append(action)
             if action not in ('availability', 'challenge'):
                 assert len(route.request.headers['x-mindling-signature']) == 128
+                assert route.request.headers['x-mindling-session'] == SESSION
+                assert route.request.headers['x-mindling-nonce'] != SESSION
             if action == 'availability':
                 result = {'active': True, 'cluster': 'mainnet'}
             elif action == 'challenge':
@@ -65,7 +69,8 @@ def run(browser):
                 key = body['publicKey']
                 canonical = {k: key[k] for k in ('crv', 'kty', 'x', 'y')}
                 result = {'nonce': SESSION, 'fingerprint': hashlib.sha256(
-                    json.dumps(canonical, separators=(',', ':')).encode()).hexdigest()}
+                    json.dumps(canonical, separators=(',', ':')).encode()).hexdigest(),
+                          'expiresAt': page_date() + 300000}
             elif action in ('register', 'state'):
                 result = {'energy': energy(remaining, revision)}
             elif action == 'local-talk':
@@ -83,12 +88,16 @@ def run(browser):
                 revision += 1
                 result = {'energy': energy(remaining, revision), 'receipt': {
                     'id': body['id'], 'charge': 1, 'balanceAfter': remaining, 'revision': revision}}
-            elif action == 'payment-current':
-                result = {'session': session}
-            elif action == 'payment-create':
-                timestamp = page_date()
-                session = {'id': SESSION, 'cluster': 'mainnet', 'address': ADDRESS, 'units': '19900000',
-                           'decimals': 6, 'createdAt': timestamp, 'expiresAt': timestamp + 600000}
+            elif action == 'payment-open':
+                if market_unavailable:
+                    route.fulfill(status=503, json={'error': {'code': 'MARKET_PRICE_UNAVAILABLE'}})
+                    return
+                if not session:
+                    timestamp = page_date()
+                    payload = 'solana:' + quote(BASE + '/api/mindling/pay?session=' + SESSION, safe='')
+                    session = {'id': SESSION, 'cluster': 'mainnet', 'address': ADDRESS, 'units': '19900000',
+                               'decimals': 6, 'createdAt': timestamp, 'expiresAt': timestamp + 600000,
+                               'qrPayload': payload, 'sponsored': True}
                 result = {'session': session}
             elif action == 'payment-check':
                 assert body['id'] == SESSION
@@ -130,20 +139,44 @@ def run(browser):
     page.evaluate(SEED)
     page.goto(BASE + '/')
     page.wait_for_function('window.fixtureReady')
-    button = page.locator('.energy-panel .coming-soon')
-    try:
-        expect(button).to_be_enabled()
-    except AssertionError as error:
-        raise AssertionError((seen, errors, page.locator('.interaction-status').text_content())) from error
+    button = page.locator('[data-energy-wallet]')
+    expect(button).to_be_enabled()
+    expect(button.locator('span')).to_be_empty()
+    page.wait_for_function("fixtureApp.state.mind.energyAuthority?.revision===1")
+    startup = seen.copy()
+    assert startup == ['availability', 'challenge', 'register'], (seen, errors)
     expect(page.locator('[data-energy-value]')).to_have_text('2 / 10')
-    # Mobile uses the Dashboard sheet for the Energy panel.
+    nav = '[data-mobile-view' if width < 600 else '[data-view'
+    page.locator(nav + '=development]').click()
+    page.locator(nav + '=dashboard]').click()
+    page.wait_for_timeout(1050)
+    assert seen == startup, seen
     if not button.is_visible():
         page.locator('[data-mobile-view=dashboard]').click()
+
+    marker = len(seen)
     button.click()
-    dialog = page.get_by_role('dialog', name='Energy top-up')
-    expect(dialog.get_by_text('19.900000 MIND · $1.99')).to_be_visible()
+    dialog = page.get_by_role('dialog', name='Energy Top-up')
+    expect(dialog.get_by_text('$1.99', exact=True)).to_be_visible()
+    expect(dialog.get_by_text('19.900000 MIND', exact=True)).to_be_visible()
     expect(dialog.locator('[data-qr] svg')).to_be_visible()
-    expect(button).to_have_text(ADDRESS[:5] + '…' + ADDRESS[-5:])
+    expect(dialog.get_by_text('Sponsored network fee')).to_be_visible()
+    expect(dialog.locator('[data-address]')).to_have_value(ADDRESS)
+    opened = seen[marker:]
+    assert opened == ['payment-open'], opened
+    expect(button).to_contain_text(ADDRESS[:5] + '…' + ADDRESS[-5:])
+    remaining_time = dialog.locator('[data-time]').text_content()
+    expect(dialog.locator('[data-time]')).not_to_have_text(remaining_time)
+    assert seen[marker:] == opened, seen
+    if os.getenv('MINDLING_WALLET_SCREENSHOTS'):
+        page.screenshot(path=str(Path(os.environ['MINDLING_WALLET_SCREENSHOTS']) /
+                                 ('desktop.png' if width >= 600 else 'mobile.png')))
+    page.keyboard.press('Escape')
+    expect(dialog).to_be_hidden()
+    expect(button).to_be_focused()
+    button.click()
+    expect(dialog.locator('[data-qr] svg')).to_be_visible()
+    assert seen[marker:] == ['payment-open', 'payment-open']
     check = dialog.get_by_role('button', name='Check payment')
     check.click()
     expect(dialog.get_by_role('status')).to_have_text('Waiting for the transaction to finalize.')
@@ -151,11 +184,15 @@ def run(browser):
     check.click()
     expect(dialog).to_be_hidden()
     expect(page.locator('[data-energy-value]')).to_have_text('10 / 10')
+    expect(page.locator('.interaction-status')).to_have_text('Payment confirmed. Energy restored.')
+    marker=len(seen)
     page.reload()
     page.wait_for_function('window.fixtureReady')
     expect(button).to_be_enabled()
     expect(page.locator('[data-energy-value]')).to_have_text('10 / 10')
     assert page.evaluate('fixtureApp.state.mind.energyAuthority.revision') == 2
+    expect(button).to_contain_text(ADDRESS[:5] + '…' + ADDRESS[-5:])
+    assert seen[marker:] == []
     page.locator('#mindling-input').fill('How are you developing this afternoon?')
     page.locator('#interaction-form button[type=submit]').click()
     expect(page.locator('[data-energy-value]')).to_have_text('9 / 10')
@@ -163,8 +200,17 @@ def run(browser):
     assert seen.count('local-talk') == 1 and seen.count('authorize-commit') == 1 and seen.count('settle') == 1
     journal = page.evaluate("fixtureApp.db.getAll('energyJournal')")
     assert len(journal) == 1 and journal[0]['energyCost'] == 1 and journal[0]['energyRevision'] == 4
-    assert seen.count('payment-create') == 1
+    assert seen[marker:] == ['challenge', 'local-talk', 'authorize-commit', 'settle']
+    assert seen.count('payment-open') == 2
     assert seen.count('payment-check') == 2
+    if not button.is_visible():
+        page.locator('[data-mobile-view=dashboard]').click()
+    market_unavailable = True
+    button.click()
+    expect(dialog.get_by_role('status')).to_have_text('A reliable MIND price is unavailable. No payment quote was created.')
+    expect(dialog.locator('[data-qr] svg')).to_have_count(0)
+    print(f'{width}px: startup={startup}, navigation/idle=0, wallet={opened}, cached reload=0, '
+          'ordinary Talk=challenge + local-talk + authorize-commit + settle')
     assert not errors, errors
     assert not unexpectedly_sent, unexpectedly_sent
     page.close()
@@ -173,6 +219,7 @@ def run(browser):
 if __name__ == '__main__':
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path='/usr/bin/chromium', args=['--no-sandbox'])
-        run(browser)
+        run(browser, 1280)
+        run(browser, 390)
         browser.close()
-    print('PASS: local mobile Dashboard top-up, Web Crypto signing, QR, pending finality, successful synchronization, IndexedDB reload and one settled Talk charge.')
+    print('PASS: local desktop and mobile Dashboard top-up, Web Crypto signing, QR, pending finality, successful synchronization, IndexedDB reload and one settled Talk charge.')

@@ -85,7 +85,7 @@ export class MindlingApp extends EvolutionPreview {
       else if(e.version===2&&e.remaining-e.bonus<energyCapacityForStage(this.state.mind.stage)&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
     }},1000);
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {void this.refreshState();void this.syncEnergy();}
+      if (!document.hidden) void this.refreshState();
     }, { signal: this.listeners.signal });
     window.addEventListener('online',()=>void this.syncEnergy(),{signal:this.listeners.signal});
   }
@@ -146,17 +146,14 @@ export class MindlingApp extends EvolutionPreview {
     if(this.disposed||this.external?.locked||!this.state?.mind)return;
     const id=this.state.mind.id;
     try{
-      const ready=await this.energyClient.sync();
-      if(ready===true&&!this.disposed&&this.state.mind?.id===id&&this.state.mind.life.lifeState==='ALIVE')this.topUp?.enable(id);
+      await this.energyClient.sync();
     }catch(error){if(this.state?.mind?.id===id)this.dashboard?.showEnergySyncStatus(error.message);}
   }
 
   async refreshState() {
     if (this.disposed || this.external?.locked) return;
-    const stage=this.state?.mind?.stage;
     try {
       await this.change();
-      if(stage!==this.state?.mind?.stage)void this.syncEnergy();
     } catch { if (!this.disposed) this.dashboard.setStorageStatus(false); }
   }
 
@@ -236,7 +233,7 @@ export class MindlingApp extends EvolutionPreview {
     if (this.external?.locked || !this.view || !this.dashboard || !this.state.mind) return;
     const m = this.state.mind;
     this.deceased = m.life.lifeState === 'DECEASED';
-    if(this.topUp)this.topUp.button.disabled=this.deceased||this.topUp.identity!==m.id;
+    this.topUp?.update(m);
     if (this.identityId !== m.id) { this.identityId = m.id; this.clearBrainActivity(); this.seed.setSelection(null); this.countdown = new AutomaticNetworkCountdown(); this.timeline.network.reset(); this.view.selectedCanonical = null; this.events.emit(EVENTS.SCENE_SELECTION,null); }
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);

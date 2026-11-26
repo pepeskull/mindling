@@ -47,13 +47,13 @@ function encryption(material,purpose='deposit') {
   };
 }
 
-function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,{now})}={}) {
+function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,{now,snapshot:chain.marketSnapshot})}={}) {
   if (chain.cluster!=='mainnet') throw failure('PAYMENT_UNAVAILABLE',503);
   const keysFor=owner=>[energyKey(owner),'checkout:'+owner,'checkout-global'];
   const visible = row => ({
     id:row.id,cluster:chain.cluster,address:row.address,mint:row.mint,decimals:row.decimals,
     units:row.units,createdAt:row.createdAt,expiresAt:row.expiresAt,priceAsOf:row.quote.asOf,
-    receipt:row.receipt??null
+    receipt:row.receipt??null, transactionIssued:Boolean(row.signed)
   });
   async function create(owner,{fresh=false}={}) {
     await ledger.get(owner);
@@ -61,32 +61,42 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
     const previous=await store.get(active);
     if (!fresh && previous?.id) {
       const row=await store.get(sessionKey(previous.id));
-      if (row && (row.receipt || row.expiresAt>now())) return visible(row);
+      if(row){
+        equalOwner(row,owner);
+        if(row.receipt||row.signed||row.expiresAt>now())return visible(row);
+      }
     }
     requireOpen(await store.get(CONTROL),now());
     await store.rate('payment-session-attempt:'+owner,6,60);
     await store.rate('payment-session-attempt-global',30,60);
-    const {mint,decimals}=await chain.mintInfo();
-    const quote=await price(mint);
+    const {mint,decimals,tokenProgram}=await chain.mintInfo();
+    const quote=await price(mint,decimals,tokenProgram);
     const id=randomBytes(24).toString('hex'), createdAt=now();
     if(quote.mint!==mint||quote.freshUntil<=createdAt)throw failure('MARKET_PRICE_UNAVAILABLE',503);
     const units=quoteUnits(quote,decimals);
-    const {secret,...deposit}=await chain.newDeposit();
-    const row={id,owner,...deposit,mint,decimals,units,quote,createdAt,expiresAt:createdAt+QUOTE_MS};
+    const {secret,...deposit}=await chain.newDeposit(tokenProgram);
+    const row={id,owner,...deposit,mint,decimals,tokenProgram,units,quote,createdAt,expiresAt:createdAt+QUOTE_MS};
     try {row.sealed=keys.seal(secret,row);}
     finally {secret.fill(0);}
-    return store.change([energy,active,global,sessionKey(id),CONTROL,HEAD],([entry,current,total,previous,control,head])=>{
+    const created=await store.change([energy,active,global,sessionKey(id),CONTROL,HEAD],([entry,current,total,previous,control,head])=>{
       requireOpen(control,now());
       assertFence(control,head);
       if(previous)throw failure('PAYMENT_SESSION_ACTIVE');
       if (!entry) throw failure('ENERGY_REGISTRATION_REQUIRED',401);
-      if(current?.expiresAt>createdAt&&!current.credited) throw failure('PAYMENT_SESSION_ACTIVE');
+      if(current?.expiresAt>createdAt&&!current.credited){
+        if(!fresh)return {result:null};
+        throw failure('PAYMENT_SESSION_ACTIVE');
+      }
       const day=Math.floor(createdAt/86400000);
       const count=current?.day===day?current.count:0;
       const all=total?.day===day?total.count:0;
       if (count>=3 || all>=100) throw failure('PAYMENT_RATE_LIMIT',429);
       return {writes:[entry,{id,day,count:count+1,expiresAt:row.expiresAt,credited:false},{day,count:all+1},row,control,head],result:visible(row)};
     });
+    if(created)return created;
+    const recovered=await current(owner);
+    if(!recovered)throw failure('PAYMENT_SESSION_ACTIVE');
+    return recovered;
   }
   async function current(owner) {
     const active=await store.get('checkout:'+owner);
@@ -94,6 +104,27 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
     const session=await store.get(sessionKey(active.id));
     equalOwner(session,owner);
     return visible(session);
+  }
+  async function open(owner,options) {
+    const session=await create(owner,options);
+    if(session.expiresAt<=now()||session.receipt)return {...session,payable:false,sponsored:false};
+    const [control,head,tally]=await Promise.all([store.get(CONTROL),store.get(HEAD),store.get(SPONSOR)]);
+    try {requireOpen(control,now());assertFence(control,head);}
+    catch(error){
+      if(error.code==='PAYMENTS_PAUSED')return {...session,payable:false,sponsored:false};
+      throw error;
+    }
+    let sponsored=false;
+    try {
+      if(chain.sponsorEstimate){
+        reserveSponsor(tally,await chain.sponsorEstimate(),now());
+        sponsored=true;
+      }
+    }catch(error){
+      if(!['SPONSOR_BUDGET_UNAVAILABLE','CHAIN_UNAVAILABLE','SPONSOR_FEE_LIMIT'].includes(error.code))throw error;
+    }
+    const payable=sponsored&&session.expiresAt>now();
+    return {...session,payable,sponsored:payable};
   }
   async function wallet(id,account) {
     if (typeof account!=='string'||!ACCOUNT.test(account)) throw failure('INVALID_WALLET',400);
@@ -287,7 +318,7 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       }
     }
   }
-  return {create,current,wallet,check,sweepOne,verifyOne,auditEvent,visible};
+  return {create,current,open,wallet,check,sweepOne,verifyOne,auditEvent,visible};
 }
 
 module.exports={encryption,payments,sessionKey};
