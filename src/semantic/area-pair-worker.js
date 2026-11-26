@@ -48,7 +48,7 @@ export async function connectAreas(app,ids,identity,onProgress=()=>{},{automatic
    dispatched=true;sent=true;
    const controller=new AbortController(),abort=()=>controller.abort(),timer=setTimeout(abort,45000);globalThis.window?.addEventListener('pagehide',abort,{once:true});
    let result;try{
-    const response=await fetch('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:requestId,mode:'area-pair',context})});
+    const response=await (app.energyClient?.transport(automatic?'automatic-area-pair':'area-pair',fingerprint)||fetch)('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:requestId,mode:'area-pair',context})});
     const text=await response.text();received=true;if(text.length>100000)areaFail('INVALID_RESPONSE');try{result=JSON.parse(text);}catch{areaFail('INVALID_RESPONSE');}
     if(!response.ok&&result.service==='mindling-reasoning-service'&&result.id===requestId&&result.inferenceDispatched===false&&[429,503].includes(response.status)){
      knownNotDispatched=true;areaFail('ANALYSIS_PAUSED');

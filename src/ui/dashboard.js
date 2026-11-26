@@ -248,6 +248,8 @@ export class Dashboard {
     else document.querySelector("[data-energy-message]").hidden = true;
   }
 
+  showEnergySyncStatus(message){ this.#showStatus(message); }
+
   renderEnergy(energy,now){
     const label=energyLabel(energy,now);
     document.querySelector('[data-energy-value]').textContent=label.value;

@@ -1,3 +1,4 @@
+import { EVOLUTION_REQUIREMENTS as RULES } from '../../economy/energy-policy.js';
 import {MEMORY_POLICY,applyMemoryEvolution,connectionEvolution,newMemoryEvolution,reinforcementEvent} from '../../memory/evolution-policy.js';
 import { XP, activityReward, cappedXPAward } from '../../economy/xp.js';
 export { XP } from '../../economy/xp.js';
@@ -22,10 +23,10 @@ import { neuralSeedRecords } from '../../brain/neural-seed-state.js';
 import { STAGES } from '../evolution-model.js';
 import { validateResearchClaim } from '../../autonomous/tasks.js';
 export const HOUR = 3600000, DAY = 24 * HOUR;
-export const RULES = Object.freeze([ [1,75,6], [2,125,10], [3,175,15], [4,225,20], [5,300,25], [7,400,30], [0,0,0] ].map(([days,xp,concepts]) => Object.freeze({days,xp,concepts})));
+export { EVOLUTION_REQUIREMENTS as RULES } from '../../economy/energy-policy.js';
 // Legacy classification helper for existing consumers; gameplay uses activityReward.
 export function learningReward(kind,{independentlyVerified=false}={}){return kind==='understanding'?(independentlyVerified?XP.understanding:XP.concept):XP[kind]??0;}
-export function upgradeGrowth(mind,now){repairCanonicalPositions(mind,now);reclassifyPathwayEvidence(mind,now);mind.energy=setEnergyStage(mind.energy,mind.stage,now);}
+export function upgradeGrowth(mind,now){repairCanonicalPositions(mind,now);reclassifyPathwayEvidence(mind,now);mind.energy=mind.energyAuthority?energyAt(mind.energy,now):setEnergyStage(mind.energy,mind.stage,now);}
 export class VirtualClock {
   constructor(now) { if (!Number.isSafeInteger(now) || now < 0) throw Error('Invalid virtual time'); this.now=now; }
   advance(hours) { if (![1,12,24,168].includes(hours)) throw Error('Unsupported time step'); this.now+=hours*HOUR; return this.now; }
@@ -54,7 +55,7 @@ export function evolve(state) {
   if(!eligibility(state).eligible)throw Error('Time, XP, learning milestones and a living Mindling are required');
   const next=structuredClone(state),m=next.mind;
   m.stageHistory.push({stage:m.stage,enteredAt:m.enteredAt,leftAt:next.now,xp:m.stageXP,concepts:new Set(m.milestones).size});
-  m.stage++;m.energy=setEnergyStage(m.energy,m.stage,next.now);m.enteredAt=next.now;m.stageXP=0;m.milestones=[];return next;
+  m.stage++;if(!m.energyAuthority)m.energy=setEnergyStage(m.energy,m.stage,next.now);m.enteredAt=next.now;m.stageXP=0;m.milestones=[];return next;
 }
 // Pure final transaction reducer: exactly one eligible transition; new-stage counters reset.
 export function reconcileEvolution(state) { return eligibility(state).eligible ? evolve(state) : state; }

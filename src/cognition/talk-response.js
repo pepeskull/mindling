@@ -50,9 +50,10 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
       const bytes=new TextEncoder().encode(JSON.stringify({mode:'talk',identity,id,context}));
       const digest=await crypto.subtle.digest('SHA-256',bytes);
       const requestId=[...new Uint8Array(digest)].map(value=>value.toString(16).padStart(2,'0')).join('');
-      reasoning=(await requestTalkReasoning({id:requestId,context:{...context,agentName:app.state.mind.name},signal})).reasoning;
+      reasoning=(await requestTalkReasoning({id:requestId,context:{...context,agentName:app.state.mind.name},signal,fetcher:app.energyClient?.transport('talk',id)})).reasoning;
     }
     if(app.disposed||signal.aborted)throw Error('Talk was cancelled. No Energy was spent.');
+    if(!context.candidates.length||interpretation.intent==='CONVERSATION'&&interpretation.selfInquiry)await app.energyClient?.localTalk(id,talkText);
     const coverage=interpretation.intent==='QUESTION'?knowledgeGap(interpretation,context,reasoning,Date.now(),app.state.mind):null;
     const gap=coverage?.needsResearch===true;
     // Preserve the evidence's language. When the prose clearly uses another
@@ -73,7 +74,7 @@ export function knowledgeTalk(app,text,id,{journal=false,interpretation=null,gua
       if(state.mind?.id!==identity)throw Error('Mindling identity changed. No Energy was spent.');
       assertTrainingContext(context,state.mind);
       return talk(state,talkText,{id,rewardEligible:reasoning.insufficientInformation===false&&!gap,usedMemoryIds:reasoning.memoryIds});
-    },journal?{journal:{id,type:'TALK'}}:{});
+    },{...(journal?{journal:{id,type:'TALK'}}:{}),energyOperation:{id,kind:'talk'}});
     emitBrainActivity(app,identity,'talk',reasoning.memoryIds);
     if(reasoning.memoryIds.length)emitBrainActivity(app,identity,'recall',reasoning.memoryIds);
     let reply={answer:reasoning.answer,memoryIds:reasoning.memoryIds,uncertainty:gap?'high':reasoning.uncertainty,insufficientInformation:gap||reasoning.insufficientInformation,energySpent:1};

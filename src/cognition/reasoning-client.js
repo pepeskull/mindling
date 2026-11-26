@@ -8,7 +8,7 @@ const messages = { SERVICE_UNAVAILABLE: 'The reasoning service is not configured
 
 // Transport only. Retrieval, validation rules, provider phases and persistence
 // remain separate. Explicit evaluation/Talk and consented research phases use this transport.
-async function requestService({ id, context, signal }, mode = 'evaluation') {
+async function requestService({ id, context, signal, fetcher=fetch }, mode = 'evaluation') {
   if(mode==='research-capabilities'){if(!context||typeof context!=='object'||Array.isArray(context)||Object.keys(context).length)throw Error('Invalid capability request.');}else if(mode==='research')validatePlanningContext(context);else if(mode==='research-acquire')validateRetrievalContext(context);else if(mode==='research-evaluate')validateResearchEvaluationContext(context);else validateContext(context,{talk:mode==='talk'});
   if(signal.aborted&&['research-acquire','research-evaluate'].includes(mode))throw clientResearchFailure('TRANSPORT_INTERRUPTED',{id,mode,phase:'TRANSPORT',reason:signal.reason});
   if (signal.aborted) throw new DOMException(mode==='talk'?'Talk was cancelled. No Energy was spent.':'Evaluation cancelled', 'AbortError');
@@ -18,7 +18,7 @@ async function requestService({ id, context, signal }, mode = 'evaluation') {
   const abort = () => controller.abort(signal.reason); signal.addEventListener('abort', abort, { once: true });
   const deadline = setTimeout(()=>{timedOut=true;controller.abort('CLIENT_DEADLINE');}, 55000);
   try {
-    const response = await fetch('/api/mindling/reason', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ id, context, ...(mode!=='evaluation'?{mode}:{}) }) });
+    const response = await fetcher('/api/mindling/reason', { method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal, body: JSON.stringify({ id, context, ...(mode!=='evaluation'?{mode}:{}) }) });
     status=response.status;
     const text = await response.text();received=true;phase='RESPONSE_PARSE';
     if (text.length > 100000) throw Error('The reasoning service returned an oversized response. No result was saved.');

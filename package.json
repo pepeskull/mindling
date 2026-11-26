@@ -1,0 +1,9 @@
+{
+  "name": "play-mindling",
+  "private": true,
+  "dependencies": {
+    "@solana-program/compute-budget": "0.20.0",
+    "@solana-program/token": "0.18.0",
+    "@solana/kit": "8.6.0"
+  }
+}
