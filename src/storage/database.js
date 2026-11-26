@@ -39,7 +39,7 @@ export class MindlingDatabase {
   async get(store, id) { return this.#request(store, "readonly", target => target.get(id)); }
   async getAll(store) { return this.#request(store, "readonly", target => target.getAll()); }
   async put(store, value) { return this.#request(store, "readwrite", target => target.put(value)); }
-  async changeGameplay(reducer, { identity = null, journal = null, researchGrant=null } = {}) {
+  async changeGameplay(reducer, { identity = null, journal = null, researchGrant=null, authoritativeReceipt=null } = {}) {
     if (!this.#db) throw Error('Database is not open');
     const names = ['gameplay', 'mindling', 'life', 'identity', 'neurons', 'synapses', 'memories', 'pathways', 'energyJournal', 'memorials', 'settings'];
     return new Promise((resolve, reject) => {
@@ -77,7 +77,13 @@ export class MindlingDatabase {
             if (journal && next.mind) {
               if (data.energyJournal.some(item => item.id === journal.id)) throw Error('Activity already processed');
               const cost = energyAt(initial.mind.energy,next.now).remaining - next.mind.energy.remaining;
-              tx.objectStore('energyJournal').put({ ...journal, mindlingId: next.mind.id, at: new Date(next.now).toISOString(), energyCost: cost, balanceAfter: next.mind.energy.remaining });
+              tx.objectStore('energyJournal').put({ ...journal, mindlingId: next.mind.id, at: new Date(next.now).toISOString(),
+                energyCost:journal.energyOperationId?null:cost, balanceAfter:journal.energyOperationId?null:next.mind.energy.remaining });
+            }
+            if(authoritativeReceipt&&next.mind){
+              const pending=data.energyJournal.find(item=>item.mindlingId===next.mind.id&&item.energyOperationId===authoritativeReceipt.id);
+              if(pending)tx.objectStore('energyJournal').put({...pending,energyCost:authoritativeReceipt.charge,
+                balanceAfter:authoritativeReceipt.balanceAfter,energyRevision:authoritativeReceipt.revision});
             }
           } catch (caught) { error = caught; tx.abort(); }
         };

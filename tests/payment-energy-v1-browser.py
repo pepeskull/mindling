@@ -57,7 +57,7 @@ def run(browser):
             if action not in ('availability', 'challenge'):
                 assert len(route.request.headers['x-mindling-signature']) == 128
             if action == 'availability':
-                result = {'active': True, 'cluster': 'devnet'}
+                result = {'active': True, 'cluster': 'mainnet'}
             elif action == 'challenge':
                 # This fixture derives the fingerprint, so the real browser signer
                 # can reject a challenge for a different saved identity.
@@ -73,17 +73,21 @@ def run(browser):
                 held = 1
                 revision += 1
                 result = {'energy': energy(remaining, revision)}
+            elif action == 'authorize-commit':
+                assert held == 1 and body['cost'] == 1
+                result = {'approval': 'b' * 64}
             elif action == 'settle':
-                assert held == 1 and body['committed'] and body['cost'] == 1
+                assert held == 1 and body['approval'] == 'b' * 64
                 held = 0
                 remaining -= 1
                 revision += 1
-                result = {'energy': energy(remaining, revision)}
+                result = {'energy': energy(remaining, revision), 'receipt': {
+                    'id': body['id'], 'charge': 1, 'balanceAfter': remaining, 'revision': revision}}
             elif action == 'payment-current':
                 result = {'session': session}
             elif action == 'payment-create':
                 timestamp = page_date()
-                session = {'id': SESSION, 'cluster': 'devnet', 'address': ADDRESS, 'units': '19900000',
+                session = {'id': SESSION, 'cluster': 'mainnet', 'address': ADDRESS, 'units': '19900000',
                            'decimals': 6, 'createdAt': timestamp, 'expiresAt': timestamp + 600000}
                 result = {'session': session}
             elif action == 'payment-check':
@@ -137,7 +141,7 @@ def run(browser):
         page.locator('[data-mobile-view=dashboard]').click()
     button.click()
     dialog = page.get_by_role('dialog', name='Energy top-up')
-    expect(dialog.get_by_text('19.900000 MIND · $1.99 test quote')).to_be_visible()
+    expect(dialog.get_by_text('19.900000 MIND · $1.99')).to_be_visible()
     expect(dialog.locator('[data-qr] svg')).to_be_visible()
     expect(button).to_have_text(ADDRESS[:5] + '…' + ADDRESS[-5:])
     check = dialog.get_by_role('button', name='Check payment')
@@ -156,7 +160,9 @@ def run(browser):
     page.locator('#interaction-form button[type=submit]').click()
     expect(page.locator('[data-energy-value]')).to_have_text('9 / 10')
     page.wait_for_function("fixtureApp.state.mind.energyAuthority.pending?.length===0")
-    assert seen.count('local-talk') == 1 and seen.count('settle') == 1
+    assert seen.count('local-talk') == 1 and seen.count('authorize-commit') == 1 and seen.count('settle') == 1
+    journal = page.evaluate("fixtureApp.db.getAll('energyJournal')")
+    assert len(journal) == 1 and journal[0]['energyCost'] == 1 and journal[0]['energyRevision'] == 4
     assert seen.count('payment-create') == 1
     assert seen.count('payment-check') == 2
     assert not errors, errors

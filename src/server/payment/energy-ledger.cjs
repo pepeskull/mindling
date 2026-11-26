@@ -1,9 +1,9 @@
 'use strict';
 
 const {failure} = require('./store.cjs');
+const {sha256} = require('./identity.cjs');
 const ID = /^[a-f0-9]{64}$/;
 const DAY = 86400000;
-const LEGACY_CUTOFF = Date.UTC(2026,10,27);
 
 const COSTS = Object.freeze({
   talk:1, teach:2, deep:3, correction:2, foundation:2, 'deep-research':3,
@@ -15,9 +15,10 @@ const SEMANTIC = new Set(['research-semantic','memory-pair','area-pair','automat
 
 function legacyStage(data, now, rules) {
   const stage = data?.stage;
-  if (!Number.isInteger(stage) || stage <= 1 || stage > rules.length) return 1;
+  if(data==null||stage===1)return 1;
+  if(!Number.isInteger(stage)||stage<1||stage>rules.length)throw failure('LEGACY_STAGE_REVIEW');
   const {createdAt, stages} = data;
-  if (!Number.isSafeInteger(createdAt) || createdAt < 0 || createdAt >= LEGACY_CUTOFF ||
+  if (!Number.isSafeInteger(createdAt) || createdAt < 0 || createdAt > now ||
       !Array.isArray(stages) || stages.length !== stage - 1) {
     throw failure('LEGACY_STAGE_REVIEW');
   }
@@ -53,20 +54,28 @@ async function energyLedger(store, now = Date.now) {
   }
   function initialize(identity, legacy) {
     const {fingerprint,displayId,publicKey} = identity;
-    return store.change([ownerKey(fingerprint),energyKey(fingerprint)], ([owner,entry]) => {
+    return store.change([ownerKey(fingerprint),energyKey(fingerprint),'legacy-review:'+fingerprint], ([owner,entry,review]) => {
       if (entry) return {result:state(entry)};
       const time = now();
       const stage = legacyStage(legacy,time,rules);
       const capacity = ENERGY_CAPACITIES[stage - 1];
-      // Historical progression is a one-time bounded concession. Historical
-      // client balances and clocks do not authorize server money or credit.
+      if(stage>1&&(!review||review.consumedAt||review.stage!==stage||review.historyHash!==sha256(JSON.stringify(legacy))||
+         !Number.isSafeInteger(review.enteredAt)||review.enteredAt<0||review.enteredAt>time||
+         !Number.isSafeInteger(review.stageXP)||review.stageXP<0||review.stageXP>rules[stage-1].xp||
+         !Array.isArray(review.milestones)||review.milestones.length>30||
+         new Set(review.milestones).size!==review.milestones.length||review.milestones.some(item=>!ID.test(item)))){
+        throw failure('LEGACY_STAGE_REVIEW');
+      }
+      // Historic client balances and clocks never authorize server credit.
+      const reviewed=stage>1?review:null;
       const record = {
         balance:{version:2, remaining:10, bonus:0, capacity, updatedAt:time},
-        stage, revision:1, reserved:0, enteredAt:time, stageXP:0,
-        milestones:[], day:null, dailyXP:0, research:false, ready:true,
-        migration:stage > 1 ? 'BOUNDED_LEGACY' : 'NEW_CAPACITY', limits:{}
+        stage, revision:1, reserved:0, enteredAt:reviewed?.enteredAt??time, stageXP:reviewed?.stageXP??0,
+        milestones:reviewed?.milestones??[], day:null, dailyXP:0, research:false, ready:true,
+        migration:reviewed?'REVIEWED_LEGACY':'NEW_CAPACITY', limits:{}
       };
-      return {writes:[owner || {displayId,publicKey,createdAt:time},record],result:state(record,time)};
+      return {writes:[owner || {displayId,publicKey,createdAt:time},record,reviewed?{...reviewed,consumedAt:time}:review],
+        result:state(record,time)};
     });
   }
   function get(identity) {
@@ -110,13 +119,17 @@ async function energyLedger(store, now = Date.now) {
   }
   function admit(identity, request) {
     const id = operationId(request.id);
-    const {kind,phase,requestId,bodyHash,tools = 0,checkpointSignature} = request;
+    const {kind,phase,requestId,bodyHash,tools = 0,checkpointSignature,prerequisite} = request;
     if (!Object.hasOwn(COSTS,kind) || typeof phase !== 'string' || phase.length>36 ||
       typeof requestId !== 'string' || !ID.test(bodyHash || '') || !Number.isInteger(tools) || tools<0 || tools>4) {
       throw failure('INVALID_OPERATION',400);
     }
     const key = operationKey(identity,id);
-    return store.change([energyKey(identity),key,'provider-emergency-total'], ([entry,operation,total]) => {
+    const parentRequired=kind==='talk-research'||kind==='research-semantic';
+    if(parentRequired&&(!ID.test(prerequisite||'')||prerequisite===id))throw failure('ACTIVITY_PREREQUISITE_REQUIRED',403);
+    const keys=[energyKey(identity),key,'provider-emergency-total'];
+    if(parentRequired)keys.push(operationKey(identity,prerequisite));
+    return store.change(keys, ([entry,operation,total,parent]) => {
       const time = now();
       const projection = state(entry,time);
       const stored = operation?.phases[requestId];
@@ -126,7 +139,13 @@ async function energyLedger(store, now = Date.now) {
         if (stored.result) return {result:{cached:stored.result,energy:projection}};
         throw failure('OUTCOME_UNKNOWN');
       }
-      if (operation && operation.state !== 'RESERVED') throw failure('OPERATION_CLOSED');
+      if(operation&&(operation.state!=='RESERVED'||operation.prepared))throw failure('OPERATION_CLOSED');
+      if(parentRequired){
+        if(!parent?.settlement||(kind==='talk-research'?(parent.kind!=='talk'||parent.settlement.charge!==1):
+          (!RESEARCH.has(parent.kind)||parent.settlement.formed!==true)))throw failure('ACTIVITY_PREREQUISITE_REQUIRED',403);
+        if(parent.continuation&&parent.continuation!==id)throw failure('ACTIVITY_ALREADY_CONTINUED',409);
+        parent.continuation=id;
+      }
       if ((RESEARCH.has(kind) || SEMANTIC.has(kind)) && !entry.research) throw failure('RESEARCH_PERMISSION_REQUIRED',403);
       if ((RESEARCH.has(kind) || kind==='research-semantic' || kind==='automatic-area-pair') &&
           !refillReadiness(entry,time) && !(operation?.cost && projection.remaining >= operation.cost)) {
@@ -154,8 +173,8 @@ async function energyLedger(store, now = Date.now) {
         operation={kind,cost,state:'RESERVED',phases:{},calls:0,tools:0,startedAt:time};
       }
       if (Object.values(operation.phases).some(item=>item.state==='DISPATCHED')) throw failure('OUTCOME_UNKNOWN');
-      const limit = RESEARCH.has(kind) || kind==='research-semantic' ? 4 : kind.endsWith('area-pair') ? 16 : 1;
-      const units = phase==='research-acquire'?2:1;
+      const limit = RESEARCH.has(kind) || kind==='research-semantic' ? 4 : kind.endsWith('area-pair') ? 16 : kind==='evaluation'?3:1;
+      const units = phase==='research-acquire'?2:phase==='evaluation'?3:1;
       if(operation.calls+units>limit||operation.tools+tools>4)throw failure('BUDGET_EXHAUSTED',429);
       if (RESEARCH.has(kind)) {
         const count = name => Object.values(operation.phases).filter(step=>step.phase===name).length;
@@ -171,7 +190,10 @@ async function energyLedger(store, now = Date.now) {
       total ??= {};
       if(phase!=='local-talk') {
         takeLimit(entry.limits,'provider-minute',time,60000,20);
-        takeLimit(total,'provider-minute',time,60000,120);
+        for(let i=0;i<units+tools;i++){
+          takeLimit(total,'provider-minute',time,60000,120);
+          takeLimit(total,'provider-day',time,DAY,6000);
+        }
       }
       operation.calls+=units;
       operation.tools+=tools;
@@ -179,7 +201,7 @@ async function energyLedger(store, now = Date.now) {
       entry.balance=energyAt(entry.balance,time);
       entry.ready=refillReadiness(entry,time);
       entry.revision++;
-      return {writes:[entry,operation,total],result:{energy:state(entry,time)}};
+      return {writes:[entry,operation,total,...(parentRequired?[parent]:[])],result:{energy:state(entry,time)}};
     });
   }
 
@@ -201,7 +223,7 @@ async function energyLedger(store, now = Date.now) {
         operation.state='CLOSED';
         entry.reserved-=operation.cost;
         entry.revision++;
-        operation.settlement={id,charge:0,revision:entry.revision};
+        operation.settlement={id,charge:0,balanceAfter:state(entry).remaining,revision:entry.revision};
       }
       return {writes:[entry,operation],result:state(entry)};
     });
@@ -232,42 +254,82 @@ async function energyLedger(store, now = Date.now) {
     }
     return false;
   }
-  function settle(identity,id, committed, reportedCost, memoryHashes, awardedXP) {
+  function authorizeCommit(identity,id,{cost, memoryHashes, awardedXP}={}) {
     return store.change([energyKey(identity),operationKey(identity,operationId(id))],([entry,operation])=>{
-      const time=now();
-      const projection=state(entry,time);
+      state(entry);
       if(!operation)throw failure('OPERATION_NOT_FOUND',404);
-      if(operation.settlement)return {result:{energy:projection,receipt:operation.settlement}};
-      if(operation.state!=='RESERVED'||!operation.qualification)throw failure('OPERATION_NOT_SETTLEABLE');
-      if(committed!==true)throw failure('COMMIT_REQUIRED',400);
+      if(!Number.isSafeInteger(cost)||cost<0||cost>3||!Number.isSafeInteger(awardedXP)||awardedXP<0||awardedXP>10||
+         memoryHashes!==undefined&&(!Array.isArray(memoryHashes)||memoryHashes.length>3||
+           new Set(memoryHashes).size!==memoryHashes.length||memoryHashes.some(hash=>!ID.test(hash||'')))) {
+        throw failure('INVALID_OPERATION',400);
+      }
+      const hashes=[...(memoryHashes||[])].sort();
+      const approval=sha256(JSON.stringify([identity,id,cost,hashes,awardedXP]));
+      if(operation.prepared){
+        if(operation.prepared.approval!==approval)throw failure('QUALIFICATION_REVIEW');
+        return {result:{approval}};
+      }
+      if(operation.settlement){
+        if(operation.settlement.charge!==0||cost!==0||awardedXP!==0)throw failure('QUALIFICATION_REVIEW');
+        operation.prepared={approval};
+        return {writes:[entry,operation],result:{approval}};
+      }
+      if(operation.state!=='RESERVED'||!operation.qualification||
+         Object.values(operation.phases).some(step=>step.state==='DISPATCHED'))throw failure('OPERATION_NOT_SETTLEABLE');
       let qualification=operation.qualification;
+      let accepted=[];
       if(qualification.claims){
-        if(!Array.isArray(memoryHashes)||memoryHashes.length>3||
-           new Set(memoryHashes).size!==memoryHashes.length||
-           memoryHashes.some(hash=>!qualification.claims.some(claim=>claim.hash===hash)))throw failure('QUALIFICATION_REVIEW');
+        if(hashes.some(hash=>!qualification.claims.some(claim=>claim.hash===hash)))throw failure('QUALIFICATION_REVIEW');
         const prior=entry.researchReceipts||[];
         const unspent=qualification.claims.filter(claim=>claim.formed&&!prior.includes(claim.hash));
-        const produced=unspent.find(claim=>memoryHashes.includes(claim.hash));
-        // A signed caller can acknowledge a validated formation, but cannot
-        // cancel a payable result by submitting an empty list of receipts.
+        accepted=unspent.filter(claim=>hashes.includes(claim.hash));
+        const produced=accepted[0];
         if(unspent.length&&operation.cost&&!produced)throw failure('QUALIFICATION_REVIEW');
-        if(produced)entry.researchReceipts=[...prior,...unspent.filter(claim=>memoryHashes.includes(claim.hash)).map(claim=>claim.hash)].slice(-1000);
+        if(accepted.some(claim=>entry.researchPending?.[claim.hash]&&entry.researchPending[claim.hash]!==id)){
+          throw failure('QUALIFICATION_REVIEW');
+        }
+        entry.researchPending??={};
+        for(const {hash} of accepted)entry.researchPending[hash]=id;
         qualification={spend:Boolean(produced),xp:produced?qualification.xp:0,
           concept:produced&&['foundation','deep-research'].includes(operation.kind)?produced.concept:null};
       }
       const charge=qualification.spend?operation.cost:0;
-      if (charge!==reportedCost)throw failure('QUALIFICATION_REVIEW');
-      if(awardedXP!==undefined){
-        if(!Number.isSafeInteger(awardedXP)||awardedXP<0||awardedXP>10)throw failure('INVALID_OPERATION',400);
-        qualification={...qualification,xp:Math.min(qualification.xp||0,awardedXP)};
+      if(charge!==cost||awardedXP>(qualification.xp||0))throw failure('QUALIFICATION_REVIEW');
+      const subject=qualification.subject;
+      const seen=subject&&(entry.progressSubjects||[]).includes(subject);
+      const circulating=subject&&entry.pendingSubjects?.[subject];
+      const xp=seen||circulating?0:awardedXP;
+      if(subject&&xp){
+        entry.pendingSubjects??={};
+        entry.pendingSubjects[subject]=id;
       }
+      operation.prepared={approval,charge,qualification:{...qualification,xp,concept:xp?qualification.concept:null},
+        memoryHashes:accepted.map(claim=>claim.hash)};
+      return {writes:[entry,operation],result:{approval}};
+    });
+  }
+  function settle(identity,id,approval) {
+    return store.change([energyKey(identity),operationKey(identity,operationId(id))],([entry,operation])=>{
+      const time=now(), projection=state(entry,time);
+      if(!operation)throw failure('OPERATION_NOT_FOUND',404);
+      if(!ID.test(approval||'')||operation.prepared?.approval!==approval)throw failure('COMMIT_REQUIRED',400);
+      if(operation.settlement)return {result:{energy:projection,receipt:operation.settlement}};
+      if(operation.state!=='RESERVED')throw failure('OPERATION_NOT_SETTLEABLE');
+      const {charge,qualification,memoryHashes}=operation.prepared;
       entry.balance=charge?spendEnergy(entry.balance,charge,time):energyAt(entry.balance,time);
       entry.reserved-=operation.cost;
+      for(const hash of memoryHashes)delete entry.researchPending[hash];
+      if(memoryHashes.length)entry.researchReceipts=[...(entry.researchReceipts||[]),...memoryHashes].slice(-1000);
+      if(qualification.subject&&entry.pendingSubjects?.[qualification.subject]===id){
+        delete entry.pendingSubjects[qualification.subject];
+        entry.progressSubjects=[...(entry.progressSubjects||[]),qualification.subject].slice(-1000);
+      }
       entry.ready=refillReadiness(entry,time);
       applyProgress(entry,qualification,time);
       entry.revision++;
       operation.state='CLOSED';
-      operation.settlement={id,charge,revision:entry.revision};
+      operation.settlement={id,charge,formed:memoryHashes.length>0,balanceAfter:entry.balance.remaining,revision:entry.revision};
+      operation.prepared={approval};
       delete operation.qualification;
       return {writes:[entry,operation],result:{energy:state(entry,time),receipt:operation.settlement}};
     });
@@ -277,7 +339,7 @@ async function energyLedger(store, now = Date.now) {
       const projection=state(entry);
       if(!operation || operation.state==='CLOSED')return {result:projection};
       if(operation.state!=='RESERVED'||Object.values(operation.phases).some(step=>step.state==='DISPATCHED'))throw failure('OUTCOME_UNKNOWN');
-      if(operation.cost&&(operation.qualification?.spend||
+      if(operation.prepared||operation.cost&&(operation.qualification?.spend||
          operation.qualification?.claims?.some(claim=>claim.formed&&!(entry.researchReceipts||[]).includes(claim.hash)))){
         throw failure('QUALIFICATION_REVIEW');
       }
@@ -295,7 +357,7 @@ async function energyLedger(store, now = Date.now) {
     entry.revision++;
     return state(entry,time);
   }
-  return {initialize,get,admit,record,settle,release,makeFull,makeView:state,setResearch,
+  return {initialize,get,admit,record,authorizeCommit,settle,release,makeFull,makeView:state,setResearch,
     inspect:(identity,id)=>store.get(operationKey(identity,operationId(id)))};
 }
 

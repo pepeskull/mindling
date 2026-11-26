@@ -36,7 +36,7 @@ export class TopUp {
     this.dialog=dialog;
     dialog.className='sandbox-wallet glass-panel';
     dialog.setAttribute('aria-labelledby','top-up-title');
-    dialog.innerHTML=`<h2 id="top-up-title">Energy top-up</h2><p>Devnet · test MIND · no real payment</p>
+    dialog.innerHTML=`<h2 id="top-up-title">Energy top-up</h2><p>Solana Mainnet · MIND</p>
       <p data-quote></p><label>Deposit wallet <input readonly data-address></label>
       <div data-qr aria-label="Solana Pay QR code"></div>
       <p data-status role="status">Preparing a payment session…</p>
@@ -51,7 +51,7 @@ export class TopUp {
       session=value;
       this.label(session);
       find('[data-address]').value=value.address;
-      find('[data-quote]').textContent=`${decimal(value.units,value.decimals)} MIND · $1.99 test quote`;
+      find('[data-quote]').textContent=`${decimal(value.units,value.decimals)} MIND · $1.99`;
       const past=value.expiresAt<=Date.now();
       newSession.hidden=!past&&!value.receipt;
       check.disabled=Boolean(value.receipt);
@@ -70,14 +70,14 @@ export class TopUp {
       qr.addData('solana:'+encodeURIComponent(link.href));
       qr.make();
       find('[data-qr]').innerHTML=qr.createSvgTag({cellSize:3,margin:12,scalable:true});
-      status.textContent='Scan in a supported Devnet wallet.';
+      status.textContent='Scan with a Solana Pay wallet on Mainnet.';
     };
     async function load(client,fresh){
       newSession.disabled=true;
       try {
         const current=fresh?null:(await client.request({action:'payment-current'})).session;
         const value=current|| (await client.request({action:'payment-create',fresh})).session;
-        if(value?.cluster!=='devnet'||!/^[a-f0-9]{48}$/.test(value.id)||
+        if(value?.cluster!=='mainnet'||!/^[a-f0-9]{48}$/.test(value.id)||
            !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value.address)||!/^\d{1,20}$/.test(value.units)||
            !Number.isInteger(value.decimals)||value.decimals<0||value.decimals>9)throw Error('The payment session could not be validated.');
         render(value);

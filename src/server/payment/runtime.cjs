@@ -38,9 +38,9 @@ function parse(req) {
 }
 
 function serviceError(res,error,service) {
-  const status=error.status||503;
-  if (!res.writableEnded&&!res.destroyed) return res.status(status).json({
-    ...(service?{service}:{}),error:{code:error.status?error.message:'PAYMENT_UNAVAILABLE'}
+  const safe=Number.isInteger(error.status)&&error.status>=400&&error.status<=599&&/^[A-Z_]{1,60}$/.test(error.code||'');
+  if (!res.writableEnded&&!res.destroyed) return res.status(safe?error.status:503).json({
+    ...(service?{service}:{}),error:{code:safe?error.code:'PAYMENT_UNAVAILABLE'}
   });
 }
 function origin(req) {
@@ -107,9 +107,15 @@ async function qualify(route,kind,body,result) {
       return normalize(prior)!==normalize(next)&&!(mutableValue(prior)&&mutableValue(prior)===mutableValue(next));
     });
     return {spend:Boolean(distinct||update||decisions.some(({decision})=>decision.operation==='FLAG_CONTRADICTION')),
-      xp:distinct||update?(kind==='deep'?10:5):0, ...(distinct?{concept:sha256(normalize(distinct.decision.concept))}:{})};
+      xp:distinct||update?(kind==='deep'?10:5):0,
+      ...(distinct||update?{subject:sha256(normalize(body.input))}:{}),
+      ...(distinct?{concept:sha256(normalize(distinct.decision.concept))}:{})};
   }
-  if (kind==='talk') return {spend:true,xp:result.reasoning?.insufficientInformation===false?3:0};
+  if(kind==='talk'){
+    const {normalize}=await import('../../learning/text.js');
+    return {spend:true,xp:result.reasoning?.insufficientInformation===false?3:0,
+      subject:sha256(normalize(body.context.problem))};
+  }
   if(RESEARCH.has(kind)&&['research-evaluate','research-acquire'].includes(body.mode)){
     const {researchRelation}=await import('../../autonomous/memory-evolution.js');
     const {normalize}=await import('../../learning/text.js');
@@ -130,7 +136,7 @@ function protect(route,handler,options={}) {
   const isLearn=route===LEARN;
   const service=isLearn?'mindling-learning-service':'mindling-reasoning-service';
   return async (req,res)=>{
-    if(!options.runtime&&!enabled(process.env))return handler(req,res);
+    if(!options.runtime&&!enabled(process.env))return serviceError(res,failure('ENERGY_SERVICE_UNAVAILABLE',503),service);
     let body,admitted=false;
     try{
       body=parse(req);
@@ -195,9 +201,10 @@ function energyHandler(options={}) {
   return async (req,res)=>{
     try {
       const body=parse(req);
+      if(Object.hasOwn(body,'cluster')||Object.hasOwn(body,'network'))throw failure('REQUEST_INVALID',400);
       origin(req);
       const active=Boolean(options.runtime)||enabled(process.env);
-      if(body.action==='availability')return res.status(200).json({active,cluster:active?'devnet':null});
+      if(body.action==='availability')return res.status(200).json({active,cluster:active?'mainnet':null});
       if(!active)throw failure('PAYMENT_UNAVAILABLE',503);
       res.setHeader('Cache-Control','no-store');
       const runtime=await (options.runtime||runtimeFor)();
@@ -215,8 +222,10 @@ function energyHandler(options={}) {
           data={energy:await ledger.get(fingerprint)};break;
         case 'research-permission':
           data=await ledger.setResearch(fingerprint,body.enabled,body.automaticRequestLimit,body.permissionRevision);break;
+        case 'authorize-commit':
+          data=await ledger.authorizeCommit(fingerprint,body.id,body);break;
         case 'settle':
-          data=await ledger.settle(fingerprint,body.id,body.committed,body.cost,body.memoryHashes,body.awardedXP);break;
+          data=await ledger.settle(fingerprint,body.id,body.approval);break;
         case 'release':
           data={energy:await ledger.release(fingerprint,body.id)};break;
         case 'local-talk': {
@@ -235,9 +244,6 @@ function energyHandler(options={}) {
           await store.rate('payment-check:'+fingerprint,12,60);
           const payment=runtime.payment();
           data=await payment.check(fingerprint,body.id);
-          // A durable job was created in the same transaction as the receipt.
-          // Attempt collection now. An interrupted attempt can be recovered independently.
-          await payment.sweepOne(body.id).catch(()=>{});
           break;
         }
         default:throw failure('REQUEST_INVALID',400);
@@ -261,11 +267,13 @@ function walletHandler(options={}) {
       res.setHeader('Cache-Control','no-store');
       const runtime=await (options.runtime||runtimeFor)();
       await runtime.store.rate(clientKey(req,'wallet-checkout'),12,60);
-      if(req.method==='GET')return res.status(200).json({label:'Play Mindling · Devnet'});
-      return res.status(200).json(await runtime.payment().wallet(req.query?.session,parse(req).account));
+      if(req.method==='GET')return res.status(200).json({label:'Play Mindling · Mainnet'});
+      const body=parse(req);
+      if(Object.keys(body).length!==1||!Object.hasOwn(body,'account'))throw failure('REQUEST_INVALID',400);
+      return res.status(200).json(await runtime.payment().wallet(req.query?.session,body.account));
     }catch(error){
       if (!res.writableEnded&&!res.destroyed) return res.status(error.status||503).json({
-        message:error.status?error.message:'Payment temporarily unavailable'
+        message:/^[A-Z_]{1,60}$/.test(error.code||'')?error.code:'Payment temporarily unavailable'
       });
     }
   };

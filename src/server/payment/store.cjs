@@ -1,6 +1,6 @@
 'use strict';
 
-const PREFIX = 'mindling:{energy-v1-devnet}:';
+const PREFIX = 'mindling:{energy-v1-mainnet}:';
 const CHECK = `
 for i,key in ipairs(KEYS) do
   if (redis.call('GET',key) or '') ~= ARGV[i*2-1] then return 0 end
@@ -55,9 +55,10 @@ function redisStore({url, token, fetcher = fetch} = {}) {
     async consumeChallenge(key) {
       return decode(await command(['GETDEL', PREFIX + key]));
     },
-    async pendingSweeps(cursor = '0') {
-      const [next, keys] = await command(['SCAN', cursor, 'MATCH', PREFIX + 'sweep-work:*', 'COUNT', '40']);
-      return {cursor:String(next), keys:keys.map(key => key.slice(PREFIX.length))};
+    async pending(prefix,cursor = '0') {
+      if(!['sweep-work:','verify-work:'].includes(prefix))throw failure('INVALID_QUEUE');
+      const [next, keys] = await command(['SCAN', cursor, 'MATCH', PREFIX + prefix + '*', 'COUNT', '40']);
+      return {cursor:String(next), keys:keys.map(key => key.slice(PREFIX.length+prefix.length))};
     },
     async change(keys, mutate) {
       if (new Set(keys).size !== keys.length) throw Error('Duplicate ledger key');
