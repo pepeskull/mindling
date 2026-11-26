@@ -1,3 +1,4 @@
+import {researchOperationKind as operationFor} from '../payment/energy-client.js';
 import {MAX_WEB_SEARCH_CALLS,remainingWebSearchCalls} from './research-budget.js';
 import {queuedRefinement,refinementWaiting,refinementBlocker,refinementMessage,skipRefinement,keepPartialEvidence} from './evidence-refinement.js';
 import {researchEnergyReady} from './energy-readiness.js';
@@ -42,7 +43,8 @@ export function stopLearning(app){engines.get(app)?.destroy();}
 export function learningSession(app){return engines.get(app)?.session||null;}
 export function researchPermissions(app){const engine=engines.get(app),id=app.state?.mind?.id||'';return {...(engine?.preferences||defaultPermissions(id)),loaded:Boolean(engine?.preferences&&engine.permissionIdentity===id&&!engine.permissionLoading)};}
 export function syncResearchPermissions(app){const engine=learningEngine(app),id=app.state?.mind?.id;if(id&&engine.permissionIdentity!==id)engine.loadPermissions().then(()=>{if(!app.disposed&&app.state.mind?.id===id){app.renderState();engine.recover();}}).catch(()=>{});}
-const operationFor=task=>task.autonomous?'autonomous':task.mode===LEARNING_MODES.DEEP?'deep-research':task.mode===LEARNING_MODES.TALK_RESEARCH?'talk-research':'foundation';
+const researchTransport=(app,task)=>app.energyClient?.transport(operationFor(task),task.id,
+  task.mode===LEARNING_MODES.TALK_RESEARCH&&!task.autonomous?{kind:'talk',id:task.requestId}:undefined);
 const activityFor=mode=>mode===LEARNING_MODES.DEEP?'DEEP_TRAINING':mode===LEARNING_MODES.TALK_RESEARCH?'TALK':'TEACH';
 const integrationIssue=(reason,message=reason)=>Object.assign(Error(message),{integrationReason:reason});
 function integrationFailure(task,controller,error){
@@ -239,7 +241,7 @@ export class AutonomousLearningEngine {
       if(!current.sourcePlan&&!current.pendingEvidence?.length){
         current=await this.patch(task.id,run,(item,next)=>{this.assertResearchEnergy(next.mind);requireResearchXP(this.app,next);const planned=item.planningCalls??(item.plannedAt?Math.min(item.attempts,2):0),used=item.modelCalls??planned;if(planned>=2||used>=LIMITS.inferenceCalls)throw Error('BUDGET_EXHAUSTED');item.researchAdmission={run,startedAt:Date.now()};item.planningCalls=planned+1;item.modelCalls=used+1;item.status='QUEUED';item.code='PLANNING';item.message='Understanding the request and preparing unverified hypotheses.';},{researchGrant:this.grant(prefs)});
         const context=this.context(task,topic),id=await digest(JSON.stringify([task.id,run,'plan',context]));
-        const result=await requestResearchPlanning({id,context,signal:controller.signal,fetcher:this.app.energyClient?.transport(operationFor(task),task.id)});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
+        const result=await requestResearchPlanning({id,context,signal:controller.signal,fetcher:researchTransport(this.app,task)});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
         current=await this.patch(task.id,run,item=>{
           item.hypotheses=result.planning.hypotheses||[];item.plan=result.planning.plan;item.plannedAt=Date.now();item.completedWork=[...new Set([...item.completedWork,'plan'])];item.status='BLOCKED';
           const question=result.planning.clarification;
@@ -349,7 +351,7 @@ export class AutonomousLearningEngine {
     if(!task.pendingEvidence?.length&&!task.pendingSourceEvaluation&&!refining){
       if(!researchEnergyReady(this.app.state.mind))return block('ENERGY_LOW','Research is waiting for Energy.');
       if(task.sourcePlan.sourceCategory!=='web')return block('SOURCE_UNSUPPORTED','Research paused — This request cannot be safely researched.');
-      if(!task.sourcePlan.available){const id=await digest(JSON.stringify([task.id,run,'capabilities'])),result=await requestResearchCapabilities({id,context:{},signal:controller.signal,fetcher:this.app.energyClient?.transport(operationFor(task),task.id)});if(!result.information.available)return block('INFORMATION_UNCONFIGURED','Research paused — Web information access is not configured.');task=await this.patch(task.id,run,item=>{item.sourcePlan.available=true;});}
+      if(!task.sourcePlan.available){const id=await digest(JSON.stringify([task.id,run,'capabilities'])),result=await requestResearchCapabilities({id,context:{},signal:controller.signal,fetcher:researchTransport(this.app,task)});if(!result.information.available)return block('INFORMATION_UNCONFIGURED','Research paused — Web information access is not configured.');task=await this.patch(task.id,run,item=>{item.sourcePlan.available=true;});}
     }
     let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
     if(task.pendingEvidence?.length&&!refining&&!task.pendingSourceEvaluation){
@@ -400,7 +402,7 @@ export class AutonomousLearningEngine {
         return;
       }
       if(!refining)current=await this.patch(task.id,run,item=>{item.researchExecution.clientDispatched=true;if(!checkpoint)item.researchExecution.toolState='DISPATCHED';});
-      result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal,fetcher:this.app.energyClient?.transport(operationFor(task),task.id)});
+      result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal,fetcher:researchTransport(this.app,task)});
       current=await this.saveResearchReceipt(task,run,id,result,prefs,authorizedAt);
       observedAt=current.pendingSourceEvaluation?.receivedAt||Date.now();
     }

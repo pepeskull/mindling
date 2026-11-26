@@ -18,7 +18,7 @@ function publicIdentity(jwk) {
 }
 
 function signingMessage({fingerprint, nonce, route, body, operation}) {
-  return JSON.stringify(['mindling-energy-devnet-v1', fingerprint, nonce, route,
+  return JSON.stringify(['mindling-energy-mainnet-v1', fingerprint, nonce, route,
     sha256(JSON.stringify(body)), operation ?? null]);
 }
 

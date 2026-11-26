@@ -1,3 +1,4 @@
+export const ENERGY_PROTOCOL='mindling-energy-mainnet-v1';
 const ENDPOINT='/api/mindling/energy';
 const encoder=new TextEncoder();
 const hex=bytes=>[...new Uint8Array(bytes)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
@@ -5,10 +6,17 @@ const digest=async value=>hex(await crypto.subtle.digest('SHA-256',encoder.encod
 const base64url=value=>btoa(String.fromCharCode(...encoder.encode(JSON.stringify(value))))
   .replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 const messages={
+  MARKET_PRICE_UNAVAILABLE:'A reliable MIND price is unavailable. No payment quote was created.',
+  PAYMENTS_PAUSED:'Mainnet checkout is temporarily paused.',
+  PAYMENT_BLOCKHASH_EXPIRED:'This wallet transaction expired. Check any previous payment before creating a new session.',
+  PAYMENT_LEDGER_REVIEW:'This payment needs ledger review. Keep its session address for support.',
+  SPONSOR_BUDGET_UNAVAILABLE:'Sponsored fees are temporarily unavailable. No payment transaction was issued.',
+  ENERGY_SERVICE_UNAVAILABLE:'Energy authorization is temporarily unavailable.',
+  ACTIVITY_PREREQUISITE_REQUIRED:'This activity requires an earlier verified result.',
   ENERGY_LOW:'Not enough Energy. Wait for regeneration or top up.',
   IDENTITY_UNAVAILABLE:'Your Mindling’s original identity key is needed to sync Energy.',
   LEGACY_STAGE_REVIEW:'Your saved stage needs review before Energy can be connected.',
-  QUALIFICATION_REVIEW:'The result was saved. Its Energy reservation needs review.',
+  QUALIFICATION_REVIEW:'Energy for this result needs review. The reserved Energy is held.',
   PAYMENT_PENDING:'Waiting for the transaction to finalize.',
   PAYMENT_AWAITING_WALLET:'Scan the QR code in your wallet and approve the payment first.',
   PAYMENT_TIMING_REVIEW:'This payment needs review because the transaction time did not match the quote.',
@@ -33,12 +41,18 @@ async function read(response){
 
 export function cacheEnergy(mind,energy){
   if(!validEnergy(energy))throw error('INVALID_ENERGY');
-  const previous=mind.energyAuthority;
+  const stored=mind.energyAuthority;
+  const previous=stored?.protocol===ENERGY_PROTOCOL?stored:null;
   if(previous&&(energy.revision<previous.revision||energy.revision===previous.revision&&energy.serverTime<previous.serverTime))return;
   const {revision,serverTime,reserved,stage,...balance}=energy;
-  const legacyBalance=previous?.legacyBalance??mind.energy;
+  const legacyBalance=stored?.legacyBalance??mind.energy;
   mind.energy=balance;
-  mind.energyAuthority={legacyBalance,...previous,revision,serverTime,reserved,stage};
+  mind.energyAuthority={...previous,legacyBalance,protocol:ENERGY_PROTOCOL,revision,serverTime,reserved,stage};
+}
+
+export function researchOperationKind(task){
+  return task.autonomous?'autonomous':task.mode==='DEEP'?'deep-research':
+    task.mode==='TALK_RESEARCH'?'talk-research':'foundation';
 }
 
 export class EnergyClient {
@@ -72,7 +86,7 @@ export class EnergyClient {
     const {crv,kty,x,y}=identity.publicKey;
     if(await digest(JSON.stringify({crv,kty,x,y}))!==challenge.fingerprint)throw error('INVALID_IDENTITY');
     const key=await crypto.subtle.importKey('jwk',identity.privateKey,{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
-    const message=JSON.stringify(['mindling-energy-devnet-v1',challenge.fingerprint,challenge.nonce,route,
+    const message=JSON.stringify([ENERGY_PROTOCOL,challenge.fingerprint,challenge.nonce,route,
       await digest(JSON.stringify(body)),operation]);
     const signature=hex(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},key,encoder.encode(message)));
     if(this.app.disposed||this.app.state?.mind?.id!==mind.id)throw error('IDENTITY_CHANGED');
@@ -109,7 +123,7 @@ export class EnergyClient {
       ({stage,enteredAt,leftAt,xp,concepts})=>({stage,enteredAt,leftAt,xp,concepts})
     )};
     this.syncing=(async()=>{
-      await this.request(mind.energyAuthority?{action:'state'}:{action:'register',legacy},mind);
+      await this.request(mind.energyAuthority?.protocol===ENERGY_PROTOCOL?{action:'state'}:{action:'register',legacy},mind);
       const permissions=await this.app.db.researchPermissions(mind.id);
       if(permissions.decided)await this.request({
         action:'research-permission',enabled:permissions.enabled,automaticRequestLimit:permissions.automaticRequestLimit,
@@ -123,12 +137,14 @@ export class EnergyClient {
     return this.syncing;
   }
   operation(kind,id){return digest(JSON.stringify([kind,id]));}
-  transport(kind,id){
+  transport(kind,id,parent){
     return async (url,options)=>{
       if(!await this.enabled())return this.fetcher(url,options);
-      if(!this.app.state?.mind?.energyAuthority)await this.sync();
+      if(this.app.state?.mind?.energyAuthority?.protocol!==ENERGY_PROTOCOL)await this.sync();
       const mind=this.app.state.mind;
-      const response=await this.signed(url,options,mind,{kind,id:await this.operation(kind,id)});
+      const operation={kind,id:await this.operation(kind,id)};
+      if(parent)operation.prerequisite=await this.operation(parent.kind,parent.id);
+      const response=await this.signed(url,options,mind,operation);
       const data=await response.clone().json().catch(()=>null);
       if(data?.energy)await this.apply(mind.id,data.energy).catch(()=>{});
       return response;
@@ -136,12 +152,12 @@ export class EnergyClient {
   }
   async localTalk(id,text){
     if(!await this.enabled())return;
-    if(!this.app.state?.mind?.energyAuthority)await this.sync();
+    if(this.app.state?.mind?.energyAuthority?.protocol!==ENERGY_PROTOCOL)await this.sync();
     await this.request({action:'local-talk',id:await this.operation('talk',id),text});
   }
   async researchPermission(enabled,automaticRequestLimit,permissionRevision){
     if(!await this.enabled())return;
-    if(!this.app.state?.mind?.energyAuthority)await this.sync();
+    if(this.app.state?.mind?.energyAuthority?.protocol!==ENERGY_PROTOCOL)await this.sync();
     await this.request({action:'research-permission',enabled,automaticRequestLimit,permissionRevision});
   }
   async release(kind,id){
@@ -149,13 +165,21 @@ export class EnergyClient {
       await this.request({action:'release',id:await this.operation(kind,id)});
     }
   }
-  async finish({id,cost,memoryHashes,awardedXP},identity=this.app.state.mind.id){
-    await this.request({action:'settle',id,committed:true,cost,memoryHashes,awardedXP});
+  async authorize(proposal){
+    const {approval}=await this.request({...proposal,action:'authorize-commit'});
+    if(!/^[a-f0-9]{64}$/.test(approval||''))throw error('QUALIFICATION_REVIEW');
+    return approval;
+  }
+  async finish({id,approval},identity=this.app.state.mind.id){
+    const {receipt}=await this.request({action:'settle',id,approval});
+    if(receipt?.id!==id||!Number.isSafeInteger(receipt.charge)||!Number.isSafeInteger(receipt.balanceAfter)){
+      throw error('QUALIFICATION_REVIEW');
+    }
     await this.app.change(state=>{
       if(state.mind?.id!==identity)throw error('IDENTITY_CHANGED');
       const authority=state.mind.energyAuthority;
       authority.pending=(authority.pending||[]).filter(item=>item.id!==id);
       return state;
-    },{preserveGameplay:true});
+    },{preserveGameplay:true,authoritativeReceipt:receipt});
   }
 }

@@ -22,7 +22,7 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
   const tokenProgram=spl.TOKEN_PROGRAM_ADDRESS;
   let requestId=0;
   const rpc=mockedRPC|| (async(method,...params)=>{
-    const response=await fetch('https://devnet.helius-rpc.com/?api-key='+encodeURIComponent(apiKey),{
+    const response=await fetch('https://mainnet.helius-rpc.com/?api-key='+encodeURIComponent(apiKey),{
       method:'POST',redirect:'error',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({jsonrpc:'2.0',id:String(++requestId),method,params}),
       signal:AbortSignal.timeout(6500)
@@ -59,7 +59,7 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
       reference:b58.decode(randomBytes(32))};
   }
   async function build(instructions,payer) {
-    const {value:lifetime}=await rpc('getLatestBlockhash',{commitment:'finalized'});
+    const {value:lifetime}=await rpc('getLatestBlockhash',{commitment:'confirmed'});
     if(!Number.isSafeInteger(lifetime.lastValidBlockHeight))throw failure('CHAIN_UNAVAILABLE',503);
     const draft=kit.createTransactionMessage({version:'legacy'});
     const withPayer=kit.setTransactionMessageFeePayerSigner(payer,draft);
@@ -69,10 +69,16 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     const units=getSetComputeUnitLimitInstruction({units:80000});
     const complete=kit.appendTransactionMessageInstructions([units,...instructions],message);
     const raw=await kit.partiallySignTransactionMessageWithSigners(complete);
-    const fee=(await rpc('getFeeForMessage',Buffer.from(raw.messageBytes).toString('base64'),{commitment:'finalized'})).value;
+    const [feeQuote,rent,balance]=await Promise.all([
+      rpc('getFeeForMessage',Buffer.from(raw.messageBytes).toString('base64'),{commitment:'confirmed'}),
+      rpc('getMinimumBalanceForRentExemption',spl.getTokenDecoder().fixedSize,{commitment:'finalized'}),
+      rpc('getBalance',payer.address,{commitment:'finalized'})
+    ]);
+    const fee=feeQuote?.value;
+    const treasuryLamports=balance?.value;
     if(!Number.isSafeInteger(fee)||fee>15000)throw failure('SPONSOR_FEE_LIMIT');
     return {transaction:kit.getBase64EncodedWireTransaction(raw),signature:b58.decode(raw.signatures[payer.address]),
-      messageHash:sha256(raw.messageBytes),lastValidBlockHeight:lifetime.lastValidBlockHeight,fee};
+      messageHash:sha256(raw.messageBytes),lastValidBlockHeight:lifetime.lastValidBlockHeight,fee,rent,treasuryLamports};
   }
   async function checkout(session,account) {
     const payer=await treasury();
@@ -146,7 +152,12 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     // Absence after expiry does not establish that a transfer never landed.
     return status?'PENDING':'UNKNOWN';
   }
-  return {cluster:'devnet',mintInfo,newDeposit,checkout,check,sweep,sweepStatus,
+  return {cluster:'mainnet',mintInfo,newDeposit,checkout,check,sweep,sweepStatus,
+    async canSubmit(signed) {
+      const height=await rpc('getBlockHeight',{commitment:'confirmed'});
+      if(!Number.isSafeInteger(height))throw failure('CHAIN_UNAVAILABLE',503);
+      return height<=signed.lastValidBlockHeight;
+    },
     submit:signed=>rpc('sendTransaction',signed.transaction,{encoding:'base64',maxRetries:0,preflightCommitment:'finalized'})};
 }
 

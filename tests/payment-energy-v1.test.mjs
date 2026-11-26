@@ -9,6 +9,8 @@ import identityModule from '../src/server/payment/identity.cjs';
 import ledgerModule from '../src/server/payment/energy-ledger.cjs';
 import paymentModule from '../src/server/payment/payments.cjs';
 import runtimeModule from '../src/server/payment/runtime.cjs';
+import marketModule from '../src/server/payment/market-price.cjs';
+import financialModule from '../src/server/payment/financial-control.cjs';
 import solanaModule from '../src/server/payment/solana.cjs';
 import * as solana from '@solana/kit';
 import * as spl from '@solana-program/token';
@@ -17,6 +19,8 @@ const {redisStore}=storeModule;
 const {authority,publicIdentity,signingMessage,sha256}=identityModule;
 const {energyLedger}=ledgerModule;
 const {encryption,payments}=paymentModule;
+const {marketPrice,quoteUnits}=marketModule;
+const {CONTROL,HEAD,verifyJournal}=financialModule;
 const {protect,energyHandler,LEARN,REASON}=runtimeModule;
 const nowBase=Date.UTC(2026,10,26,13);
 const day=86400000, interval=720000;
@@ -37,7 +41,7 @@ function memoryRedis() {
         if(args[2]==='NX'&&values.has(args[0]))result=null;
         else {values.set(args[0],args[1]);result='OK';}
         break;
-      case 'SCAN':result=['0',[...values.keys()].filter(key=>key.includes('sweep-work:'))];break;
+      case 'SCAN':result=['0',[...values.keys()].filter(key=>key.startsWith(args[2].slice(0,-1)))];break;
       case 'EVAL': {
         const [script,length,...rest]=args;
         if(script.includes('INCR')){
@@ -75,6 +79,13 @@ const confirmed=(ledger,principal,request,qualification={spend:true,xp:0})=>ledg
   principal,request.id,request.requestId,{status:200,body:{}},{qualification}
 );
 
+const authorize=(ledger,principal,id,cost,memoryHashes,awardedXP=0)=>
+  ledger.authorizeCommit(principal,id,{cost,memoryHashes,awardedXP});
+async function settle(ledger,principal,id,cost,memoryHashes,awardedXP=0){
+  const {approval}=await authorize(ledger,principal,id,cost,memoryHashes,awardedXP);
+  return ledger.settle(principal,id,approval);
+}
+
 test('P-256 challenge verifies full fingerprint, binds request and cannot be reused', async()=>{
   const {store,clock}=await setup();
   const auth=authority(store,clock);
@@ -93,8 +104,8 @@ test('P-256 challenge verifies full fingerprint, binds request and cannot be reu
   assert.equal(results.find(item=>item.status==='rejected').reason.code,'CHALLENGE_EXPIRED');
 });
 
-test('migration grants one bounded legacy stage, ignores claimed Energy and rejects implausible history',async()=>{
-  const {ledger}=await setup();
+test('legacy capacity requires a reviewed identical history, independent of claimed Energy',async()=>{
+  const {ledger,store}=await setup();
   const principal=own.fingerprint;
   const createdAt=nowBase-30*day;
   const stages=[
@@ -103,7 +114,13 @@ test('migration grants one bounded legacy stage, ignores claimed Energy and reje
     {stage:3,enteredAt:createdAt+3*day,leftAt:createdAt+6*day,xp:175,concepts:15}
   ];
   await assert.rejects(ledger.initialize(own,{stage:4,createdAt,stages:[]}),{code:'LEGACY_STAGE_REVIEW'});
-  const energy=await ledger.initialize(own,{stage:4,createdAt,stages,remaining:9999,bonus:9999});
+  const legacy={stage:4,createdAt,stages};
+  await assert.rejects(ledger.initialize(own,legacy),{code:'LEGACY_STAGE_REVIEW'});
+  await store.change(['legacy-review:'+principal],()=>({writes:[{
+    stage:4,historyHash:sha256(JSON.stringify(legacy)),enteredAt:stages.at(-1).leftAt,stageXP:0,milestones:[]
+  }]}));
+  await assert.rejects(ledger.initialize(own,{...legacy,remaining:9999}),{code:'LEGACY_STAGE_REVIEW'});
+  const energy=await ledger.initialize(own,legacy);
   assert.equal(energy.stage,4);
   assert.equal(energy.capacity,18);
   assert.equal(energy.remaining,10);
@@ -124,9 +141,11 @@ test('concurrent reservations never overspend and retry settles one charge',asyn
   assert.equal((await ledger.get(principal)).reserved,9);
   const request=admitted[0];
   await confirmed(ledger,principal,request);
-  await assert.rejects(ledger.settle(principal,request.id,true,0),{code:'QUALIFICATION_REVIEW'});
+  await assert.rejects(authorize(ledger,principal,request.id,0),{code:'QUALIFICATION_REVIEW'});
+  await assert.rejects(ledger.settle(principal,request.id,id('forged')), {code:'COMMIT_REQUIRED'});
+  const {approval}=await authorize(ledger,principal,request.id,3);
   const [first,second]=await Promise.all([
-    ledger.settle(principal,request.id,true,3),ledger.settle(principal,request.id,true,3)
+    ledger.settle(principal,request.id,approval),ledger.settle(principal,request.id,approval)
   ]);
   assert.deepEqual(first.receipt,second.receipt);
   assert.equal(second.energy.remaining,7);
@@ -143,7 +162,7 @@ test('no-change remains free, whereas an unknown outcome cannot be replayed or r
   const noop=operation('learn-no-change','teach','learn');
   await ledger.admit(principal,noop);
   await confirmed(ledger,principal,noop,{spend:false,xp:0});
-  assert.equal((await ledger.settle(principal,noop.id,true,0)).energy.remaining,10);
+  assert.equal((await settle(ledger,principal,noop.id,0)).energy.remaining,10);
   const unknown=operation('learn-unknown','teach','learn');
   await ledger.admit(principal,unknown);
   await assert.rejects(ledger.admit(principal,unknown),{code:'OUTCOME_UNKNOWN'});
@@ -158,7 +177,7 @@ test('server receipts unlock capacity after the elapsed-time gate without a new 
     const lesson=operation('deep-lesson-'+index,'deep','learn');
     await ledger.admit(principal,lesson);
     await confirmed(ledger,principal,lesson,{spend:true,xp:10,concept:id('concept-'+index)});
-    const {energy}=await ledger.settle(principal,lesson.id,true,3);
+    const {energy}=await settle(ledger,principal,lesson.id,3,undefined,10);
     assert.equal(energy.capacity,10);
     if(index<7)tick(3*interval);
   }
@@ -200,29 +219,31 @@ test('multi-phase Research holds one reservation, binds checkpoint, observes inf
     qualification:{claims:[{hash:quote2,formed:true,concept:id('topic')}],xp:5}
   });
   await assert.rejects(ledger.admit(principal,{...refine,requestId:'new',checkpointSignature:'server-checkpoint'}),{code:'BUDGET_EXHAUSTED'});
-  await assert.rejects(ledger.settle(principal,plan.id,true,2,[id('invented')]),{code:'QUALIFICATION_REVIEW'});
-  await assert.rejects(ledger.settle(principal,plan.id,true,0,[]),{code:'QUALIFICATION_REVIEW'});
+  await assert.rejects(authorize(ledger,principal,plan.id,2,[id('invented')]),{code:'QUALIFICATION_REVIEW'});
+  await assert.rejects(authorize(ledger,principal,plan.id,0,[]),{code:'QUALIFICATION_REVIEW'});
   await assert.rejects(ledger.release(principal,plan.id),{code:'QUALIFICATION_REVIEW'});
-  const result=await ledger.settle(principal,plan.id,true,2,[quote,quote2]);
+  const {approval}=await authorize(ledger,principal,plan.id,2,[quote,quote2]);
+  const result=await ledger.settle(principal,plan.id,approval);
   assert.equal(result.energy.remaining,8);
   assert.equal(result.energy.reserved,0);
   assert.equal(result.receipt.charge,2);
-  assert.equal((await ledger.settle(principal,plan.id,true,2,[quote])).energy.remaining,8);
+  assert.equal((await ledger.settle(principal,plan.id,approval)).energy.remaining,8);
 });
 
 const account=(await solana.createKeyPairSignerFromPrivateKeyBytes(new Uint8Array(32).fill(3))).address;
 function mockChain() {
-  let count=0, builds=0, sends=0, ready=false, swept='PENDING';
+  let count=0, builds=0, sends=0, ready=false, swept='PENDING', valid=true;
+  const sponsor={fee:10000,rent:2000000,treasuryLamports:1000000000};
   return {
-    chain:{cluster:'devnet',mintInfo:async()=>({mint:account,decimals:6}),
+    chain:{cluster:'mainnet',mintInfo:async()=>({mint:account,decimals:6}),
       newDeposit:()=>({address:'deposit-'+(++count),reference:'reference-'+count,ata:'ata-'+count,secret:Buffer.alloc(64,7)}),
-      checkout:async session=>{builds++;return {transaction:'synthetic-transaction',signature:session.id};},
+      checkout:async session=>{builds++;return {transaction:'synthetic-transaction',signature:session.id,...sponsor};},
       check:async session=>ready?{signature:session.id,slot:123,finalizedAt:nowBase}:null,
-      sweep:async(session,secret)=>{assert.equal(secret[0],7);return {transaction:'sweep',signature:'sweep-'+session.id};},
-      sweepStatus:async()=>swept,
+      sweep:async(session,secret)=>{assert.equal(secret[0],7);return {transaction:'sweep',signature:'sweep-'+session.id,...sponsor};},
+      sweepStatus:async()=>swept,canSubmit:async()=>valid,
       submit:async()=>{sends++;throw Error('Lost transport response');}
     },
-    built:()=>builds,sent:()=>sends,allow:()=>{ready=true;},finalize:()=>{swept='FINALIZED';}
+    built:()=>builds,sent:()=>sends,allow:()=>{ready=true;},finalize:()=>{swept='FINALIZED';},expire:()=>{valid=false;}
   };
 }
 
@@ -230,8 +251,11 @@ test('finalized payment atomically restores normal Energy once and keeps sweep i
   const {store,ledger,tick}=await setup();
   const principal=own.fingerprint, injected=mockChain();
   const key=encryption('ab'.repeat(32));
-  const payment=payments(store,ledger,injected.chain,key,()=>nowBase);
+  const price=async mint=>({mint,asOf:nowBase,freshUntil:nowBase+10000,usdScaled:'100000000000'});
+  const payment=payments(store,ledger,injected.chain,key,{now:()=>nowBase,price});
   await ledger.initialize(own);
+  await assert.rejects(payment.create(principal),{code:'PAYMENTS_PAUSED'});
+  await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase+600000}]}));
   await store.change(['energy:'+principal],([entry])=>{
     entry.balance={...entry.balance,remaining:13,bonus:3};
     return {writes:[entry]};
@@ -239,7 +263,7 @@ test('finalized payment atomically restores normal Energy once and keeps sweep i
   const expense=operation('prior expense','deep','learn');
   await ledger.admit(principal,expense);
   await confirmed(ledger,principal,expense);
-  await ledger.settle(principal,expense.id,true,3);
+  await settle(ledger,principal,expense.id,3);
   const session=await payment.create(principal);
   assert.equal(session.units,'19900000');
   assert.equal((await payment.create(principal)).id,session.id);
@@ -267,14 +291,14 @@ test('finalized payment atomically restores normal Energy once and keeps sweep i
   const post=operation('post payment','talk','talk');
   await ledger.admit(principal,post);
   await confirmed(ledger,principal,post);
-  await ledger.settle(principal,post.id,true,1);
+  await settle(ledger,principal,post.id,1);
   assert.equal((await payment.check(principal,session.id)).energy.remaining,12);
-  tick(31000);
+  tick(46000);
   injected.finalize();
   // A restarted worker sees the persisted transaction instead of creating another.
-  const recovered=payments(store,ledger,injected.chain,key,()=>nowBase+31000);
+  const recovered=payments(store,ledger,injected.chain,key,{now:()=>nowBase+46000,price});
   await recovered.sweepOne(session.id);
-  assert.equal((await store.get('sweep-transaction:'+session.id)).state,'FINALIZED');
+  assert.equal((await store.get('financial-event:sweep-result:sweep-'+session.id)).type,'SWEEP_FINALIZED');
   assert.equal(injected.sent(),1);
 });
 
@@ -323,7 +347,11 @@ test('API derives a conditional Teach charge from the stored provider response; 
   assert.equal(calls,1);
   assert(!JSON.stringify(await ledger.inspect(identity.fingerprint,operationInfo.id)).includes('Orbital period'));
   const complete=mockedResponse();
-  const receiptRequest={action:'settle',id:operationInfo.id,committed:true,cost:2};
+  const planned=mockedResponse();
+  const prepareRequest={action:'authorize-commit',id:operationInfo.id,cost:2,awardedXP:5};
+  await energyHandler({runtime})(await signedRequest('/api/mindling/energy',prepareRequest),planned);
+  assert.equal(planned.code,200);
+  const receiptRequest={action:'settle',id:operationInfo.id,approval:planned.body.approval};
   await energyHandler({runtime})(await signedRequest('/api/mindling/energy',receiptRequest),complete);
   assert.equal(complete.body.energy.remaining,8);
   const later=mockedResponse();
@@ -350,6 +378,9 @@ test('Solana Pay co-signs an exact SPL transfer; chain verification rejects mism
       data:[Buffer.from(key===source?accountData:mintData).toString('base64'),'base64']}};
     if(method==='getLatestBlockhash')return {value:{blockhash,lastValidBlockHeight:77}};
     if(method==='getFeeForMessage')return {value:10000};
+    if(method==='getMinimumBalanceForRentExemption')return 2000000;
+    if(method==='getBalance')return {value:1000000000};
+    if(method==='getBlockHeight')return 76;
     if(method==='getTransaction')return transaction;
     throw Error('Unexpected RPC method '+method);
   };
@@ -386,4 +417,156 @@ test('a delayed state response cannot overwrite a newer synchronized Energy revi
   cacheEnergy(mind,{...latest,remaining:2,serverTime:nowBase-1});
   assert.equal(mind.energy.remaining,10);
   assert.equal(mind.energyAuthority.revision,12);
+});
+
+const quoteMint='EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
+const pools=['B'.repeat(36),'C'.repeat(36)];
+function publicMarket(now){
+  const settings={price:'0.10000000',alternate:null,reserve:'90000.00',stale:false,wrongMint:false};
+  const mint=account,calls=[];
+  const route=async url=>{
+    const path=new URL(url);
+    calls.push(path.pathname);
+    assert.equal(path.origin,'https://api.geckoterminal.com');
+    assert(path.pathname.startsWith('/api/v2/networks/solana/'));
+    if(path.pathname.endsWith('/tokens/'+mint+'/pools')){
+      const mintId='solana_'+(settings.wrongMint?'G'.repeat(38):mint);
+      const quoteId='solana_'+quoteMint;
+      return Response.json({data:pools.map((address,index)=>({type:'pool',id:'solana_'+address,
+        attributes:{address,reserve_in_usd:settings.reserve,
+          pool_created_at:new Date(now()-5*day).toISOString(),
+          base_token_price_usd:index?'1.00':settings.price,
+          quote_token_price_usd:index?settings.alternate??settings.price:'1.00'},
+        relationships:{base_token:{data:{id:index?quoteId:mintId}},
+          quote_token:{data:{id:index?mintId:quoteId}},dex:{data:{id:index?'orca':'raydium'}}}
+      }))});
+    }
+    const index=pools.findIndex(pool=>path.pathname.endsWith('/pools/'+pool+'/trades'));
+    if(index<0)throw Error('Unexpected quote request');
+    return Response.json({data:[1,2,3].map((i)=>({type:'trade',attributes:{
+      tx_hash:(index?'Q':'F').repeat(84)+String(i+2),
+      block_timestamp:new Date(now()-i*45000-(settings.stale?10*60000:0)).toISOString(),
+      from_token_address:index?quoteMint:mint,to_token_address:index?mint:quoteMint,volume_in_usd:'34.50',
+      price_from_in_usd:index?'1.00':settings.price,price_to_in_usd:index?settings.alternate??settings.price:'1.00'
+    }}))});
+  };
+  return {settings,calls,route};
+}
+
+test('public Mainnet price locks exact integer units using fresh trades in two independent liquid pools',async()=>{
+  const {store,clock,tick}=await setup(),market=publicMarket(clock);
+  const price=marketPrice(store,{fetcher:market.route,now:clock});
+  const result=await price(account);
+  assert.equal(result.source,'geckoterminal');
+  assert.deepEqual(result.poolIds,pools);
+  assert.equal(result.asOf,nowBase-45000);
+  assert.equal(quoteUnits(result,6),'19900000');
+  assert.equal(quoteUnits({usdScaled:'300000000000'},6),'6633334');
+  tick(5000);
+  assert.deepEqual(await price(account),result);
+  assert.equal(market.calls.length,3);
+  tick(30000);
+  market.settings.price='0.118';
+  await assert.rejects(price(account),{code:'MARKET_PRICE_UNAVAILABLE'});
+});
+
+test('stale trades, divergent pools, wrong mint, low liquidity and provider errors cannot make quotes',async()=>{
+  for(const settings of [{stale:true},{alternate:'0.139'},{wrongMint:true},{reserve:'49999.99'}]){
+    const {store,clock}=await setup(),market=publicMarket(clock);
+    Object.assign(market.settings,settings);
+    await assert.rejects(marketPrice(store,{fetcher:market.route,now:clock})(account),{code:'MARKET_PRICE_UNAVAILABLE'});
+    assert.equal(await store.get('market:'+account),null);
+  }
+  const {store,clock}=await setup();
+  await assert.rejects(marketPrice(store,{fetcher:async()=>new Response('',{status:429}),now:clock})(account),
+    {code:'MARKET_PRICE_UNAVAILABLE'});
+});
+
+test('background inference needs a settled prerequisite from the same owner',async()=>{
+  const {ledger}=await setup(),principal=own.fingerprint;
+  await ledger.initialize(own);
+  await ledger.setResearch(principal,true);
+  const research=operation('without a Talk','talk-research','research');
+  await assert.rejects(ledger.admit(principal,{...research,prerequisite:id('unrelated')}),
+    {code:'ACTIVITY_PREREQUISITE_REQUIRED'});
+  const talk=operation('actual Talk','talk','talk');
+  await ledger.admit(principal,talk);
+  await confirmed(ledger,principal,talk);
+  await assert.rejects(ledger.admit(principal,{...research,prerequisite:talk.id}),
+    {code:'ACTIVITY_PREREQUISITE_REQUIRED'});
+  await settle(ledger,principal,talk.id,1);
+  await ledger.admit(principal,{...research,prerequisite:talk.id});
+  await assert.rejects(ledger.admit(principal,{...research,id:id('another continuation'),prerequisite:talk.id}),
+    {code:'ACTIVITY_ALREADY_CONTINUED'});
+  assert.equal((await ledger.get(principal)).reserved,0);
+  await assert.rejects(ledger.admit(principal,{...operation('invented semantic work','research-semantic','semantic'),
+    prerequisite:talk.id}),{code:'ACTIVITY_PREREQUISITE_REQUIRED'});
+});
+
+test('production endpoint has no unauthenticated fallback when the ledger is unconfigured',async()=>{
+  const response=mockedResponse();
+  await protect(LEARN,()=>assert.fail('Unconfigured request reached model handler'))(
+    {method:'POST',headers:{},body:{}},response);
+  assert.equal(response.code,503);
+  assert.equal(response.body.error.code,'ENERGY_SERVICE_UNAVAILABLE');
+});
+
+test('sponsorship pauses on expired blockhash, reserve exhaustion or broken journal; late verification is worker-safe',async()=>{
+  const {store,ledger,clock,tick}=await setup(),principal=own.fingerprint;
+  const {chain,allow,expire}=mockChain();
+  const original=chain.checkout;
+  let feePayerBalance=100;
+  chain.checkout=async(...args)=>({...await original(...args),treasuryLamports:feePayerBalance});
+  const price=async mint=>({mint,asOf:clock(),freshUntil:clock()+10000,usdScaled:'100000000000'});
+  const payment=payments(store,ledger,chain,encryption('abcd'.repeat(16)),{now:clock,price});
+  await ledger.initialize(own);
+  await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase+86400000}]}));
+  const session=await payment.create(principal);
+  assert.equal(session.expiresAt-session.createdAt,600000);
+  await assert.rejects(payment.wallet(session.id,account),{code:'SPONSOR_BUDGET_UNAVAILABLE'});
+  assert.equal((await store.pending('verify-work:')).keys.length,0);
+  tick(31000);
+  feePayerBalance=1000000000;
+  await payment.wallet(session.id,account);
+  expire();
+  await assert.rejects(payment.wallet(session.id,account),{code:'PAYMENT_BLOCKHASH_EXPIRED'});
+  assert.deepEqual((await store.pending('verify-work:')).keys,[session.id]);
+  const checkpoint=(await verifyJournal(store)).head;
+  allow();
+  await payment.verifyOne(session.id);
+  assert.equal((await store.pending('verify-work:')).keys.length,0);
+  const {head,checked}=await verifyJournal(store,checkpoint,{onEvent:event=>payment.auditEvent(event)});
+  assert.equal(head.sequence,2);
+  assert.equal(checked,1);
+  // Redis rollback corrupts a physical record. Re-reading a receipt must
+  // fail rather than creating new credit from the same finalized signature.
+  await store.change(['signature:'+session.id],()=>({writes:[null]}));
+  await assert.rejects(payment.check(principal,session.id),{code:'PAYMENT_LEDGER_REVIEW'});
+  await store.change([HEAD],()=>({writes:[null]}));
+  await assert.rejects(verifyJournal(store,checkpoint),{code:'PAYMENT_LEDGER_REVIEW'});
+});
+
+test('sweep worker reuses the exact persisted wire transaction after a lost dispatch',async()=>{
+  const {store,ledger,clock,tick}=await setup(),principal=own.fingerprint;
+  const {chain,allow}=mockChain();
+  const submitted=[];
+  chain.submit=async signed=>{submitted.push(signed);throw Error('Lost outcome');};
+  const price=async mint=>({mint,asOf:clock(),freshUntil:clock()+10000,usdScaled:'100000000000'});
+  const payment=payments(store,ledger,chain,encryption('fe'.repeat(32)),{now:clock,price});
+  await ledger.initialize(own);
+  await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase+86400000}]}));
+  const session=await payment.create(principal);
+  await payment.wallet(session.id,account);
+  allow();
+  await payment.check(principal,session.id);
+  await assert.rejects(payment.sweepOne(session.id),/Lost outcome/);
+  tick(46000);
+  await assert.rejects(payment.sweepOne(session.id),/Lost outcome/);
+  assert.equal(submitted.length,2);
+  assert.deepEqual(submitted[0],submitted[1]);
+  chain.sweepStatus=async()=> 'UNKNOWN';
+  tick(46000);
+  await payment.sweepOne(session.id);
+  assert.equal((await store.get('sweep-work:'+session.id)).state,'REVIEW');
+  assert.equal(submitted.length,2);
 });

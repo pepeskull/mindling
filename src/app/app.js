@@ -1,4 +1,4 @@
-import { EnergyClient } from '../payment/energy-client.js';
+import { EnergyClient, ENERGY_PROTOCOL } from '../payment/energy-client.js';
 import { TopUp } from '../payment/top-up.js';
 import { energyAt } from '../economy/energy.js';
 import { reconcileSemanticConnections, semanticHydrationStatus } from '../semantic/memory-connections.js';
@@ -94,30 +94,45 @@ export class MindlingApp extends EvolutionPreview {
     this.external?.assertWritable();this.pendingMutations=(this.pendingMutations||0)+1;
     try {
       const activity=options.energyOperation;
-      const operationId=activity&&this.state?.mind?.energyAuthority?
+      const operationId=activity&&this.state?.mind?.energyAuthority?.protocol===ENERGY_PROTOCOL?
         await this.energyClient.operation(activity.kind,activity.id):null;
-      let localCommit;
+      const run=saved=>options.preserveGameplay?saved:advanceGameplay(saved);
+      let localCommit, intent;
+      const plan=(current,previousXP,updated)=>{
+        const mind=updated.mind,baseline=energyAt(current,updated.now);
+        const cost=baseline.remaining-mind.energy.remaining;
+        if(!Number.isSafeInteger(cost)||cost<0||cost>3)throw Error('Invalid Energy settlement.');
+        mind.energy=baseline;
+        const research=mind.learningTasks?.find(item=>item.id===activity.id);
+        const memoryHashes=research?(research.knowledgeIds||[]).flatMap(id=>{
+          const memory=mind.memories.find(item=>item.id===id);
+          return memory?.research?.taskId===activity.id?[memory.research.quoteHash]:[];
+        }).sort():undefined;
+        return {id:operationId,cost,memoryHashes,awardedXP:mind.lifetimeXP-previousXP};
+      };
+      let approval;
+      if(operationId){
+        const snapshot=(await this.db.get('gameplay','primary'))?.state;
+        if(!snapshot?.mind||snapshot.mind.id!==this.state.mind.id)throw Error('The Mindling identity changed.');
+        const draft=run(structuredClone(snapshot));
+        const energy=draft.mind.energy,xp=draft.mind.lifetimeXP;
+        intent=plan(energy,xp,reducer(draft));
+        approval=await this.energyClient.authorize(intent);
+      }
       const state=await this.db.changeGameplay(saved=>{
         this.external?.assertWritable();
-        const initial=options.preserveGameplay?saved:advanceGameplay(saved);
+        const initial=run(saved);
         const current=initial.mind?.energy,previousXP=initial.mind?.lifetimeXP;
         const updated=reducer(initial);
         if(operationId&&updated.mind?.energyAuthority){
-          const mind=updated.mind,authority=mind.energyAuthority;
-          const baseline=energyAt(current,updated.now);
-          const cost=baseline.remaining-mind.energy.remaining;
-          if(!Number.isSafeInteger(cost)||cost<0||cost>3)throw Error('Invalid Energy settlement.');
-          mind.energy=baseline;
-          const research=updated.mind.learningTasks?.find(item=>item.id===activity.id);
-          const memoryHashes=research?(research.knowledgeIds||[]).flatMap(id=>{
-            const memory=mind.memories.find(item=>item.id===id);
-            return memory?.research?.taskId===activity.id?[memory.research.quoteHash]:[];
-          }):undefined;
-          localCommit={id:operationId,cost,memoryHashes,awardedXP:mind.lifetimeXP-previousXP};
+          const proposed=plan(current,previousXP,updated);
+          if(JSON.stringify(proposed)!==JSON.stringify(intent))throw Error('The activity changed before its Energy authorization could be saved.');
+          const authority=updated.mind.energyAuthority;
+          localCommit={id:operationId,approval};
           authority.pending=[...(authority.pending||[]).filter(item=>item.id!==operationId),localCommit];
         }
         return updated;
-      },options);
+      },{...options,...(approval&&options.journal?{journal:{...options.journal,energyOperationId:operationId}}:{})});
       if (!this.disposed) { this.state=state; this.renderState(); }
       if(localCommit&&!this.disposed){
         try {await this.energyClient.finish(localCommit,state.mind.id);}
