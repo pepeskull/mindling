@@ -6,6 +6,7 @@ const digest=async value=>hex(await crypto.subtle.digest('SHA-256',encoder.encod
 const base64url=value=>btoa(String.fromCharCode(...encoder.encode(JSON.stringify(value))))
   .replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 const messages={
+  INVALID_PAYMENT_RECEIPT:'Payment confirmation could not be validated.',
   MARKET_PRICE_UNAVAILABLE:'A reliable MIND price is unavailable. No payment quote was created.',
   PAYMENTS_PAUSED:'Mainnet checkout is temporarily paused.',
   PAYMENT_BLOCKHASH_EXPIRED:'This wallet transaction expired. Check any previous payment before creating a new session.',
@@ -17,6 +18,8 @@ const messages={
   IDENTITY_UNAVAILABLE:'Your Mindling’s original identity key is needed to sync Energy.',
   LEGACY_STAGE_REVIEW:'Your saved stage needs review before Energy can be connected.',
   QUALIFICATION_REVIEW:'Energy for this result needs review. The reserved Energy is held.',
+  PAYMENT_HTTPS_REQUIRED:'Open the wallet from the secure Play Mindling site.',
+  LEDGER_UNAVAILABLE:'Energy authorization is temporarily unavailable.',
   PAYMENT_PENDING:'Waiting for the transaction to finalize.',
   PAYMENT_AWAITING_WALLET:'Scan the QR code in your wallet and approve the payment first.',
   PAYMENT_TIMING_REVIEW:'This payment needs review because the transaction time did not match the quote.',
@@ -61,11 +64,16 @@ export class EnergyClient {
     this.fetcher=fetcher;
   }
   async enabled(){
+    if(this.app.state?.mind?.energyAuthority?.protocol===ENERGY_PROTOCOL)return true;
     if(this.active!==undefined)return this.active;
+    if(Date.now()<(this.unavailableUntil||0))throw error('ENERGY_SERVICE_UNAVAILABLE');
     this.detecting??=this.fetcher(ENDPOINT,{
       method:'POST', headers:{'Content-Type':'application/json'}, body:'{"action":"availability"}',
       signal:AbortSignal.timeout(4000)
-    }).then(read).then(data=>this.active=data.active===true).catch(()=>Boolean(this.app.state?.mind?.energyAuthority))
+    }).then(read).then(data=>this.active=data.active===true).catch(()=>{
+      this.unavailableUntil=Date.now()+60000;
+      throw error('ENERGY_SERVICE_UNAVAILABLE');
+    })
       .finally(()=>{this.detecting=null;});
     return this.detecting;
   }
@@ -76,26 +84,57 @@ export class EnergyClient {
     return existing;
   }
   async signed(route,options,mind,operation=null){
+    options.signal?.throwIfAborted();
     const identity=await this.identity(mind);
     const body=JSON.parse(options.body);
-    const challenge=await read(await this.fetcher(ENDPOINT,{
-      method:'POST',headers:{'Content-Type':'application/json'},signal:options.signal,
-      body:JSON.stringify({action:'challenge',publicKey:identity.publicKey})
-    }));
-    if(!/^[a-f0-9]{48}$/.test(challenge.nonce)||!/^[a-f0-9]{64}$/.test(challenge.fingerprint))throw error('INVALID_IDENTITY');
+    if(Date.now()<(this.unavailableUntil||0))throw error('ENERGY_SERVICE_UNAVAILABLE');
     const {crv,kty,x,y}=identity.publicKey;
-    if(await digest(JSON.stringify({crv,kty,x,y}))!==challenge.fingerprint)throw error('INVALID_IDENTITY');
+    const fingerprint=await digest(JSON.stringify({crv,kty,x,y}));
     const key=await crypto.subtle.importKey('jwk',identity.privateKey,{name:'ECDSA',namedCurve:'P-256'},false,['sign']);
-    const message=JSON.stringify([ENERGY_PROTOCOL,challenge.fingerprint,challenge.nonce,route,
-      await digest(JSON.stringify(body)),operation]);
+    let challenge=this.session;
+    if(challenge?.fingerprint!==fingerprint||challenge.expiresAt<=Date.now()+5000){
+      const issue=()=>this.fetcher(ENDPOINT,{
+        method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(5000),
+        body:JSON.stringify({action:'challenge',publicKey:identity.publicKey})
+      }).then(read);
+      const pending=this.authPending;
+      try {
+        if(pending?.fingerprint===fingerprint){
+          challenge=await pending.promise;
+          // Older deployments only issue one-use challenges.
+          if(!challenge.expiresAt)challenge=await issue();
+        }else{
+          const promise=issue().finally(()=>{if(this.authPending?.promise===promise)this.authPending=null;});
+          this.authPending={fingerprint,promise};
+          challenge=await promise;
+        }
+      }catch(failure){
+        if(!failure.code||failure.code.includes('UNAVAILABLE'))this.unavailableUntil=Date.now()+60000;
+        throw failure;
+      }
+    }
+    if(!/^[a-f0-9]{48}$/.test(challenge.nonce)||challenge.fingerprint!==fingerprint)throw error('INVALID_IDENTITY');
+    const session=Number.isSafeInteger(challenge.expiresAt)&&challenge.expiresAt>Date.now()?challenge.nonce:null;
+    if(session)this.session=challenge;
+    const nonce=session?hex(crypto.getRandomValues(new Uint8Array(24))):challenge.nonce;
+    const message=JSON.stringify([ENERGY_PROTOCOL,fingerprint,nonce,route,
+      await digest(JSON.stringify(body)),operation,...(session?[session]:[])]);
     const signature=hex(await crypto.subtle.sign({name:'ECDSA',hash:'SHA-256'},key,encoder.encode(message)));
     if(this.app.disposed||this.app.state?.mind?.id!==mind.id)throw error('IDENTITY_CHANGED');
+    options.signal?.throwIfAborted();
     const headers=new Headers(options.headers);
     headers.set('X-Mindling-Owner',challenge.fingerprint);
-    headers.set('X-Mindling-Nonce',challenge.nonce);
+    headers.set('X-Mindling-Nonce',nonce);
+    if(session)headers.set('X-Mindling-Session',session);
     headers.set('X-Mindling-Signature',signature);
     if(operation)headers.set('X-Mindling-Operation',base64url(operation));
-    return this.fetcher(route,{...options,headers});
+    const response=await this.fetcher(route,{...options,headers});
+    if(response.status===401||response.status===503){
+      const data=await response.clone().json().catch(()=>null);
+      if(data?.error?.code==='CHALLENGE_EXPIRED')this.session=null;
+      if(['LEDGER_UNAVAILABLE','ENERGY_SERVICE_UNAVAILABLE'].includes(data?.error?.code))this.unavailableUntil=Date.now()+60000;
+    }
+    return response;
   }
   async request(body,mind=this.app.state?.mind){
     if(!mind)throw error('IDENTITY_UNAVAILABLE');
@@ -104,6 +143,8 @@ export class EnergyClient {
       signal:AbortSignal.timeout(24000)
     },mind);
     const data=await read(response);
+    if(body.action==='payment-check'&&(data.receipt?.id!==body.id||
+      !Number.isSafeInteger(data.receipt.energyRevision)||data.energy?.revision<data.receipt.energyRevision||!validEnergy(data.energy)))throw error('INVALID_PAYMENT_RECEIPT');
     if(data.energy)await this.apply(mind.id,data.energy);
     return data;
   }
@@ -116,25 +157,29 @@ export class EnergyClient {
     },{preserveGameplay:true});
   }
   async sync(){
-    if(!this.app.state?.mind||!await this.enabled())return false;
-    if(this.syncing)return this.syncing;
-    const mind=this.app.state.mind;
-    const legacy={stage:mind.stage,createdAt:mind.createdAt,stages:(mind.stageHistory||[]).map(
-      ({stage,enteredAt,leftAt,xp,concepts})=>({stage,enteredAt,leftAt,xp,concepts})
-    )};
-    this.syncing=(async()=>{
-      await this.request(mind.energyAuthority?.protocol===ENERGY_PROTOCOL?{action:'state'}:{action:'register',legacy},mind);
-      const permissions=await this.app.db.researchPermissions(mind.id);
-      if(permissions.decided)await this.request({
-        action:'research-permission',enabled:permissions.enabled,automaticRequestLimit:permissions.automaticRequestLimit,
-        permissionRevision:permissions.revision
-      },mind);
-      for(const pending of this.app.state.mind.energyAuthority?.pending||[]){
-        await this.finish(pending,mind.id).catch(()=>{});
+    const mind=this.app.state?.mind;
+    if(!mind)return false;
+    if(this.syncing?.id===mind.id)return this.syncing.promise;
+    const promise=(async()=>{
+      if(!await this.enabled())return false;
+      const registered=mind.energyAuthority?.protocol===ENERGY_PROTOCOL;
+      if(!registered){
+        const legacy={stage:mind.stage,createdAt:mind.createdAt,stages:(mind.stageHistory||[]).map(
+          ({stage,enteredAt,leftAt,xp,concepts})=>({stage,enteredAt,leftAt,xp,concepts})
+        )};
+        await this.request({action:'register',legacy},mind);
       }
+      const permissions=await this.app.db.researchPermissions(mind.id);
+      if(this.app.state?.mind?.id!==mind.id)throw error('IDENTITY_CHANGED');
+      const authority=this.app.state.mind.energyAuthority;
+      if(permissions.decided&&permissions.revision>(authority?.permissionRevision||0)){
+        await this.mirrorPermission(mind,permissions.enabled,permissions.automaticRequestLimit,permissions.revision);
+      }
+      for(const pending of authority?.pending||[])await this.finish(pending,mind.id).catch(()=>{});
       return true;
-    })().finally(()=>{this.syncing=null;});
-    return this.syncing;
+    })().finally(()=>{if(this.syncing?.promise===promise)this.syncing=null;});
+    this.syncing={id:mind.id,promise};
+    return promise;
   }
   operation(kind,id){return digest(JSON.stringify([kind,id]));}
   transport(kind,id,parent){
@@ -155,10 +200,22 @@ export class EnergyClient {
     if(this.app.state?.mind?.energyAuthority?.protocol!==ENERGY_PROTOCOL)await this.sync();
     await this.request({action:'local-talk',id:await this.operation('talk',id),text});
   }
+  async mirrorPermission(mind,enabled,automaticRequestLimit,permissionRevision){
+    const result=await this.request({action:'research-permission',enabled,automaticRequestLimit,permissionRevision},mind);
+    if(!Number.isSafeInteger(result.revision)||result.revision<permissionRevision)throw error('INVALID_PERMISSION');
+    await this.app.change(state=>{
+      if(state.mind?.id!==mind.id)throw error('IDENTITY_CHANGED');
+      const authority=state.mind.energyAuthority;
+      authority.permissionRevision=Math.max(authority.permissionRevision||0,result.revision);
+      return state;
+    },{preserveGameplay:true});
+  }
   async researchPermission(enabled,automaticRequestLimit,permissionRevision){
     if(!await this.enabled())return;
     if(this.app.state?.mind?.energyAuthority?.protocol!==ENERGY_PROTOCOL)await this.sync();
-    await this.request({action:'research-permission',enabled,automaticRequestLimit,permissionRevision});
+    const mind=this.app.state.mind;
+    if((mind.energyAuthority?.permissionRevision||0)<permissionRevision)
+      await this.mirrorPermission(mind,enabled,automaticRequestLimit,permissionRevision);
   }
   async release(kind,id){
     if(await this.enabled()&&this.app.state?.mind?.energyAuthority){
@@ -171,7 +228,9 @@ export class EnergyClient {
     return approval;
   }
   async finish({id,approval},identity=this.app.state.mind.id){
-    const {receipt}=await this.request({action:'settle',id,approval});
+    const mind=this.app.state?.mind;
+    if(mind?.id!==identity)throw error('IDENTITY_CHANGED');
+    const {receipt}=await this.request({action:'settle',id,approval},mind);
     if(receipt?.id!==id||!Number.isSafeInteger(receipt.charge)||!Number.isSafeInteger(receipt.balanceAfter)){
       throw error('QUALIFICATION_REVIEW');
     }

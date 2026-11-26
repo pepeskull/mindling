@@ -1,7 +1,7 @@
 import qrcode from '../vendor/qrcode.js';
 import { quote,simulatePurchase } from './wallet.js';
 export class TestWalletUI{
-  constructor(controller){this.controller=controller;this.button=document.querySelector('.energy-panel .coming-soon');this.original={text:this.button.textContent,disabled:this.button.disabled,title:this.button.title};this.button.disabled=false;this.button.textContent=`TEST…${controller.state.player.id.slice(-5)}`;this.button.title='Test-only wallet simulator — no deposits';controller.listen(this.button,'click',()=>this.open());}
+  constructor(controller){this.controller=controller;this.button=document.querySelector('[data-energy-wallet]');this.label=this.button.querySelector('span');this.original={text:this.label.textContent,disabled:this.button.disabled,title:this.button.title};this.button.disabled=false;this.label.textContent=`TEST…${controller.state.player.id.slice(-5)}`;this.button.title='Test-only wallet simulator — no deposits';controller.listen(this.button,'click',()=>this.open());}
   open(){
     if(this.controller.external?.locked)return;
     if(this.dialog)return;this.events=new AbortController();const listen=(node,event,fn)=>node.addEventListener(event,fn,{signal:this.events.signal});const c=this.controller,s=c.state,payload=`mindling-preview:simulation:${s.player.id}`;
@@ -17,5 +17,5 @@ export class TestWalletUI{
     listen(this.dialog.querySelector('[data-close-wallet]'),'click',()=>this.close());listen(this.dialog,'close',()=>this.close());this.dialog.showModal();
   }
   close(){this.events?.abort();const dialog=this.dialog;this.dialog=null;dialog?.remove();this.quote=null;}
-  destroy(){this.close();this.button.textContent=this.original.text;this.button.disabled=this.original.disabled;this.button.title=this.original.title;}
+  destroy(){this.close();this.label.textContent=this.original.text;this.button.disabled=this.original.disabled;this.button.title=this.original.title;}
 }

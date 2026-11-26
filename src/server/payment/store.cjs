@@ -49,8 +49,8 @@ function redisStore({url, token, fetcher = fetch} = {}) {
       const count=await command(['EVAL',source,1,PREFIX+'rate:'+key+':'+slot,seconds*2]);
       if(count>maximum)throw failure('RATE_LIMITED',429);
     },
-    async createChallenge(key, record) {
-      return await command(['SET', PREFIX + key, JSON.stringify(record), 'NX', 'PX', 120000]) === 'OK';
+    async createChallenge(key, record, ttl=120000) {
+      return await command(['SET', PREFIX + key, JSON.stringify(record), 'NX', 'PX', ttl]) === 'OK';
     },
     async consumeChallenge(key) {
       return decode(await command(['GETDEL', PREFIX + key]));

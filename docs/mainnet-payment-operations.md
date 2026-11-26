@@ -10,7 +10,7 @@ Provide these six server-side values in the Mainnet environment.
 |---|---|
 | `HELIUS_API_KEY` | A Mainnet Helius key. Access must include finalized transaction history, signatures, account state, and fee and rent queries. |
 | `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` | A dedicated database and private write credential. Keep the worker and API on the same ledger. |
-| `MIND_TOKEN_MINT` | The exact Mainnet MIND mint. The classic SPL Token Program is supported. Mints with a freeze authority and Token-2022 extensions are rejected. |
+| `MIND_TOKEN_MINT` | The exact Mainnet MIND mint. The original SPL Token Program and Pump-style Token-2022 mints with only metadata extensions are supported. Active mint/freeze authorities and transfer-affecting extensions are rejected. |
 | `WALLET_PRIVATE_KEY` | A 64-byte Solana keypair as base58 or a JSON byte array. The server derives and verifies the public address. |
 | `ENCRYPTION_KEY` | A 32-byte hexadecimal AES key or a JSON keyring keyed by version, such as `v1` and `v2`. Keep old versions while any deposits or operation receipts depend on them. |
 
@@ -18,9 +18,12 @@ The existing AI service configuration is separate and retains its existing names
 
 ## Quoting and sponsorship
 
-New quotes use GeckoTerminal's Mainnet Solana pools and recent trades for the exact mint. A candidate needs at least $50,000 liquidity and an approved DEX and quote asset (canonical USDC or wrapped SOL). The server requires at least two distinct DEXs with agreeing prices. Each pool requires three distinct trades of at least $10, within five minutes and spanning at least 30 seconds. A pool median must agree with its current mark, and qualified pools must agree within 5%. A move over 10% from the last accepted observation within an hour pauses quoting. An expired observation is never used as a fallback.
+New quotes use a fresh finalized Helius snapshot of the configured mint and its canonical SOL-paired Pump.fun bonding curve or migrated PumpSwap pool. The server checks the known program, derived addresses, account ownership, quote asset, token program, mint decimals, and real vault balances. A completed curve without a usable canonical pool pauses quotes. Other pool types, quote currencies, Mayhem and Cashback variants require separately reviewed support. [Pump program account layouts](https://github.com/pump-fun/pump-public-docs/tree/bc35796/idl)
 
-The server computes the integer base units with a ceiling from $1.99 and the mint decimals. It stores that amount and the price evidence under a ten-minute session quote. The same quote is used until expiry. A Solana blockhash can expire earlier. A signed session never receives a replacement payment signature automatically. Keep its session ID to check earlier or late transfers.
+The proposed launch policy requires a current Pyth Hermes SOL/USD feed with a confidence interval no wider than 1% of the price and chain/oracle observations newer than 90 seconds. It checks buy and sell execution at a $20 reference size, with at most a 5% deviation from spot after applying the on-chain fee ceiling and reserve formula. A 10% deviation from the hourly price anchor, stale slots, and unsupported fee schedules halt new quotes. These checks do not establish that a single pool is manipulation-proof. Review the thresholds, actual liquidity and feed availability before opening checkout.
+
+The server computes the $1.99 amount as a ceiling in exact integer token units using the validated spot reserve ratio and SOL/USD. It locks the amount and price evidence for ten minutes. The conservative depth test is an availability safeguard. The quote itself is a fixed-amount token transfer.
+A Solana blockhash can expire earlier. A signed session never receives a replacement payment signature automatically. Keep its session ID to check earlier or late transfers.
 
 Sponsorship accounts for the quoted fee and worst-case ATA rent before the server returns a signed transaction. Caps apply per wallet, per owner and across the treasury. Fees and rent remain charged to the sponsor's exposure accounting after ambiguous outcomes. The worker may rebroadcast identical sweep bytes while valid, at most three broadcasts. A new signature requires a finalized failure of the preceding transaction, with at most three attempts. An unresolved expired sweep remains in review.
 

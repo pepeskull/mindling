@@ -2,6 +2,7 @@
 const {generateKeyPairSync, randomBytes} = require('node:crypto');
 const {failure} = require('./store.cjs');
 const {sha256} = require('./identity.cjs');
+const {pumpSnapshot,decodeMint,decodeHolding,TOKEN_2022}=require('./pump-market.cjs');
 
 function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
   if (!apiKey || !mintAddress || !walletSecret) throw failure('PAYMENT_UNAVAILABLE',503);
@@ -19,7 +20,6 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
   // promise outside the request handler's error boundary.
   let signer;
   const treasury=()=>signer??=kit.createKeyPairSignerFromBytes(treasuryBytes);
-  const tokenProgram=spl.TOKEN_PROGRAM_ADDRESS;
   let requestId=0;
   const rpc=mockedRPC|| (async(method,...params)=>{
     const response=await fetch('https://mainnet.helius-rpc.com/?api-key='+encodeURIComponent(apiKey),{
@@ -32,33 +32,41 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     if(data.error||!Object.hasOwn(data,'result'))throw failure('CHAIN_UNAVAILABLE',503);
     return data.result;
   });
-  async function ata(owner) {
+  async function ata(owner,tokenProgram) {
     const [key]=await spl.findAssociatedTokenPda({owner,mint,tokenProgram});
     return key;
   }
-  async function tokenAccount(address,decoder,code) {
-    const response=await rpc('getAccountInfo',address,{commitment:'finalized',encoding:'base64'});
-    const account=response?.value;
-    if(!account||account.owner!==tokenProgram||account.data?.[1]!=='base64')throw failure(code);
-    const bytes=Buffer.from(account.data[0],'base64');
-    if(bytes.length!==decoder.fixedSize)throw failure(code);
-    return decoder.decode(bytes);
-  }
+  const account=async address=>(await rpc('getAccountInfo',address,{commitment:'finalized',encoding:'base64'}))?.value;
   async function mintInfo() {
-    // V1 supports the original SPL Token Program only.
-    const data=await tokenAccount(mint,spl.getMintDecoder(),'UNSUPPORTED_MINT');
-    if(data.decimals>9||!data.isInitialized||kit.isSome(data.freezeAuthority))throw failure('UNSUPPORTED_MINT',503);
-    return {mint,decimals:data.decimals};
+    const {decimals,tokenProgram}=decodeMint(await account(mint),()=>failure('UNSUPPORTED_MINT',503));
+    return {mint,decimals,tokenProgram};
   }
-  async function newDeposit() {
+  async function tokenAccount(address,tokenProgram,code) {
+    return decodeHolding(await account(address),tokenProgram,()=>failure(code));
+  }
+  const snapshot=pumpSnapshot(rpc);
+  async function marketSnapshot(requestedMint,decimals,tokenProgram) {
+    if(requestedMint!==mint)throw failure('MARKET_PRICE_UNAVAILABLE',503);
+    return snapshot(mint,decimals,tokenProgram);
+  }
+  async function sponsorEstimate(){
+    // Bound the normal 2-signature fee and maximum permitted ATA allocation;
+    // checkout still verifies and reserves the concrete transaction cost.
+    const [rent,balance]=await Promise.all([
+      rpc('getMinimumBalanceForRentExemption',170,{commitment:'finalized'}),
+      rpc('getBalance',treasuryAddress,{commitment:'finalized'})
+    ]);
+    return {fee:15000,rent,treasuryLamports:balance?.value};
+  }
+  async function newDeposit(tokenProgram=spl.TOKEN_PROGRAM_ADDRESS) {
     const {privateKey}=generateKeyPairSync('ed25519');
     const {d,x}=privateKey.export({format:'jwk'});
     const rawPublic=Buffer.from(x,'base64url');
     const address=kit.address(b58.decode(rawPublic));
-    return {address,ata:await ata(address),secret:Buffer.concat([Buffer.from(d,'base64url'),rawPublic]),
+    return {address,ata:await ata(address,tokenProgram),secret:Buffer.concat([Buffer.from(d,'base64url'),rawPublic]),
       reference:b58.decode(randomBytes(32))};
   }
-  async function build(instructions,payer) {
+  async function build(instructions,payer,tokenProgram) {
     const {value:lifetime}=await rpc('getLatestBlockhash',{commitment:'confirmed'});
     if(!Number.isSafeInteger(lifetime.lastValidBlockHeight))throw failure('CHAIN_UNAVAILABLE',503);
     const draft=kit.createTransactionMessage({version:'legacy'});
@@ -71,7 +79,7 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     const raw=await kit.partiallySignTransactionMessageWithSigners(complete);
     const [feeQuote,rent,balance]=await Promise.all([
       rpc('getFeeForMessage',Buffer.from(raw.messageBytes).toString('base64'),{commitment:'confirmed'}),
-      rpc('getMinimumBalanceForRentExemption',spl.getTokenDecoder().fixedSize,{commitment:'finalized'}),
+      rpc('getMinimumBalanceForRentExemption',tokenProgram===TOKEN_2022?170:165,{commitment:'finalized'}),
       rpc('getBalance',payer.address,{commitment:'finalized'})
     ]);
     const fee=feeQuote?.value;
@@ -85,15 +93,16 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     let sender;
     try {sender=kit.address(account);}catch {throw failure('INVALID_WALLET',400);}
     if(sender===treasuryAddress||sender===session.address||kit.isOffCurveAddress(sender))throw failure('INVALID_WALLET',400);
-    const [source,destination]=await Promise.all([ata(sender),ata(session.address)]);
+    const tokenProgram=session.tokenProgram??spl.TOKEN_PROGRAM_ADDRESS;
+    const [source,destination]=await Promise.all([ata(sender,tokenProgram),ata(session.address,tokenProgram)]);
     if(destination!==session.ata||session.mint!==mint)throw failure('PAYMENT_SESSION_INVALID');
-    const balance=await tokenAccount(source,spl.getTokenDecoder(),'INSUFFICIENT_MIND');
+    const balance=await tokenAccount(source,tokenProgram,'INSUFFICIENT_MIND');
     if(balance.owner!==sender||balance.mint!==mint||balance.state!==spl.AccountState.Initialized||
        balance.amount<BigInt(session.units))throw failure('INSUFFICIENT_MIND');
     const transfer=spl.getTransferCheckedInstruction({source,mint,destination,authority:kit.createNoopSigner(sender),
-      amount:BigInt(session.units),decimals:session.decimals});
+      amount:BigInt(session.units),decimals:session.decimals},{programAddress:tokenProgram});
     const referenced={...transfer,accounts:[...transfer.accounts,{address:kit.address(session.reference),role:kit.AccountRole.READONLY}]};
-    return build([spl.getCreateAssociatedTokenIdempotentInstruction({payer,ata:destination,owner:session.address,mint}),referenced],payer);
+    return build([spl.getCreateAssociatedTokenIdempotentInstruction({payer,ata:destination,owner:session.address,mint,tokenProgram}),referenced],payer,tokenProgram);
   }
   async function confirmed(signed) {
     const tx=await rpc('getTransaction',signed.signature,{commitment:'finalized',encoding:'base64',maxSupportedTransactionVersion:0});
@@ -112,6 +121,7 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     const result=await confirmed(session.signed);
     if(!result)return null;
     const {tx,message}=result;
+    const tokenProgram=session.tokenProgram??spl.TOKEN_PROGRAM_ADDRESS;
     if(!tx.meta||tx.meta.err)throw failure('PAYMENT_TRANSACTION_REJECTED');
     const index=message.staticAccounts.indexOf(session.ata);
     const field=rows=>rows?.find(row=>row.accountIndex===index&&row.mint===session.mint&&row.owner===session.address&&
@@ -129,20 +139,21 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
   }
   async function sweep(session,secret) {
     const [payer,deposit]=await Promise.all([treasury(),kit.createKeyPairSignerFromBytes(secret)]);
-    const [source,destination]=await Promise.all([ata(deposit.address),ata(payer.address)]);
+    const tokenProgram=session.tokenProgram??spl.TOKEN_PROGRAM_ADDRESS;
+    const [source,destination]=await Promise.all([ata(deposit.address,tokenProgram),ata(payer.address,tokenProgram)]);
     if(deposit.address!==session.address||source!==session.ata||session.mint!==mint)throw failure('DEPOSIT_KEY_MISMATCH');
-    const account=await tokenAccount(source,spl.getTokenDecoder(),'SWEEP_REVIEW');
+    const account=await tokenAccount(source,tokenProgram,'SWEEP_REVIEW');
     if(account.amount<BigInt(session.units)||account.owner!==deposit.address||account.mint!==mint||
        account.state!==spl.AccountState.Initialized)throw failure('SWEEP_REVIEW');
     const instructions=[
-      spl.getCreateAssociatedTokenIdempotentInstruction({payer,ata:destination,owner:payer.address,mint}),
-      spl.getTransferCheckedInstruction({source,mint,destination,authority:deposit,amount:BigInt(session.units),decimals:session.decimals})
+      spl.getCreateAssociatedTokenIdempotentInstruction({payer,ata:destination,owner:payer.address,mint,tokenProgram}),
+      spl.getTransferCheckedInstruction({source,mint,destination,authority:deposit,amount:BigInt(session.units),decimals:session.decimals},{programAddress:tokenProgram})
     ];
     // Additional off-quote funds are left for review.
     if(account.amount===BigInt(session.units))instructions.push(
-      spl.getCloseAccountInstruction({account:source,destination:payer.address,owner:deposit})
+      spl.getCloseAccountInstruction({account:source,destination:payer.address,owner:deposit},{programAddress:tokenProgram})
     );
-    return build(instructions,payer);
+    return build(instructions,payer,tokenProgram);
   }
   async function sweepStatus(signed) {
     const result=await confirmed(signed);
@@ -152,7 +163,7 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     // Absence after expiry does not establish that a transfer never landed.
     return status?'PENDING':'UNKNOWN';
   }
-  return {cluster:'mainnet',mintInfo,newDeposit,checkout,check,sweep,sweepStatus,
+  return {cluster:'mainnet',mintInfo,marketSnapshot,sponsorEstimate,newDeposit,checkout,check,sweep,sweepStatus,
     async canSubmit(signed) {
       const height=await rpc('getBlockHeight',{commitment:'confirmed'});
       if(!Number.isSafeInteger(height))throw failure('CHAIN_UNAVAILABLE',503);

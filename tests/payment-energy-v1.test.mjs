@@ -10,6 +10,7 @@ import ledgerModule from '../src/server/payment/energy-ledger.cjs';
 import paymentModule from '../src/server/payment/payments.cjs';
 import runtimeModule from '../src/server/payment/runtime.cjs';
 import marketModule from '../src/server/payment/market-price.cjs';
+import pumpModule from '../src/server/payment/pump-market.cjs';
 import financialModule from '../src/server/payment/financial-control.cjs';
 import solanaModule from '../src/server/payment/solana.cjs';
 import * as solana from '@solana/kit';
@@ -19,9 +20,9 @@ const {redisStore}=storeModule;
 const {authority,publicIdentity,signingMessage,sha256}=identityModule;
 const {energyLedger}=ledgerModule;
 const {encryption,payments}=paymentModule;
-const {marketPrice,quoteUnits}=marketModule;
+const {marketPrice,quoteUnits,SOL_USD}=marketModule;
 const {CONTROL,HEAD,verifyJournal}=financialModule;
-const {protect,energyHandler,LEARN,REASON}=runtimeModule;
+const {protect,energyHandler,runtimeFor,LEARN,REASON}=runtimeModule;
 const nowBase=Date.UTC(2026,10,26,13);
 const day=86400000, interval=720000;
 const own={fingerprint:sha256('owner fixture'),displayId:'ML-0000-0000-0000',publicKey:{}};
@@ -102,6 +103,28 @@ test('P-256 challenge verifies full fingerprint, binds request and cannot be reu
   const results=await Promise.allSettled([auth.verify(headers,route,body),auth.verify(headers,route,body)]);
   assert.equal(results.filter(item=>item.status==='fulfilled').length,1);
   assert.equal(results.find(item=>item.status==='rejected').reason.code,'CHALLENGE_EXPIRED');
+});
+
+test('a reusable P-256 session consumes each signed nonce once and expires without a new dispatch',async()=>{
+  const {store,clock,tick}=await setup();
+  const auth=authority(store,clock),local=await createLocalIdentity(),identity=publicIdentity(local.publicKey);
+  const route='/api/mindling/energy',body={action:'state'};
+  const {nonce:session}=await auth.challenge(local.publicKey);
+  const key=createPrivateKey({key:local.privateKey,format:'jwk'});
+  function proof(index){
+    const nonce=id(index).slice(0,48);
+    const signature=sign('sha256',Buffer.from(signingMessage({...identity,session,nonce,route,body})),
+      {key,dsaEncoding:'ieee-p1363'}).toString('hex');
+    return {'x-mindling-session':session,'x-mindling-nonce':nonce,'x-mindling-owner':identity.fingerprint,
+      'x-mindling-signature':signature};
+  }
+  const shared=proof(1);
+  await assert.rejects(auth.verify(shared,route,{action:'payment-open'}),{code:'INVALID_SIGNATURE'});
+  const results=await Promise.allSettled([auth.verify(shared,route,body),auth.verify(shared,route,body)]);
+  assert.equal(results.filter(item=>item.status==='fulfilled').length,1);
+  assert.equal((await auth.verify(proof(2),route,body)).fingerprint,identity.fingerprint);
+  tick(300001);
+  await assert.rejects(auth.verify(proof(3),route,body),{code:'CHALLENGE_EXPIRED'});
 });
 
 test('legacy capacity requires a reviewed identical history, independent of claimed Energy',async()=>{
@@ -247,6 +270,45 @@ function mockChain() {
   };
 }
 
+test('one wallet-open operation recovers a pending session, and returns a QR only with validated pricing and sponsorship',async()=>{
+  const {store,ledger,clock}=await setup(),principal=own.fingerprint;
+  const {chain}=mockChain();
+  let pricing=false,priced=0,balance=1000000000;
+  chain.sponsorEstimate=async()=>({fee:15000,rent:2000000,treasuryLamports:balance});
+  const price=async mint=>{
+    priced++;
+    if(!pricing)throw Object.assign(Error('MARKET_PRICE_UNAVAILABLE'),{code:'MARKET_PRICE_UNAVAILABLE',status:503});
+    return {mint,asOf:nowBase,freshUntil:nowBase+10000,usdScaled:'100000000000'};
+  };
+  const payment=payments(store,ledger,chain,encryption('ab'.repeat(32)),{now:clock,price});
+  await ledger.initialize(own);
+  await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase+600000}]}));
+  const auth={verify:async()=>({fingerprint:principal})};
+  const handler=energyHandler({runtime:async()=>({store,ledger,auth,payment:()=>payment})});
+  async function open(){
+    const res=mockedResponse();
+    await handler({method:'POST',headers:{host:'mindling.test',origin:'https://mindling.test'},body:{action:'payment-open'}},res);
+    return res;
+  }
+  const failed=await open();
+  assert.equal(failed.code,503);
+  assert.equal(failed.body.error.code,'MARKET_PRICE_UNAVAILABLE');
+  assert.equal(await payment.current(principal),null);
+  pricing=true;
+  const created=(await open()).body.session;
+  assert.equal(created.sponsored,true);
+  assert.equal(created.units,'19900000');
+  assert.equal(created.expiresAt-created.createdAt,600000);
+  assert.equal(decodeURIComponent(created.qrPayload.slice(7)),'https://mindling.test/api/mindling/pay?session='+created.id);
+  assert.deepEqual((await open()).body.session,created);
+  assert.equal(priced,2);
+  balance=1000;
+  const unsponsored=(await open()).body.session;
+  assert.equal(unsponsored.id,created.id);
+  assert.equal(unsponsored.qrPayload,null);
+  assert.equal(unsponsored.sponsored,false);
+});
+
 test('finalized payment atomically restores normal Energy once and keeps sweep independently recoverable',async()=>{
   const {store,ledger,tick}=await setup();
   const principal=own.fingerprint, injected=mockChain();
@@ -364,50 +426,56 @@ test('API derives a conditional Teach charge from the stored provider response; 
   assert.equal(wrongRoute.code,400);
 });
 
-test('Solana Pay co-signs an exact SPL transfer; chain verification rejects mismatched net amount',async()=>{
-  const makeKey=n=>solana.createKeyPairSignerFromPrivateKeyBytes(new Uint8Array(32).fill(n),true);
-  const [treasury,payer,{address:mint},{address:blockhash}]=await Promise.all([1,2,3,4].map(makeKey));
-  const [source]=await spl.findAssociatedTokenPda({owner:payer.address,mint,tokenProgram:spl.TOKEN_PROGRAM_ADDRESS});
-  const accountData=spl.getTokenEncoder().encode({mint,owner:payer.address,amount:200000000n,
-    delegate:null,state:spl.AccountState.Initialized,isNative:null,delegatedAmount:0,closeAuthority:null});
-  const mintData=spl.getMintEncoder().encode({mintAuthority:null,supply:200000000n,decimals:6,
-    isInitialized:true,freezeAuthority:null});
-  let transaction;
-  const rpc=async(method,key)=>{
-    if(method==='getAccountInfo')return {value:{owner:spl.TOKEN_PROGRAM_ADDRESS,
-      data:[Buffer.from(key===source?accountData:mintData).toString('base64'),'base64']}};
-    if(method==='getLatestBlockhash')return {value:{blockhash,lastValidBlockHeight:77}};
-    if(method==='getFeeForMessage')return {value:10000};
-    if(method==='getMinimumBalanceForRentExemption')return 2000000;
-    if(method==='getBalance')return {value:1000000000};
-    if(method==='getBlockHeight')return 76;
-    if(method==='getTransaction')return transaction;
-    throw Error('Unexpected RPC method '+method);
-  };
-  const walletSecret=[...new Uint8Array(32).fill(1),...solana.getBase58Encoder().encode(treasury.address)];
-  const chain=solanaModule.solanaAdapter({apiKey:'mock',mintAddress:mint,walletSecret:JSON.stringify(walletSecret),rpc});
-  const deposit=await chain.newDeposit();
-  const session={...deposit,...await chain.mintInfo(),units:'19900000',createdAt:nowBase-1000,expiresAt:nowBase+60000};
-  session.signed=await chain.checkout(session,payer.address);
-  const tx=solana.getTransactionDecoder().decode(Buffer.from(session.signed.transaction,'base64'));
-  const message=solana.getCompiledTransactionMessageDecoder().decode(tx.messageBytes);
-  assert.equal(message.staticAccounts[0],treasury.address);
-  assert.equal(await solana.verifySignature(treasury.keyPair.publicKey,tx.signatures[treasury.address],tx.messageBytes),true);
-  assert.equal(tx.signatures[payer.address],null);
-  const [payerSignatures]=await payer.signTransactions([tx]);
-  const signed=solana.getBase64EncodedWireTransaction({...tx,signatures:{...tx.signatures,...payerSignatures}});
-  const transfer=message.instructions.at(-1);
-  assert.equal(spl.getTransferCheckedInstructionDataDecoder().decode(transfer.data).amount,19900000n);
-  assert.equal(message.staticAccounts[transfer.accountIndices[2]],deposit.ata);
-  const index=message.staticAccounts.indexOf(deposit.ata);
-  const post={accountIndex:index,mint,owner:deposit.address,programId:spl.TOKEN_PROGRAM_ADDRESS,
-    uiTokenAmount:{amount:'19900000',decimals:6}};
-  transaction={version:'legacy',slot:7,blockTime:nowBase/1000,transaction:[signed,'base64'],
-    meta:{err:null,preTokenBalances:[],postTokenBalances:[post]}};
-  assert.equal((await chain.check(session)).slot,7);
-  post.uiTokenAmount.amount='19899999';
-  await assert.rejects(chain.check(session),{code:'PAYMENT_AMOUNT_MISMATCH'});
-});
+for(const [label,tokenProgram] of [['SPL',spl.TOKEN_PROGRAM_ADDRESS],['Token-2022',pumpModule.TOKEN_2022]]){
+  test('Solana Pay co-signs a checked '+label+' transfer and rejects mismatched net amount',async()=>{
+    const makeKey=n=>solana.createKeyPairSignerFromPrivateKeyBytes(new Uint8Array(32).fill(n),true);
+    const [treasury,payer,{address:mint},{address:blockhash}]=await Promise.all([1,2,3,4].map(makeKey));
+    const [source]=await spl.findAssociatedTokenPda({owner:payer.address,mint,tokenProgram:tokenProgram});
+    const ordinaryAccount=spl.getTokenEncoder().encode({mint,owner:payer.address,amount:200000000n,
+      delegate:null,state:spl.AccountState.Initialized,isNative:null,delegatedAmount:0,closeAuthority:null});
+    const ordinaryMint=spl.getMintEncoder().encode({mintAuthority:null,supply:200000000n,decimals:6,
+      isInitialized:true,freezeAuthority:null});
+    const token22=tokenProgram===pumpModule.TOKEN_2022;
+    const accountData=token22?Buffer.concat([ordinaryAccount,Buffer.from([2,7,0,0,0])]):ordinaryAccount;
+    const mintData=token22?Buffer.concat([ordinaryMint,Buffer.alloc(83),Buffer.from([1,18,0,64,0]),Buffer.alloc(64)]):ordinaryMint;
+    let transaction;
+    const rpc=async(method,key)=>{
+      if(method==='getAccountInfo')return {value:{owner:tokenProgram,
+        data:[Buffer.from(key===source?accountData:mintData).toString('base64'),'base64']}};
+      if(method==='getLatestBlockhash')return {value:{blockhash,lastValidBlockHeight:77}};
+      if(method==='getFeeForMessage')return {value:10000};
+      if(method==='getMinimumBalanceForRentExemption')return 2000000;
+      if(method==='getBalance')return {value:1000000000};
+      if(method==='getBlockHeight')return 76;
+      if(method==='getTransaction')return transaction;
+      throw Error('Unexpected RPC method '+method);
+    };
+    const walletSecret=[...new Uint8Array(32).fill(1),...solana.getBase58Encoder().encode(treasury.address)];
+    const chain=solanaModule.solanaAdapter({apiKey:'mock',mintAddress:mint,walletSecret:JSON.stringify(walletSecret),rpc});
+    const deposit=await chain.newDeposit(tokenProgram);
+    const session={...deposit,...await chain.mintInfo(),units:'19900000',createdAt:nowBase-1000,expiresAt:nowBase+60000};
+    session.signed=await chain.checkout(session,payer.address);
+    const tx=solana.getTransactionDecoder().decode(Buffer.from(session.signed.transaction,'base64'));
+    const message=solana.getCompiledTransactionMessageDecoder().decode(tx.messageBytes);
+    assert.equal(message.staticAccounts[0],treasury.address);
+    assert.equal(await solana.verifySignature(treasury.keyPair.publicKey,tx.signatures[treasury.address],tx.messageBytes),true);
+    assert.equal(tx.signatures[payer.address],null);
+    const [payerSignatures]=await payer.signTransactions([tx]);
+    const signed=solana.getBase64EncodedWireTransaction({...tx,signatures:{...tx.signatures,...payerSignatures}});
+    const transfer=message.instructions.at(-1);
+    assert.equal(message.staticAccounts[transfer.programAddressIndex],tokenProgram);
+    assert.equal(spl.getTransferCheckedInstructionDataDecoder().decode(transfer.data).amount,19900000n);
+    assert.equal(message.staticAccounts[transfer.accountIndices[2]],deposit.ata);
+    const index=message.staticAccounts.indexOf(deposit.ata);
+    const post={accountIndex:index,mint,owner:deposit.address,programId:tokenProgram,
+      uiTokenAmount:{amount:'19900000',decimals:6}};
+    transaction={version:'legacy',slot:7,blockTime:nowBase/1000,transaction:[signed,'base64'],
+      meta:{err:null,preTokenBalances:[],postTokenBalances:[post]}};
+    assert.equal((await chain.check(session)).slot,7);
+    post.uiTokenAmount.amount='19899999';
+    await assert.rejects(chain.check(session),{code:'PAYMENT_AMOUNT_MISMATCH'});
+  });
+}
 
 test('a delayed state response cannot overwrite a newer synchronized Energy revision',()=>{
   const mind={energy:{remaining:2}};
@@ -419,67 +487,94 @@ test('a delayed state response cannot overwrite a newer synchronized Energy revi
   assert.equal(mind.energyAuthority.revision,12);
 });
 
-const quoteMint='EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v';
-const pools=['B'.repeat(36),'C'.repeat(36)];
-function publicMarket(now){
-  const settings={price:'0.10000000',alternate:null,reserve:'90000.00',stale:false,wrongMint:false};
-  const mint=account,calls=[];
-  const route=async url=>{
-    const path=new URL(url);
-    calls.push(path.pathname);
-    assert.equal(path.origin,'https://api.geckoterminal.com');
-    assert(path.pathname.startsWith('/api/v2/networks/solana/'));
-    if(path.pathname.endsWith('/tokens/'+mint+'/pools')){
-      const mintId='solana_'+(settings.wrongMint?'G'.repeat(38):mint);
-      const quoteId='solana_'+quoteMint;
-      return Response.json({data:pools.map((address,index)=>({type:'pool',id:'solana_'+address,
-        attributes:{address,reserve_in_usd:settings.reserve,
-          pool_created_at:new Date(now()-5*day).toISOString(),
-          base_token_price_usd:index?'1.00':settings.price,
-          quote_token_price_usd:index?settings.alternate??settings.price:'1.00'},
-        relationships:{base_token:{data:{id:index?quoteId:mintId}},
-          quote_token:{data:{id:index?mintId:quoteId}},dex:{data:{id:index?'orca':'raydium'}}}
-      }))});
-    }
-    const index=pools.findIndex(pool=>path.pathname.endsWith('/pools/'+pool+'/trades'));
-    if(index<0)throw Error('Unexpected quote request');
-    return Response.json({data:[1,2,3].map((i)=>({type:'trade',attributes:{
-      tx_hash:(index?'Q':'F').repeat(84)+String(i+2),
-      block_timestamp:new Date(now()-i*45000-(settings.stale?10*60000:0)).toISOString(),
-      from_token_address:index?quoteMint:mint,to_token_address:index?mint:quoteMint,volume_in_usd:'34.50',
-      price_from_in_usd:index?'1.00':settings.price,price_to_in_usd:index?settings.alternate??settings.price:'1.00'
-    }}))});
+async function publicMarket(now) {
+  const {pumpSnapshot,addresses,PUMP,SWAP,FEE,SOL,TOKEN_2022}=pumpModule;
+  const settings={graduation:'curve',lowLiquidity:false,stale:false,oracleStale:false,mismatch:false,usd:'10000000000',slot:10};
+  const mint=account, token=spl.TOKEN_PROGRAM_ADDRESS, keys=await addresses(mint,TOKEN_2022);
+  const supply=1_000_000_000_000_000n, reserve=30_000_000_000n;
+  const encode=solana.getAddressEncoder();
+  const accountFor=(owner,bytes,lamports=1)=>({owner,lamports,data:[Buffer.from(bytes).toString('base64'),'base64']});
+  const anchor=(length,discriminator)=>{
+    const value=Buffer.alloc(length);
+    Buffer.from(discriminator).copy(value);
+    return value;
   };
-  return {settings,calls,route};
+  const mintData=Buffer.alloc(234);
+  mintData.set(spl.getMintEncoder().encode({decimals:6,supply,isInitialized:true,freezeAuthority:null,mintAuthority:null}));
+  mintData[165]=1;
+  mintData.writeUInt16LE(18,166);mintData.writeUInt16LE(64,168);
+  const holding=(program,mint,owner,amount,native=null)=>{
+    const bytes=Buffer.from(spl.getTokenEncoder().encode({mint,owner,amount,delegate:null,state:1,
+      isNative:native,delegatedAmount:0n,closeAuthority:null}));
+    return accountFor(program,program===TOKEN_2022?Buffer.concat([bytes,Buffer.from([2,7,0,0,0])]):bytes);
+  };
+  const fees=anchor(109,[143,52,146,187,219,123,76,155]);
+  fees.writeUInt32LE(1,65);fees.writeBigUInt64LE(200n,93);
+  let snapshots=0;
+  const rpc=async(method,ids,options)=>{
+    if(method==='getBlockTime')return Math.floor(now()/1000)-(settings.stale?100:2);
+    assert.equal(method,'getMultipleAccounts');
+    assert.equal(options.commitment,'finalized');
+    assert.deepEqual(ids,[mint,keys.curve,keys.pool,keys.curveVault,keys.baseVault,keys.quoteVault,keys.curveFee,keys.swapFee,keys.swapGlobal]);
+    snapshots++;
+    const curve=anchor(115,[23,183,248,55,96,216,172,96]);
+    curve.writeBigUInt64LE(supply,8);curve.writeBigUInt64LE(reserve,16);
+    curve.writeBigUInt64LE(supply/2n,24);curve.writeBigUInt64LE(settings.lowLiquidity?10n:5_000_000_000n,32);
+    curve.writeBigUInt64LE(supply,40);
+    curve[48]=settings.graduation==='curve'?0:1;
+    const pool=anchor(261,[241,154,109,4,17,177,109,188]);
+    pool.set(encode.encode(keys.authority),11);pool.set(encode.encode(settings.mismatch?SOL:mint),43);
+    pool.set(encode.encode(SOL),75);pool.set(encode.encode(keys.baseVault),139);pool.set(encode.encode(keys.quoteVault),171);
+    pool.writeBigUInt64LE(supply/2n,203);
+    pool.writeBigUInt64LE(BigInt.asUintN(64,-5_000_000_000n),245);pool.writeBigUInt64LE((1n<<64n)-1n,253);
+    const global=anchor(57,[149,8,156,202,160,252,176,217]);
+    return {context:{slot:settings.slot},value:[
+      accountFor(TOKEN_2022,mintData),
+      accountFor(PUMP,curve,5_000_000_000),
+      settings.graduation==='pool'?accountFor(SWAP,pool):null,
+      holding(TOKEN_2022,mint,keys.curve,supply/2n),holding(TOKEN_2022,mint,keys.pool,supply),
+      holding(token,SOL,keys.pool,35_000_000_000n,2039280n),accountFor(FEE,fees),accountFor(FEE,fees),
+      accountFor(SWAP,global)
+    ]};
+  };
+  const fetcher=async url=>{
+    assert.equal(new URL(url).origin,'https://hermes.pyth.network');
+    return Response.json({parsed:[{id:SOL_USD,price:{price:settings.usd,conf:'1000000',expo:-8,
+      publish_time:Math.floor(now()/1000)-(settings.oracleStale?110:2)}}]});
+  };
+  return {settings,mint,tokenProgram:TOKEN_2022,snapshot:pumpSnapshot(rpc,now),fetcher,calls:()=>snapshots};
 }
 
-test('public Mainnet price locks exact integer units using fresh trades in two independent liquid pools',async()=>{
-  const {store,clock,tick}=await setup(),market=publicMarket(clock);
-  const price=marketPrice(store,{fetcher:market.route,now:clock});
-  const result=await price(account);
-  assert.equal(result.source,'geckoterminal');
-  assert.deepEqual(result.poolIds,pools);
-  assert.equal(result.asOf,nowBase-45000);
-  assert.equal(quoteUnits(result,6),'19900000');
+test('Pump.fun pre-graduation and canonical PumpSwap use exact integer units including the signed pool reserve adjustment',async()=>{
+  const {store,clock,tick}=await setup(),market=await publicMarket(clock);
+  const price=marketPrice(store,{...market,now:clock});
+  const quote=()=>price(market.mint,6,market.tokenProgram);
+  const curve=await quote();
+  assert.equal(curve.source,'pump.fun');
+  assert.equal(curve.asOf,nowBase-2000);
+  assert.equal(quoteUnits(curve,6),'663333333334');
   assert.equal(quoteUnits({usdScaled:'300000000000'},6),'6633334');
-  tick(5000);
-  assert.deepEqual(await price(account),result);
-  assert.equal(market.calls.length,3);
-  tick(30000);
-  market.settings.price='0.118';
-  await assert.rejects(price(account),{code:'MARKET_PRICE_UNAVAILABLE'});
+  tick(5000);market.settings.slot++;
+  market.settings.graduation='migrating';
+  await assert.rejects(quote(),{code:'MARKET_PRICE_UNAVAILABLE'});
+  market.settings.graduation='pool';
+  const pool=await quote();
+  assert.equal(pool.source,'pumpswap');
+  assert.equal(quoteUnits(pool,6),'663333333334');
+  assert.equal(market.calls(),3);
+  market.settings.graduation='curve';
+  await assert.rejects(quote(),{code:'MARKET_PRICE_UNAVAILABLE'});
+  market.settings.graduation='pool';market.settings.usd='12000000000';
+  await assert.rejects(quote(),{code:'MARKET_PRICE_UNAVAILABLE'});
 });
 
-test('stale trades, divergent pools, wrong mint, low liquidity and provider errors cannot make quotes',async()=>{
-  for(const settings of [{stale:true},{alternate:'0.139'},{wrongMint:true},{reserve:'49999.99'}]){
-    const {store,clock}=await setup(),market=publicMarket(clock);
+test('stale snapshots, stale SOL feed, wrong pool mint and insufficient real depth cannot make a quote',async()=>{
+  for(const settings of [{stale:true},{oracleStale:true},{lowLiquidity:true},{graduation:'pool',mismatch:true}]){
+    const {store,clock}=await setup(),market=await publicMarket(clock);
     Object.assign(market.settings,settings);
-    await assert.rejects(marketPrice(store,{fetcher:market.route,now:clock})(account),{code:'MARKET_PRICE_UNAVAILABLE'});
-    assert.equal(await store.get('market:'+account),null);
+    await assert.rejects(marketPrice(store,{...market,now:clock})(market.mint,6,market.tokenProgram),{code:'MARKET_PRICE_UNAVAILABLE'});
+    assert.equal(await store.get('market:pump:'+market.mint),null);
   }
-  const {store,clock}=await setup();
-  await assert.rejects(marketPrice(store,{fetcher:async()=>new Response('',{status:429}),now:clock})(account),
-    {code:'MARKET_PRICE_UNAVAILABLE'});
 });
 
 test('background inference needs a settled prerequisite from the same owner',async()=>{
@@ -501,6 +596,51 @@ test('background inference needs a settled prerequisite from the same owner',asy
   assert.equal((await ledger.get(principal)).reserved,0);
   await assert.rejects(ledger.admit(principal,{...operation('invented semantic work','research-semantic','semantic'),
     prerequisite:talk.id}),{code:'ACTIVITY_PREREQUISITE_REQUIRED'});
+});
+
+test('an admitted Research request records its checkpoint on disconnect and a matching request reuses it',async()=>{
+  const {store,ledger}=await setup(),principal=own.fingerprint;
+  await ledger.initialize(own);
+  await ledger.setResearch(principal,true,12,1);
+  const req=Object.assign(new EventEmitter(),{method:'POST',headers:{},
+    body:{id:id('checkpoint on disconnect'),mode:'research-acquire',context:{request:{mode:'FOUNDATION'},remainingCalls:4}}});
+  const op={kind:'foundation',id:id('paid research once')};
+  const plan={...operation('paid research once','foundation','research')};
+  await ledger.admit(principal,plan);
+  await ledger.record(principal,plan.id,plan.requestId,{status:200,body:{}});
+  const runtime=async()=>({store,ledger,auth:{verify:async()=>({fingerprint:principal,operation:op})},
+    activityCipher:encryption('ab'.repeat(32),'operation')});
+  const res=mockedResponse();
+  let calls=0;
+  const handler=protect(REASON,async(input,output)=>{
+    calls++;
+    let interrupted=false;
+    input.on?.('aborted',()=>{interrupted=true;});
+    output.on?.('close',()=>{interrupted=true;});
+    req.emit('aborted');
+    res.destroyed=true;
+    res.emit('close');
+    assert.equal(interrupted,false);
+    return output.status(502).json({sourceCheckpoint:{signature:'fixture-checkpoint'},error:{
+      code:'RESPONSE_PARSE_ERROR',diagnostic:{phase:'SOURCE_EVALUATION',outcomeUnknown:false}
+    }});
+  },{runtime});
+  await handler(req,res);
+  assert.equal(res.body,undefined);
+  const retry=mockedResponse();
+  await handler(req,retry);
+  assert.equal(retry.code,502);
+  assert.equal(retry.body.sourceCheckpoint.signature,'fixture-checkpoint');
+  assert.equal(calls,1);
+  assert.equal((await ledger.inspect(principal,op.id)).checkpointSignature,'fixture-checkpoint');
+});
+
+test('partial configuration and invalid keys yield a distinct Energy 503 before any service dispatch',()=>{
+  const partial={HELIUS_API_KEY:'fixture-only'};
+  assert.throws(()=>runtimeFor(partial),{code:'ENERGY_SERVICE_UNAVAILABLE',status:503});
+  const invalid={UPSTASH_REDIS_REST_URL:'https://fixture.invalid',UPSTASH_REDIS_REST_TOKEN:'fixture-only',
+    ENCRYPTION_KEY:'invalid'};
+  assert.throws(()=>runtimeFor(invalid),{code:'ENERGY_SERVICE_UNAVAILABLE',status:503});
 });
 
 test('production endpoint has no unauthenticated fallback when the ledger is unconfigured',async()=>{
