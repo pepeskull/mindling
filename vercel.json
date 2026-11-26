@@ -8,5 +8,9 @@
     { "handle": "filesystem" },
     { "src": "/.*", "dest": "/index.html" }
   ],
-  "functions": { "api/mindling/reason.js": { "maxDuration": 60 } }
+  "functions": {
+    "api/mindling/reason.js": { "maxDuration": 60 },
+    "api/mindling/energy.js": { "maxDuration": 60 },
+    "api/mindling/pay.js": { "maxDuration": 30 }
+  }
 }

@@ -1,3 +1,6 @@
+import { EnergyClient } from '../payment/energy-client.js';
+import { TopUp } from '../payment/top-up.js';
+import { energyAt } from '../economy/energy.js';
 import { reconcileSemanticConnections, semanticHydrationStatus } from '../semantic/memory-connections.js';
 import { repairCorrectionMetadata } from '../learning/correction-metadata-repair.js';
 import { knowledgeTalk } from '../cognition/talk-response.js';
@@ -25,9 +28,11 @@ export class MindlingApp extends EvolutionPreview {
   constructor() {
     super({ interactive: true, autoPlay: false, autoNetwork: true, snapshotProvider: null, canonicalBrain:true });
     this.db = new MindlingDatabase(); this.listeners = new AbortController();
+    this.energyClient = new EnergyClient(this);
     // Keep cognition available internally without mounting a training interface.
     this.cognition = new CognitiveEngine({ events:this.events, store:{
       load:id=>this.db.trainingHistory(id),
+      transport:(kind,id)=>this.energyClient.transport(kind,id),
       source:id=>{this.external?.assertWritable();return this.db.trainingSource(id);},
       save:record=>{this.external?.assertWritable();return this.db.saveTraining(record);}
     } });
@@ -55,6 +60,7 @@ export class MindlingApp extends EvolutionPreview {
     await super.start();
     if (this.disposed) return;
     this.dashboard.setStorageStatus(true);
+    this.topUp = new TopUp(this.energyClient,this.listeners.signal);
     this.interaction.connect(this.host, {
       onTap: event => {
         if(this.external?.tap(event))return;
@@ -69,7 +75,7 @@ export class MindlingApp extends EvolutionPreview {
     });
     this.events.on(EVENTS.MEMORY_SELECTED, route => { this.seed.highlightRoute(route); this.view.selectedCanonical = route?.neuronIds?.[0] || null; });
     this.renderState();
-    if (this.state.mind) this.dashboard.show(); else this.showOnboarding();
+    if (this.state.mind) {this.dashboard.show();void this.syncEnergy();} else this.showOnboarding();
     this.lifeTimer = setInterval(() => this.refreshState(), 60_000);
     this.energyTimer=setInterval(()=>{if(!this.external?.locked&&this.state?.mind){
       this.dashboard.renderEnergy(this.state.mind.energy,Date.now());
@@ -78,21 +84,65 @@ export class MindlingApp extends EvolutionPreview {
       if(!this.pendingMutations&&eligibility({...this.state,now:Date.now()}).eligible)this.refreshState();
       else if(e.version===2&&e.remaining-e.bonus<energyCapacityForStage(this.state.mind.stage)&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
     }},1000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) this.refreshState(); }, { signal: this.listeners.signal });
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) {void this.refreshState();void this.syncEnergy();}
+    }, { signal: this.listeners.signal });
+    window.addEventListener('online',()=>void this.syncEnergy(),{signal:this.listeners.signal});
   }
 
   async change(reducer = state => state, options = {}) {
     this.external?.assertWritable();this.pendingMutations=(this.pendingMutations||0)+1;
     try {
-      const state = await this.db.changeGameplay(s => {this.external?.assertWritable();return options.preserveGameplay?reducer(s):reducer(advanceGameplay(s));}, options);
-      if (!this.disposed) { this.state = state; this.renderState(); }
-      return state;
+      const activity=options.energyOperation;
+      const operationId=activity&&this.state?.mind?.energyAuthority?
+        await this.energyClient.operation(activity.kind,activity.id):null;
+      let localCommit;
+      const state=await this.db.changeGameplay(saved=>{
+        this.external?.assertWritable();
+        const initial=options.preserveGameplay?saved:advanceGameplay(saved);
+        const current=initial.mind?.energy,previousXP=initial.mind?.lifetimeXP;
+        const updated=reducer(initial);
+        if(operationId&&updated.mind?.energyAuthority){
+          const mind=updated.mind,authority=mind.energyAuthority;
+          const baseline=energyAt(current,updated.now);
+          const cost=baseline.remaining-mind.energy.remaining;
+          if(!Number.isSafeInteger(cost)||cost<0||cost>3)throw Error('Invalid Energy settlement.');
+          mind.energy=baseline;
+          const research=updated.mind.learningTasks?.find(item=>item.id===activity.id);
+          const memoryHashes=research?(research.knowledgeIds||[]).flatMap(id=>{
+            const memory=mind.memories.find(item=>item.id===id);
+            return memory?.research?.taskId===activity.id?[memory.research.quoteHash]:[];
+          }):undefined;
+          localCommit={id:operationId,cost,memoryHashes,awardedXP:mind.lifetimeXP-previousXP};
+          authority.pending=[...(authority.pending||[]).filter(item=>item.id!==operationId),localCommit];
+        }
+        return updated;
+      },options);
+      if (!this.disposed) { this.state=state; this.renderState(); }
+      if(localCommit&&!this.disposed){
+        try {await this.energyClient.finish(localCommit,state.mind.id);}
+        catch {this.dashboard.showEnergySyncStatus('Energy settlement pending. Your saved progress is available locally.');}
+      }
+      return this.state||state;
     } finally { this.pendingMutations--; }
+  }
+
+  async syncEnergy(){
+    if(this.disposed||this.external?.locked||!this.state?.mind)return;
+    const id=this.state.mind.id;
+    try{
+      const ready=await this.energyClient.sync();
+      if(ready===true&&!this.disposed&&this.state.mind?.id===id&&this.state.mind.life.lifeState==='ALIVE')this.topUp?.enable(id);
+    }catch(error){if(this.state?.mind?.id===id)this.dashboard?.showEnergySyncStatus(error.message);}
   }
 
   async refreshState() {
     if (this.disposed || this.external?.locked) return;
-    try { await this.change(); } catch { if (!this.disposed) this.dashboard.setStorageStatus(false); }
+    const stage=this.state?.mind?.stage;
+    try {
+      await this.change();
+      if(stage!==this.state?.mind?.stage)void this.syncEnergy();
+    } catch { if (!this.disposed) this.dashboard.setStorageStatus(false); }
   }
 
   async submitInput(text, activity, id, {continuation=null}={}) {
@@ -155,7 +205,7 @@ export class MindlingApp extends EvolutionPreview {
         }
       });
       if (this.disposed) return;
-      this.onboarding.hide();this.view.claimRenderer();this.dashboard.openDashboard(); this.dashboard.show(); this.renderState();document.querySelector('#mindling-input').focus();
+      this.onboarding.hide();this.view.claimRenderer();this.dashboard.openDashboard(); this.dashboard.show(); this.renderState();void this.syncEnergy();document.querySelector('#mindling-input').focus();
     },{three:this.view.three});
     this.onboarding.show();
   }
@@ -171,6 +221,7 @@ export class MindlingApp extends EvolutionPreview {
     if (this.external?.locked || !this.view || !this.dashboard || !this.state.mind) return;
     const m = this.state.mind;
     this.deceased = m.life.lifeState === 'DECEASED';
+    if(this.topUp)this.topUp.button.disabled=this.deceased||this.topUp.identity!==m.id;
     if (this.identityId !== m.id) { this.identityId = m.id; this.clearBrainActivity(); this.seed.setSelection(null); this.countdown = new AutomaticNetworkCountdown(); this.timeline.network.reset(); this.view.selectedCanonical = null; this.events.emit(EVENTS.SCENE_SELECTION,null); }
     if (this.timeline.stage !== m.stage) { this.timeline.select(m.stage); this.syncStage(); }
     this.host.dataset.stage = String(m.stage);

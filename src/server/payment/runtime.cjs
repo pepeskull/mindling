@@ -1,0 +1,274 @@
+'use strict';
+
+const {redisStore,failure} = require('./store.cjs');
+const {authority,sha256} = require('./identity.cjs');
+const {energyLedger,RESEARCH,SEMANTIC} = require('./energy-ledger.cjs');
+
+const ROOT='/api/mindling/';
+const LEARN=ROOT+'learn', REASON=ROOT+'reason', ENERGY=ROOT+'energy';
+const LEARN_KINDS=new Set(['teach','deep','correction']);
+const RESEARCH_DEPTH={foundation:'FOUNDATION','deep-research':'DEEP','talk-research':'TALK_RESEARCH',autonomous:'FOUNDATION'};
+const RESEARCH_MODES=new Set(['research','research-acquire','research-evaluate','research-capabilities']);
+const accepts=(kind,route,body)=>{
+  if (route===LEARN) return LEARN_KINDS.has(kind)&&(kind==='correction')===Boolean(body.correction);
+  if (RESEARCH.has(kind)) {
+    if(!RESEARCH_MODES.has(body.mode))return false;
+    const request=body.mode==='research'?body.context:body.context?.request??body.context?.checkpoint?.request;
+    return body.mode==='research-capabilities'||(request?.mode===RESEARCH_DEPTH[kind]&&
+      Boolean(request?.autonomous)===(kind==='autonomous'));
+  }
+  if (SEMANTIC.has(kind)) {
+    if (kind.endsWith('area-pair')) return body.mode==='area-pair';
+    if (kind==='memory-pair') return body.mode==='semantic'&&!body.context?.areas&&!body.context?.parentDiscovery;
+    return body.mode==='semantic';
+  }
+  if (kind==='talk') return body.mode==='talk';
+  return kind==='evaluation' && !body.mode;
+};
+
+function parse(req) {
+  if (req.method!=='POST') throw failure('METHOD_NOT_ALLOWED',405);
+  const text=typeof req.body==='string'?req.body:JSON.stringify(req.body??null);
+  if (Buffer.byteLength(text)>65536) throw failure('REQUEST_TOO_LARGE',413);
+  try {
+    const body=JSON.parse(text);
+    if (!body||typeof body!=='object'||Array.isArray(body)) throw Error();
+    return body;
+  } catch { throw failure('REQUEST_INVALID',400); }
+}
+
+function serviceError(res,error,service) {
+  const status=error.status||503;
+  if (!res.writableEnded&&!res.destroyed) return res.status(status).json({
+    ...(service?{service}:{}),error:{code:error.status?error.message:'PAYMENT_UNAVAILABLE'}
+  });
+}
+function origin(req) {
+  if(!req.headers.origin)return;
+  try {
+    if(new URL(req.headers.origin).host===String(req.headers['x-forwarded-host']||req.headers.host))return;
+  }catch{}
+  throw failure('ORIGIN_INVALID',403);
+}
+const clientKey=(req,prefix)=>{
+  const ip=String(req.headers['x-vercel-forwarded-for']||req.socket?.remoteAddress||'unknown').split(',')[0].trim().slice(0,80);
+  return prefix+':'+sha256(ip);
+};
+
+function enabled(env) {
+  return Boolean(env.UPSTASH_REDIS_REST_URL || env.UPSTASH_REDIS_REST_TOKEN ||
+    env.HELIUS_API_KEY || env.MIND_TOKEN_MINT || env.WALLET_PRIVATE_KEY || env.ENCRYPTION_KEY);
+}
+
+function runtimeFor(env=process.env) {
+  const store = redisStore({url:env.UPSTASH_REDIS_REST_URL,token:env.UPSTASH_REDIS_REST_TOKEN});
+  const auth = authority(store);
+  const {encryption}=require('./payments.cjs');
+  const activityCipher=encryption(env.ENCRYPTION_KEY,'operation');
+  return Promise.resolve(energyLedger(store)).then(ledger=>{
+    let payment;
+    return {store,auth,ledger,activityCipher,payment(){
+      if (payment) return payment;
+      const {payments,encryption}=require('./payments.cjs');
+      const {solanaAdapter}=require('./solana.cjs');
+      try {
+        const keys=encryption(env.ENCRYPTION_KEY);
+        const chain=solanaAdapter({apiKey:env.HELIUS_API_KEY,mintAddress:env.MIND_TOKEN_MINT,walletSecret:env.WALLET_PRIVATE_KEY});
+        payment=payments(store,ledger,chain,keys);
+        return payment;
+      } catch {throw failure('PAYMENT_UNAVAILABLE',503);}
+    }};
+  });
+}
+
+async function qualify(route,kind,body,result) {
+  if (route===LEARN) {
+    const assessment=result.assessment;
+    if (!assessment) throw failure('RECEIPT_INVALID');
+    const {normalize}=await import('../../learning/text.js');
+    const {atomicStatements,updatePart,updateInput,mutableValue}=await import('../../preview/sandbox/atomic-memory.js');
+    const statements=atomicStatements(body.input);
+    const decisions=assessment.operations??[{statement:0,decision:assessment}];
+    if(kind==='correction'){
+      const spend=assessment.operation==='CREATE_NEW'&&assessment.kind!=='intention'&&
+        normalize(body.input)!==normalize(body.correction.content);
+      return {spend,xp:spend?3:0};
+    }
+    const distinct=decisions.find(({statement,decision})=>{
+      if(!['CREATE_NEW','LINK_TO_EXISTING'].includes(decision.operation)||!statements[statement])return false;
+      return !body.candidates.some(item=>item.current!==false&&normalize(item.content)===normalize(statements[statement]));
+    });
+    const update=decisions.find(({statement,targetPart,decision})=>{
+      if(decision.operation!=='UPDATE_EXISTING')return false;
+      const target=body.candidates.find(candidate=>candidate.id===decision.relatedMemoryId);
+      const part=target&&updatePart(target,decision.kind,targetPart);
+      if(!part)return false;
+      const prior=part.parts[part.index], next=updateInput(statements[statement],decision.kind);
+      return normalize(prior)!==normalize(next)&&!(mutableValue(prior)&&mutableValue(prior)===mutableValue(next));
+    });
+    return {spend:Boolean(distinct||update||decisions.some(({decision})=>decision.operation==='FLAG_CONTRADICTION')),
+      xp:distinct||update?(kind==='deep'?10:5):0, ...(distinct?{concept:sha256(normalize(distinct.decision.concept))}:{})};
+  }
+  if (kind==='talk') return {spend:true,xp:result.reasoning?.insufficientInformation===false?3:0};
+  if(RESEARCH.has(kind)&&['research-evaluate','research-acquire'].includes(body.mode)){
+    const {researchRelation}=await import('../../autonomous/memory-evolution.js');
+    const {normalize}=await import('../../learning/text.js');
+    const memories=(body.context?.learning?.candidates||[]).filter(item=>item.complete).map(item=>({
+      ...item,contentIntegrity:{version:1,status:'captured',length:item.content.length}
+    }));
+    const claims=[];
+    for(const claim of result.acquisition?.evaluation?.claims||[]){
+      const relation=researchRelation({memories,pathways:[],history:[]},{...claim,validAt:claim.validAt??null});
+      claims.push({hash:sha256(claim.quote),formed:relation.kind==='new',concept:sha256(normalize(claim.topic))});
+    }
+    return {claims,xp:kind==='deep-research'?10:kind==='talk-research'?3:5};
+  }
+  return null;
+}
+
+function protect(route,handler,options={}) {
+  const isLearn=route===LEARN;
+  const service=isLearn?'mindling-learning-service':'mindling-reasoning-service';
+  return async (req,res)=>{
+    if(!options.runtime&&!enabled(process.env))return handler(req,res);
+    let body,admitted=false;
+    try{
+      body=parse(req);
+      origin(req);
+      const {ledger,auth,activityCipher}=await (options.runtime||runtimeFor)();
+      const {fingerprint,operation}=await auth.verify(req.headers,route,body);
+      if(route===REASON&&body.mode==='research-capabilities') {
+        await ledger.get(fingerprint);
+        return handler(req,res);
+      }
+      if(!operation||!accepts(operation.kind,route,body))throw failure('INVALID_OPERATION',400);
+      const requestId=isLearn?'learn':body.id;
+      if(!isLearn&&!/^[a-f0-9]{64}$/.test(requestId||''))throw failure('INVALID_OPERATION',400);
+      const phase=isLearn?'learn':body.mode||'evaluation';
+      if(!process.env.SERVICE_API&&!options.runtime)throw failure('MODEL_UNAVAILABLE',503);
+      const bodyHash=sha256(JSON.stringify(body));
+      const {cached,energy}=await ledger.admit(fingerprint,{
+        ...operation,phase,requestId,bodyHash,tools:phase==='research-acquire'?body.context?.remainingCalls||0:0,
+        checkpointSignature:body.context?.checkpoint?.signature
+      });
+      admitted=!cached;
+      const cipherScope={id:operation.id+':'+requestId,owner:fingerprint,address:route,mint:bodyHash};
+      if(cached){
+        const body=activityCipher?JSON.parse(activityCipher.open({...cipherScope,sealed:cached.body}).toString()):cached.body;
+        return res.status(cached.status).json({...body,energy});
+      }
+      let status, result;
+      const capture = new Proxy(res,{
+        get(target,property){
+          if(property==='status')return code=>{status=code;return capture;};
+          if(property==='json')return value=>{result=value;return capture;};
+          const value=Reflect.get(target,property,target);
+          return typeof value==='function'?value.bind(target):value;
+        }
+      });
+      // Keep settlement and upstream dispatch tied to the persisted request,
+      // even if the caller disconnects during the provider request.
+      await handler(req,capture);
+      if(!status||!result)throw failure('OUTCOME_UNKNOWN');
+      const json=JSON.stringify(result);
+      if(Buffer.byteLength(json)>120000)throw failure('OUTCOME_UNKNOWN');
+      const saved={status,body:activityCipher?activityCipher.seal(Buffer.from(json),cipherScope):result};
+      const recoverable=phase==='research-acquire'&&result.sourceCheckpoint&&!result.error?.diagnostic?.outcomeUnknown;
+      const knownNoResult=isLearn&&result.error?.code==='ANALYSIS_INVALID';
+      const unknown=status>=500&&!recoverable&&!knownNoResult||Boolean(result.error?.diagnostic?.outcomeUnknown)||status===409;
+      const qualification=status===200?await qualify(route,operation.kind,body,result):null;
+      const authorityState=await ledger.record(fingerprint,operation.id,requestId,saved,{
+        unknown,qualification, checkpointSignature:result.sourceCheckpoint?.signature,
+        terminal:(qualification?.spend===false&&qualification.xp===0)||(!unknown&&!recoverable&&status!==200)||(!qualification&&!RESEARCH.has(operation.kind)&&operation.kind!=='area-pair'&&operation.kind!=='automatic-area-pair'&&operation.kind!=='research-semantic'&&!unknown)
+      });
+      if (!res.writableEnded&&!res.destroyed)return res.status(status).json({...result,energy:authorityState});
+    }catch(error){
+      if(!admitted&&body?.mode==='area-pair'&&/^[a-f0-9]{64}$/.test(body.id||'')&&[429,503].includes(error.status)){
+        return res.status(error.status).json({service,id:body.id,inferenceDispatched:false,error:{code:error.code}});
+      }
+      return serviceError(res,error,service);
+    }
+  };
+}
+
+function energyHandler(options={}) {
+  return async (req,res)=>{
+    try {
+      const body=parse(req);
+      origin(req);
+      const active=Boolean(options.runtime)||enabled(process.env);
+      if(body.action==='availability')return res.status(200).json({active,cluster:active?'devnet':null});
+      if(!active)throw failure('PAYMENT_UNAVAILABLE',503);
+      res.setHeader('Cache-Control','no-store');
+      const runtime=await (options.runtime||runtimeFor)();
+      const {store,auth,ledger}=runtime;
+      if(body.action==='challenge'){
+        await store.rate(clientKey(req,'challenge'),90,60);
+        return res.status(200).json(await auth.challenge(body.publicKey));
+      }
+      const {fingerprint,publicKey,displayId}=await auth.verify(req.headers,ENERGY,body);
+      let data;
+      switch(body.action){
+        case 'register':
+          data={energy:await ledger.initialize({fingerprint,publicKey,displayId},body.legacy)};break;
+        case 'state':
+          data={energy:await ledger.get(fingerprint)};break;
+        case 'research-permission':
+          data=await ledger.setResearch(fingerprint,body.enabled,body.automaticRequestLimit,body.permissionRevision);break;
+        case 'settle':
+          data=await ledger.settle(fingerprint,body.id,body.committed,body.cost,body.memoryHashes,body.awardedXP);break;
+        case 'release':
+          data={energy:await ledger.release(fingerprint,body.id)};break;
+        case 'local-talk': {
+          if(typeof body.text!=='string'||body.text.length>2000||body.text.trim().length<20||
+             new Set(body.text.trim().split(/\s+/)).size<4)throw failure('REQUEST_INVALID',400);
+          const admission=await ledger.admit(fingerprint,{id:body.id,kind:'talk',phase:'local-talk',requestId:'local',bodyHash:sha256(body.text)});
+          data={energy:admission.cached?admission.energy:await ledger.record(fingerprint,body.id,'local',{status:200,body:{}},{qualification:{spend:true,xp:0}})};
+          break;
+        }
+        case 'payment-current':
+          data={session:await runtime.payment().current(fingerprint)};break;
+        case 'payment-create':
+          await store.rate(clientKey(req,'payment-create'),6,60);
+          data={session:await runtime.payment().create(fingerprint,{fresh:body.fresh===true})};break;
+        case 'payment-check': {
+          await store.rate('payment-check:'+fingerprint,12,60);
+          const payment=runtime.payment();
+          data=await payment.check(fingerprint,body.id);
+          // A durable job was created in the same transaction as the receipt.
+          // Attempt collection now. An interrupted attempt can be recovered independently.
+          await payment.sweepOne(body.id).catch(()=>{});
+          break;
+        }
+        default:throw failure('REQUEST_INVALID',400);
+      }
+      return res.status(200).json(data);
+    }catch(error){return serviceError(res,error);}
+  };
+}
+
+function walletHandler(options={}) {
+  return async (req,res)=>{
+    try{
+      if(!options.runtime&&!enabled(process.env))throw failure('PAYMENT_UNAVAILABLE',503);
+      res.setHeader('Access-Control-Allow-Origin','*');
+      if(req.method==='OPTIONS'){
+        res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');
+        res.setHeader('Access-Control-Allow-Headers','Content-Type');
+        return res.status(204).end();
+      }
+      if(!['GET','POST'].includes(req.method))throw failure('METHOD_NOT_ALLOWED',405);
+      res.setHeader('Cache-Control','no-store');
+      const runtime=await (options.runtime||runtimeFor)();
+      await runtime.store.rate(clientKey(req,'wallet-checkout'),12,60);
+      if(req.method==='GET')return res.status(200).json({label:'Play Mindling · Devnet'});
+      return res.status(200).json(await runtime.payment().wallet(req.query?.session,parse(req).account));
+    }catch(error){
+      if (!res.writableEnded&&!res.destroyed) return res.status(error.status||503).json({
+        message:error.status?error.message:'Payment temporarily unavailable'
+      });
+    }
+  };
+}
+
+module.exports={protect,energyHandler,walletHandler,runtimeFor,LEARN,REASON};

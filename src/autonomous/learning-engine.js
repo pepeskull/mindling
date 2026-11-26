@@ -42,6 +42,7 @@ export function stopLearning(app){engines.get(app)?.destroy();}
 export function learningSession(app){return engines.get(app)?.session||null;}
 export function researchPermissions(app){const engine=engines.get(app),id=app.state?.mind?.id||'';return {...(engine?.preferences||defaultPermissions(id)),loaded:Boolean(engine?.preferences&&engine.permissionIdentity===id&&!engine.permissionLoading)};}
 export function syncResearchPermissions(app){const engine=learningEngine(app),id=app.state?.mind?.id;if(id&&engine.permissionIdentity!==id)engine.loadPermissions().then(()=>{if(!app.disposed&&app.state.mind?.id===id){app.renderState();engine.recover();}}).catch(()=>{});}
+const operationFor=task=>task.autonomous?'autonomous':task.mode===LEARNING_MODES.DEEP?'deep-research':task.mode===LEARNING_MODES.TALK_RESEARCH?'talk-research':'foundation';
 const activityFor=mode=>mode===LEARNING_MODES.DEEP?'DEEP_TRAINING':mode===LEARNING_MODES.TALK_RESEARCH?'TALK':'TEACH';
 const integrationIssue=(reason,message=reason)=>Object.assign(Error(message),{integrationReason:reason});
 function integrationFailure(task,controller,error){
@@ -93,6 +94,7 @@ export class AutonomousLearningEngine {
     this.app.external?.assertWritable();const id=this.app.state.mind?.id;if(!id||this.disposed)throw Error('Mindling unavailable.');
     this.active?.controller.abort('ACCESS_CHANGED');clearTimeout(this.wakeTimer);const prefs=await (this.app.db||this.app.store).saveResearchPermissions(id,{enabled,automaticRequestLimit});
     if(this.app.state.mind?.id!==id)throw Error('Mindling identity changed.');this.preferences=validatePermissions(prefs,id);this.permissionIdentity=id;this.app.renderState();
+    await this.app.energyClient?.researchPermission(enabled,prefs.automaticRequestLimit,prefs.revision);
     if(enabled){this.recover();void this.tick().catch(()=>this.schedule());}return prefs;
   }
   recover(){
@@ -193,7 +195,7 @@ export class AutonomousLearningEngine {
     const mind=this.assertLive(this.app.state.mind?.id),task=tasksFor(mind).find(item=>item.id===id);if(!task)throw Error('This research task is unavailable.');
     if(['forget-memory','correct-memory'].includes(action))return this.manageKnowledge(task,action,payload);
     if(action==='clarify')return this.clarification(task);
-    if(action==='cancel'){cancelTaskClarification(this.app,id);this.queue.delete(id);if(this.active?.id===id)this.active.controller.abort('CANCELLED');return this.patch(id,null,item=>{if(terminal(item))return;item.run=crypto.randomUUID();item.status='CANCELLED';item.code='CANCELLED';item.message='Research cancelled. Existing knowledge was preserved.';});}
+    if(action==='cancel'){cancelTaskClarification(this.app,id);this.queue.delete(id);if(this.active?.id===id)this.active.controller.abort('CANCELLED');const stopped=await this.patch(id,null,item=>{if(terminal(item))return;item.run=crypto.randomUUID();item.status='CANCELLED';item.code='CANCELLED';item.message='Research cancelled. Existing knowledge was preserved.';});await this.app.energyClient?.release(operationFor(task),id).catch(()=>{});return stopped;}
     if(terminal(task))throw Error('This task has finished.');
     if(task.engineVersion!==4&&action!=='consent')throw Error('This historical task is preserved. Submit the topic again to use autonomous web research.');
     if(action==='consent'||action==='review-topic'){
@@ -237,7 +239,7 @@ export class AutonomousLearningEngine {
       if(!current.sourcePlan&&!current.pendingEvidence?.length){
         current=await this.patch(task.id,run,(item,next)=>{this.assertResearchEnergy(next.mind);requireResearchXP(this.app,next);const planned=item.planningCalls??(item.plannedAt?Math.min(item.attempts,2):0),used=item.modelCalls??planned;if(planned>=2||used>=LIMITS.inferenceCalls)throw Error('BUDGET_EXHAUSTED');item.researchAdmission={run,startedAt:Date.now()};item.planningCalls=planned+1;item.modelCalls=used+1;item.status='QUEUED';item.code='PLANNING';item.message='Understanding the request and preparing unverified hypotheses.';},{researchGrant:this.grant(prefs)});
         const context=this.context(task,topic),id=await digest(JSON.stringify([task.id,run,'plan',context]));
-        const result=await requestResearchPlanning({id,context,signal:controller.signal});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
+        const result=await requestResearchPlanning({id,context,signal:controller.signal,fetcher:this.app.energyClient?.transport(operationFor(task),task.id)});this.assertLive(task.mindlingId);if(controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
         current=await this.patch(task.id,run,item=>{
           item.hypotheses=result.planning.hypotheses||[];item.plan=result.planning.plan;item.plannedAt=Date.now();item.completedWork=[...new Set([...item.completedWork,'plan'])];item.status='BLOCKED';
           const question=result.planning.clarification;
@@ -347,7 +349,7 @@ export class AutonomousLearningEngine {
     if(!task.pendingEvidence?.length&&!task.pendingSourceEvaluation&&!refining){
       if(!researchEnergyReady(this.app.state.mind))return block('ENERGY_LOW','Research is waiting for Energy.');
       if(task.sourcePlan.sourceCategory!=='web')return block('SOURCE_UNSUPPORTED','Research paused — This request cannot be safely researched.');
-      if(!task.sourcePlan.available){const id=await digest(JSON.stringify([task.id,run,'capabilities'])),result=await requestResearchCapabilities({id,context:{},signal:controller.signal});if(!result.information.available)return block('INFORMATION_UNCONFIGURED','Research paused — Web information access is not configured.');task=await this.patch(task.id,run,item=>{item.sourcePlan.available=true;});}
+      if(!task.sourcePlan.available){const id=await digest(JSON.stringify([task.id,run,'capabilities'])),result=await requestResearchCapabilities({id,context:{},signal:controller.signal,fetcher:this.app.energyClient?.transport(operationFor(task),task.id)});if(!result.information.available)return block('INFORMATION_UNCONFIGURED','Research paused — Web information access is not configured.');task=await this.patch(task.id,run,item=>{item.sourcePlan.available=true;});}
     }
     let prefs=await this.loadPermissions(true);if(!prefs.enabled||controller.signal.aborted)throw new DOMException('Research cancelled.','AbortError');
     if(task.pendingEvidence?.length&&!refining&&!task.pendingSourceEvaluation){
@@ -398,7 +400,7 @@ export class AutonomousLearningEngine {
         return;
       }
       if(!refining)current=await this.patch(task.id,run,item=>{item.researchExecution.clientDispatched=true;if(!checkpoint)item.researchExecution.toolState='DISPATCHED';});
-      result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal});
+      result=await (checkpoint?requestResearchEvaluation:requestResearchAcquisition)({id,context,signal:controller.signal,fetcher:this.app.energyClient?.transport(operationFor(task),task.id)});
       current=await this.saveResearchReceipt(task,run,id,result,prefs,authorizedAt);
       observedAt=current.pendingSourceEvaluation?.receivedAt||Date.now();
     }
@@ -467,7 +469,10 @@ export class AutonomousLearningEngine {
         }
       }
     },{researchGrant:this.grant(prefs)});}catch(error){if(error.clientDiagnostic)throw error;throw clientFailure('EVIDENCE_PERSISTENCE_FAILED','EVIDENCE_PERSISTENCE');}
-    if(!current.pendingEvidence?.length||refinementWaiting(current)){this.notify(current);return current;}
+    if(!current.pendingEvidence?.length||refinementWaiting(current)){
+      if(!current.pendingEvidence?.length&&!refinementWaiting(current))await this.app.energyClient?.release(operationFor(task),task.id).catch(()=>{});
+      this.notify(current);return current;
+    }
     try{return await this.integrate(current,run,controller,prefs);}catch(error){throw integrationFailure(current,controller,error);}
   }
   recordExecution(task,diagnostic){
@@ -558,7 +563,7 @@ export class AutonomousLearningEngine {
       if(knowledge.length){current.completedWork=[...new Set([...current.completedWork,'knowledge','answer'])];current.status='COMPLETED';current.code='SOURCE_BACKED';current.message=formed?`Research completed: ${formed} new source-attributed ${formed===1?'memory':'memories'} retained. This is bounded evidence, not complete topic coverage or independent verification.`:evidenceAdded?'Research completed: additional evidence retained for existing knowledge.':'Research completed: the matching evidence was already saved.';}else{current.status='BLOCKED';current.code='NO_EVIDENCE';current.message=`Research paused — Insufficient evidence. ${rejectionExplanation(memoryRejections[0]?.code)} Existing knowledge was preserved.`;}
       recordTaskActivity({status:'COMMITTING',semanticWork:current.semanticWork},current,current.updatedAt);
       if(!validTask(current,task.mindlingId))throw integrationIssue('COMPLETION_INVALID');return next;
-    },{preserveGameplay:true,researchGrant:grant,...(activity==='TALK'||task.autonomous?{}:{journal:{id:`research:${task.id}:${run}`,type:activity}})}).catch(error=>{
+    },{preserveGameplay:true,researchGrant:grant,energyOperation:{kind:operationFor(task),id:task.id},...(activity==='TALK'||task.autonomous?{}:{journal:{id:`research:${task.id}:${run}`,type:activity}})}).catch(error=>{
       // Both app controllers publish the saved state before calling the renderer.
       // A matching committed task distinguishes a renderer fault from rollback.
       const completed=committedIntegration(this.app.state,task,run);

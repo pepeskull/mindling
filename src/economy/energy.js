@@ -1,10 +1,11 @@
+import { ENERGY_CAPACITIES, ENERGY_INTERVAL } from './energy-policy.js';
+export { ENERGY_CAPACITIES, ENERGY_INTERVAL } from './energy-policy.js';
+
 // All mutations call these pure rules inside the existing gameplay transaction.
 // Browser clocks are not trusted time; backwards clocks never grant credit.
 export const ENERGY_MAX=10;
-export const ENERGY_CAPACITIES=Object.freeze([10,12,15,18,22,26,32]);
 export function energyCapacityForStage(stage=1){return ENERGY_CAPACITIES[Number.isInteger(stage)&&stage>=1&&stage<=7?stage-1:0];}
 export function setEnergyStage(input,stage,now){const settled=energyAt(input,now);return {...settled,capacity:energyCapacityForStage(stage)};}
-export const ENERGY_INTERVAL=12*60*1000;
 const timestamp=now=>{if(!Number.isSafeInteger(now)||now<0)throw Error('Invalid Energy time');return now;};
 export function energyAt(input,now) {
   timestamp(now);

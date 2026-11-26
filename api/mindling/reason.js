@@ -1,2 +1,3 @@
 'use strict';
-module.exports = require('../../src/server/mindling-reasoning.cjs').handler;
+const {protect,REASON}=require('../../src/server/payment/runtime.cjs');
+module.exports=protect(REASON,require('../../src/server/mindling-reasoning.cjs').handler);
