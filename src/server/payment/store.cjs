@@ -1,6 +1,7 @@
 'use strict';
 
-const PREFIX = 'mindling:{energy-v1-mainnet}:';
+const PREFIX = 'mindling:{energy-v1-mainnet}:'; // Preserve existing payment keys.
+const WAKE_CHANNEL=PREFIX+'payment-work';
 const COMPARE = `
 local previous = redis.call('MGET',unpack(KEYS))
 for i,key in ipairs(KEYS) do
@@ -24,6 +25,7 @@ for i,key in ipairs(KEYS) do
 end
 if #updated > 0 then redis.call('MSET',unpack(updated)) end
 if #removed > 0 then redis.call('DEL',unpack(removed)) end
+if ARGV[#KEYS*2+1] ~= '' then redis.call('PUBLISH',ARGV[#KEYS*2+1],'work') end
 return 1
 `;
 
@@ -65,6 +67,34 @@ function redisStore({url, token, fetcher = fetch} = {}) {
   }
   const decode = value => value == null ? null : JSON.parse(value);
   return {
+    async listen(onEvent,signal) {
+      const subscribe=new URL('/subscribe/'+encodeURIComponent(WAKE_CHANNEL),url);
+      const response=await fetcher(subscribe,{
+        method:'POST',redirect:'error',headers:{Authorization:'Bearer '+token,Accept:'text/event-stream'},signal
+      });
+      if(!response.ok||!response.headers.get('content-type')?.includes('text/event-stream')||!response.body)
+        throw failure('PAYMENT_RECOVERY_UNAVAILABLE',503);
+      const decoder=new TextDecoder();
+      let pending='';
+      for await(const bytes of response.body){
+        pending+=decoder.decode(bytes,{stream:true});
+        const lines=pending.split('\n');
+        pending=lines.pop();
+        if(pending.length>1024)throw failure('PAYMENT_RECOVERY_UNAVAILABLE',503);
+        for(const raw of lines){
+          const line=raw.trimEnd();
+          if(line.startsWith('data: subscribe,'+WAKE_CHANNEL+','))onEvent('ready');
+          const prefix='data: message,'+WAKE_CHANNEL+',';
+          if(line===prefix+'work')onEvent('work');
+          if(line.startsWith(prefix)&&/^probe:[a-f0-9]{24}$/.test(line.slice(prefix.length)))
+            onEvent(line.slice(prefix.length));
+        }
+      }
+      throw failure('PAYMENT_RECOVERY_UNAVAILABLE',503);
+    },
+    async probeWake(probe) {
+      return await command(['EVAL',"return redis.call('PUBLISH',ARGV[1],ARGV[2])",0,WAKE_CHANNEL,probe]);
+    },
     async get(key) {
       return decode(await command(['GET',PREFIX + key]));
     },
@@ -106,7 +136,7 @@ function redisStore({url, token, fetcher = fetch} = {}) {
       const [next, keys] = await command(['SCAN', cursor, 'MATCH', PREFIX + prefix + '*', 'COUNT', '40']);
       return {cursor:String(next), keys:keys.map(key => key.slice(PREFIX.length+prefix.length))};
     },
-    async change(keys, mutate, {verifyRead=true}={}) {
+    async change(keys, mutate, {verifyRead=true,wake=false}={}) {
       if (new Set(keys).size !== keys.length) throw Error('Duplicate ledger key');
       const names = keys.map(key => PREFIX + key);
       for (let attempt = 0; attempt < 8; attempt++) {
@@ -118,7 +148,7 @@ function redisStore({url, token, fetcher = fetch} = {}) {
         const changed=Boolean(next?.some((value,index)=>value!==(raw[index]??'')));
         if(!changed&&!verifyRead)return result;
         const args=raw.flatMap((value,index)=>[value??'',next?.[index]??'']);
-        if(await command(['EVAL',changed?CAS:VERIFY,names.length,...names,...args])===1)return result;
+        if(await command(['EVAL',changed?CAS:VERIFY,names.length,...names,...args,wake?WAKE_CHANNEL:''])===1)return result;
       }
       throw failure('LEDGER_BUSY', 503);
     }

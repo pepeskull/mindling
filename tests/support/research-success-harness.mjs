@@ -5,7 +5,7 @@ import {AutonomousLearningEngine} from '../../src/autonomous/learning-engine.js'
 import {createSandbox,newMindling} from '../../src/preview/sandbox/engine.js';
 import {defaultPermissions,assertResearchGrant} from '../../src/autonomous/research-permissions.js';
 import {understandInput} from '../../src/learning/input-understanding.js';
-const require=createRequire(import.meta.url),{handler}=require('../../src/server/mindling-reasoning.cjs'),fixture=require('./research-success-fixture.cjs');
+const require=createRequire(import.meta.url),handler=require('../../api/mindling/reason.js'),fixture=require('./research-success-fixture.cjs');
 let sequence=0;
 export async function scenario(callback,{Engine=AutonomousLearningEngine,kind='success',fault=null,afterBody=null,beforeAcquisition=null,mutate=null,evaluate=fixture.evaluation,acquisitionPayload=fixture.searchPayload,hypotheses=[],topic='Gaming',autonomous=true,activity='TEACH'}={}){
  const originals={fetch:globalThis.fetch,warn:console.warn,now:Date.now,timer:globalThis.setTimeout,document:Object.getOwnPropertyDescriptor(globalThis,'document'),window:Object.getOwnPropertyDescriptor(globalThis,'window'),navigator:Object.getOwnPropertyDescriptor(globalThis,'navigator'),key:process.env.SERVICE_API,model:process.env.SERVICE_MODEL,web:process.env.MINDLING_WEB_SEARCH};

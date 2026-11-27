@@ -43,10 +43,9 @@ export async function correctMemory(app,{memoryId,text},{guard=()=>{},journal=fa
   if(!input.trim()||input.length>2000)throw Error('Enter a readable correction of at most 2,000 characters.');
   correctionBudget(app.state);
   const snapshot=JSON.stringify(initial.memory),context=JSON.stringify(learningContext(input,app.state.mind,{correctionTargetId:memoryId}));
-  const id=crypto.randomUUID();
-  const fetcher=app.energyClient?.transport('correction',id);
-  const decision=await requestLearningAssessment(input,structuredClone(app.state.mind),{correctionTargetId:memoryId,fetcher});
+  const decision=await requestLearningAssessment(input,structuredClone(app.state.mind),{correctionTargetId:memoryId});
   if(decision.version!==2||decision.operation!=='CREATE_NEW'||decision.kind==='intention')throw Error('The correction needs a clear, distinct claim. No memory, Energy or XP changed.');
+  const id=crypto.randomUUID();
   try{
     await app.change(state=>{
       app.external?.assertWritable();guard();
@@ -67,7 +66,7 @@ export async function correctMemory(app,{memoryId,text},{guard=()=>{},journal=fa
       mind.stageXP+=award;mind.lifetimeXP+=award;mind.processed.push(id);
       mind.history.push({id,day,at:state.now,xp:award,kind:'correction',concept:decision.concept||decision.topic,activity:'TEACH',source:'SERVICE',operation:'CORRECT_MEMORY',memoryIds:[memoryId,id],energySpent:cost});
       mind.nativeKnowledge=developmentStatistics(mind.memories);mind.areas=[...new Set(mind.memories.map(memory=>memory.areaSuggestion).filter(Boolean))];return next;
-    },{preserveGameplay:true,energyOperation:{id,kind:'correction'},...(journal?{journal:{id,type:'TEACH'}}:{})});
+    },{preserveGameplay:true,...(journal?{journal:{id,type:'TEACH'}}:{})});
   }catch(error){if(error.code==='CORRECTION_NO_CHANGE')return noChange();throw error;}
   return {accepted:true,changed:true,memoryId:id,message:'Correction saved as user-provided knowledge. The original and its source records remain historical.'};
 }

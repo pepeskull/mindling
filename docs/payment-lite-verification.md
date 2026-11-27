@@ -1,5 +1,7 @@
 # Payment Lite verification
 
+Historical report for the earlier Redis-backed implementation at e1da1bc. The [browser-native verification report](browser-native-energy-verification.md) describes current behavior. Use the old commit to reproduce this report.
+
 The baseline is commit `97ee45c` on `feat/mindling-payment-v1`. The implementation and verification stayed local.
 
 ## Reference implementation

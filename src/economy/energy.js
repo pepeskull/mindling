@@ -50,3 +50,25 @@ export function energyLabel(input,now){
   return {value:`${e.base} / ${e.maximum}${e.bonus?` + ${e.bonus} bonus`:''}`,bar:e.base,maximum:e.maximum,
     text:e.full?'Energy Full':`Next Energy in ${String(Math.floor(seconds/60)).padStart(2,'0')}:${String(seconds%60).padStart(2,'0')} · Fully recharged in ${Math.floor(minutes/60)}h ${String(minutes%60).padStart(2,'0')}m`};
 }
+
+
+// Import the last locally persisted balance once. Unresolved remote reservations
+// are not local debits, and the old receipt revision remains a replay cutoff.
+export function migrateLocalEnergy(state,now) {
+  const mind=state.mind;
+  if(!mind?.energyAuthority)return state;
+  const old=mind.energyAuthority;
+  const energy=energyAt(mind.energy,Math.max(now,state.now));
+  const capacity=energyCapacityForStage(mind.stage);
+  const excess=Math.max(0,energy.remaining-energy.bonus-capacity);
+  mind.energy={...energy,capacity,bonus:energy.bonus+excess};
+  if(Number.isSafeInteger(old.revision)&&old.revision>=0)
+    mind.legacyPaymentEnergyRevision=Math.max(mind.legacyPaymentEnergyRevision??0,old.revision);
+  delete mind.energyAuthority;
+  return state;
+}
+
+export function restoreEnergy(input,stage,now) {
+  const energy=setEnergyStage(input,stage,now);
+  return {...energy,remaining:energy.capacity+energy.bonus,updatedAt:Math.max(energy.updatedAt,now)};
+}

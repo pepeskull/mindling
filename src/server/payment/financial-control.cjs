@@ -11,21 +11,17 @@ const MAX_DAILY_LAMPORTS=250000000;
 const TREASURY_RESERVE=10000000;
 const MAX_SIGNING_EXPOSURE=4000000;
 
-function requireOpen(control,now) {
-  if(!control)throw failure('PAYMENT_ACTIVATION_REQUIRED',503);
-  if(control.state!=='OPEN'||control.cluster!=='mainnet')throw failure('PAYMENTS_PAUSED',503);
-  if(control.policy===2&&Number.isSafeInteger(control.approvedAt)&&control.approvedAt>0&&control.approvedAt<=now)return;
-  if(!Number.isSafeInteger(control.verifiedUntil)||control.verifiedUntil<=now)
-    throw failure('PAYMENT_APPROVAL_EXPIRED',503);
+function requireOpen(control) {
+  if(control?.state==='PAUSED')throw failure('PAYMENTS_PAUSED',503);
 }
 
 function requireWorker(status,now) {
-  if(!Number.isSafeInteger(status?.at)||status.at>now+5000||status.at<now-120000)
+  if(status?.mode!=='event-driven-v1'||!Number.isSafeInteger(status.at)||status.at>now+5000||status.at<now-120000)
     throw failure('PAYMENT_RECOVERY_UNAVAILABLE',503);
 }
 
 function assertFence(control,head) {
-  if(JSON.stringify(control.head??null)!==JSON.stringify(head??null))throw failure('PAYMENT_LEDGER_REVIEW',503);
+  if(JSON.stringify(control?.head??null)!==JSON.stringify(head??null))throw failure('PAYMENT_LEDGER_REVIEW',503);
 }
 function eventAfter(head, prior, event) {
   if(prior)throw failure('PAYMENT_LEDGER_REVIEW',503);

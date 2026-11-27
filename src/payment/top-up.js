@@ -1,8 +1,8 @@
 import qrcode from '../preview/vendor/qrcode.js';
 import {energyAt,energyLabel} from '../economy/energy.js';
-import {energyFailureMessage} from './energy-client.js';
+import {paymentFailureMessage,pendingPayments} from './payment-client.js';
 
-const spendable=(mind,time=Date.now())=>energyAt(mind.energy,time).remaining-(mind.energyAuthority?.reserved||0);
+const spendable=(mind,time=Date.now())=>energyAt(mind.energy,time).remaining;
 const ACCOUNT=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 function decimal(units,decimals){
   const padded=units.padStart(decimals+1,'0');
@@ -40,13 +40,13 @@ export class TopUp {
     this.button.classList.toggle('energy-wallet-ready',eligible);
     this.button.setAttribute('aria-label',eligible?'Top up Energy':label);
     this.button.querySelector('span').textContent=label;
-    this.recovery.hidden=!/^[a-f0-9]{48}$/.test(mind.paymentPending||'');
+    this.recovery.hidden=!pendingPayments(mind).length;
   }
 
   async open(recoverOnly=false){
     const {app}=this.client,mind=app.state?.mind;
     if(this.dialog||!mind||
-       (recoverOnly?!mind.paymentPending:mind.life?.lifeState!=='ALIVE'||spendable(mind)>0||mind.paymentWalletVersion!==1))return;
+       (recoverOnly?!pendingPayments(mind).length:mind.life?.lifeState!=='ALIVE'||spendable(mind)>0||mind.paymentWalletVersion!==1))return;
     const opener=recoverOnly?this.recovery:this.button;
     const dialog=document.createElement('dialog');
     this.dialog=dialog;
@@ -69,6 +69,7 @@ export class TopUp {
         <div class="top-up-address"><textarea id="top-up-address" readonly rows="2" spellcheck="false" data-address></textarea>
           <button type="button" data-copy>Copy</button></div>
       </section>
+      <label data-recovery-picker hidden>Payment to check <select data-recovery-session></select></label>
       <p data-status role="status">Preparing your payment session…</p>
       <div class="top-up-actions"><button type="button" data-new hidden>New quote</button>
         <button type="button" data-check hidden>Check payment</button></div>`;
@@ -76,6 +77,13 @@ export class TopUp {
     const check=find('[data-check]'),fresh=find('[data-new]'),status=find('[data-status]');
     const qrBox=find('[data-qr]');
     let session,busy=false,checking=false;
+    const picker=find('[data-recovery-session]');
+    if(recoverOnly){
+      for(const [index,id] of pendingPayments(mind).entries()){
+        picker.add(new Option(index===0?'Most recent payment':`Earlier payment ${index}`,id));
+      }
+      find('[data-recovery-picker]').hidden=picker.options.length<2;
+    }
     const active=()=>this.dialog===dialog&&dialog.open&&app.state?.mind?.id===mind.id;
     const updateTime=()=>{
       if(!active())return;
@@ -87,22 +95,30 @@ export class TopUp {
       const seconds=Math.max(0,Math.ceil((session.expiresAt-Date.now())/1000));
       find('[data-time]').textContent=session.receipt?'Credited':seconds?
         `${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`:'Quote expired';
-      if(!seconds&&!qrBox.hidden)status.textContent='The quote expired. Check an earlier payment or request a new quote.';
-      qrBox.hidden=!seconds||!session.qrPayload||Boolean(session.receipt);
-      if(qrBox.hidden)qrBox.replaceChildren();
+      if(!qrBox.hidden){
+        if(!seconds)status.textContent='The quote expired. Check an earlier payment or request a new quote.';
+        else if(spendable(app.state.mind)>0)status.textContent='Energy has regenerated. You can still check this payment.';
+      }
+      qrBox.hidden=!seconds||!session.qrPayload||Boolean(session.receipt)||spendable(app.state.mind)>0;
+      if(!seconds||!session.qrPayload||session.receipt)qrBox.replaceChildren();
       find('[data-sponsored]').hidden=qrBox.hidden||!session.sponsored;
       fresh.hidden=recoverOnly||spendable(app.state.mind)>0||seconds>0&&!session.receipt;
     };
     const load=async newQuote=>{
       if(busy||checking)return;
       busy=true;
-      fresh.disabled=check.disabled=true;
+      fresh.disabled=check.disabled=picker.disabled=true;
       status.textContent='Preparing your payment session…';
       try {
         const {session:value}=await this.client.request({action:'payment-open',fresh:newQuote,recoverOnly},mind);
         if(!validSession(value))throw Error('The payment session could not be validated.');
         await app.change(state=>{
-          if(state.mind?.id===mind.id)state.mind.paymentPending=value.id;
+          if(state.mind?.id!==mind.id)throw Error('The Mindling identity changed.');
+          if(!state.mind.appliedPaymentReceipts?.[value.id]){
+            const pending=pendingPayments(state.mind).filter(id=>id!==value.id);
+            state.mind.paymentPending=value.id;
+            state.mind.paymentPendingSessions=pending;
+          }
           return state;
         },{preserveGameplay:true});
         if(!active())return;
@@ -117,27 +133,27 @@ export class TopUp {
           qr.make();
           qrBox.innerHTML=qr.createSvgTag({cellSize:3,margin:12,scalable:true});
         }
-        status.textContent=value.receipt?'Check payment to sync the credited Energy.':
+        status.textContent=value.receipt?'Check payment to apply the verified receipt.':
           value.expiresAt<=Date.now()?'Check an earlier payment or request a new quote.':
-          value.qrPayload?'Scan with a Solana Pay wallet.':value.checkoutCode?energyFailureMessage(value.checkoutCode):
+          value.qrPayload?'Scan with a Solana Pay wallet.':value.checkoutCode?paymentFailureMessage(value.checkoutCode):
             'Check your existing payment here.';
         updateTime();
       }catch(error){if(active())status.textContent=error.message;}
-      finally{busy=false;fresh.disabled=check.disabled=false;}
+      finally{busy=false;fresh.disabled=check.disabled=picker.disabled=false;}
     };
     check.addEventListener('click',async()=>{
       if(!session||checking||busy)return;
       checking=true;
-      check.disabled=fresh.disabled=true;
+      check.disabled=fresh.disabled=picker.disabled=true;
       status.textContent='Checking for a finalized payment…';
       try {
         await this.client.request({action:'payment-check',id:session.id},mind);
         if(active()){
           dialog.close();
-          app.dashboard.showEnergySyncStatus('Payment confirmed. Energy restored.');
+          app.dashboard.showPaymentStatus('Payment confirmed.');
         }
       }catch(error){if(active())status.textContent=error.message;}
-      finally{checking=false;check.disabled=fresh.disabled=false;}
+      finally{checking=false;check.disabled=fresh.disabled=picker.disabled=false;}
     });
     find('[data-copy]').addEventListener('click',async()=>{
       if(!session)return;
@@ -145,6 +161,7 @@ export class TopUp {
       catch {find('[data-address]').select();status.textContent='Copy the selected wallet address.';}
     });
     fresh.addEventListener('click',()=>void load(true));
+    picker.addEventListener('change',()=>void load(false));
     find('[data-close]').addEventListener('click',()=>dialog.close());
     const timer=setInterval(updateTime,1000);
     dialog.addEventListener('close',()=>{

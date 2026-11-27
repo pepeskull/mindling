@@ -2,7 +2,7 @@ import {reconcileAreaEvidence} from '../semantic/reconcile-area-evidence.js';
 import {memoryViewStore} from '../memory/view-state.js';
 import { loadTraining, saveTraining, trainingSource } from '../training/persistence.js';
 import { reconcileEvolution } from '../preview/sandbox/engine.js';
-import { energyAt } from '../economy/energy.js';
+import { energyAt, migrateLocalEnergy } from '../economy/energy.js';
 import { migrateGameplay, dashboardLife } from '../app/gameplay-state.js';
 import { loadResearchPermissions, saveResearchPermissions, assertResearchGrant } from '../autonomous/research-permissions.js';
 
@@ -39,7 +39,7 @@ export class MindlingDatabase {
   async get(store, id) { return this.#request(store, "readonly", target => target.get(id)); }
   async getAll(store) { return this.#request(store, "readonly", target => target.getAll()); }
   async put(store, value) { return this.#request(store, "readwrite", target => target.put(value)); }
-  async changeGameplay(reducer, { identity = null, journal = null, researchGrant=null, authoritativeReceipt=null } = {}) {
+  async changeGameplay(reducer, { identity = null, journal = null, researchGrant=null } = {}) {
     if (!this.#db) throw Error('Database is not open');
     const names = ['gameplay', 'mindling', 'life', 'identity', 'neurons', 'synapses', 'memories', 'pathways', 'energyJournal', 'memorials', 'settings'];
     return new Promise((resolve, reject) => {
@@ -52,7 +52,8 @@ export class MindlingDatabase {
           try {
             const saved = data.gameplay.find(item => item.id === 'primary');
             if (saved && saved.state?.version !== 1) throw Error('Unsupported gameplay data; existing records have been preserved.');
-            const initial = saved ? saved.state : migrateGameplay(data, Date.now());
+            const now=Date.now();
+            const initial=migrateLocalEnergy(saved?saved.state:migrateGameplay(data,now),now);
             assertResearchGrant(researchGrant,data.settings);
             next = reconcileAreaEvidence(reconcileEvolution(reducer(structuredClone(initial))));
             next.revision = (initial.revision || 0) + 1;
@@ -77,13 +78,7 @@ export class MindlingDatabase {
             if (journal && next.mind) {
               if (data.energyJournal.some(item => item.id === journal.id)) throw Error('Activity already processed');
               const cost = energyAt(initial.mind.energy,next.now).remaining - next.mind.energy.remaining;
-              tx.objectStore('energyJournal').put({ ...journal, mindlingId: next.mind.id, at: new Date(next.now).toISOString(),
-                energyCost:journal.energyOperationId?null:cost, balanceAfter:journal.energyOperationId?null:next.mind.energy.remaining });
-            }
-            if(authoritativeReceipt&&next.mind){
-              const pending=data.energyJournal.find(item=>item.mindlingId===next.mind.id&&item.energyOperationId===authoritativeReceipt.id);
-              if(pending)tx.objectStore('energyJournal').put({...pending,energyCost:authoritativeReceipt.charge,
-                balanceAfter:authoritativeReceipt.balanceAfter,energyRevision:authoritativeReceipt.revision});
+              tx.objectStore('energyJournal').put({ ...journal, mindlingId: next.mind.id, at: new Date(next.now).toISOString(), energyCost: cost, balanceAfter: next.mind.energy.remaining });
             }
           } catch (caught) { error = caught; tx.abort(); }
         };

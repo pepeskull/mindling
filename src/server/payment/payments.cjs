@@ -1,7 +1,6 @@
 'use strict';
 const {createCipheriv,createDecipheriv,randomBytes,hkdfSync} = require('node:crypto');
 const {failure} = require('./store.cjs');
-const {energyKey} = require('./energy-ledger.cjs');
 const {sha256}=require('./identity.cjs');
 const {marketPrice,quoteUnits} = require('./market-price.cjs');
 const {CONTROL,HEAD,SPONSOR,WORKER,requireOpen,requireWorker,assertFence,eventAfter,reserveSponsor}=require('./financial-control.cjs');
@@ -49,7 +48,7 @@ function encryption(material,purpose='deposit') {
 
 const checkoutKey=owner=>'checkout:'+owner;
 const depositKey=owner=>'deposit:'+owner;
-const pendingId=active=>!active?.credited&&SESSION_ID.test(active?.id||'')?active.id:null;
+const pendingId=active=>SESSION_ID.test(active?.id||'')?active.id:null;
 
 function depositWallets(store,keys,generate=()=>require('./solana.cjs').randomDeposit()) {
   const validate=(row,owner)=>{
@@ -79,24 +78,29 @@ function depositWallets(store,keys,generate=()=>require('./solana.cjs').randomDe
     throw failure('LEDGER_BUSY',503);
   }
   async function secretFor(session) {
-    if(session.sealed)return keys.open(session);
-    const row=validate(await store.get(depositKey(session.owner)),session.owner);
+    const row=session.sealed?session:validate(await store.get(depositKey(session.owner)),session.owner);
     if(row.address!==session.address)throw failure('DEPOSIT_KEY_UNAVAILABLE',503);
-    return keys.open(row);
+    let secret;
+    try{
+      secret=keys.open(row);
+      const {getBase58Decoder}=require('@solana/kit');
+      if(secret.length!==64||getBase58Decoder().decode(secret.subarray(32))!==row.address)
+        throw Error('Invalid deposit');
+      return secret;
+    }catch{
+      secret?.fill(0);
+      throw failure('DEPOSIT_KEY_UNAVAILABLE',503);
+    }
   }
   return {ensure,secretFor,addressFor:(owner,row)=>validate(row,owner).address};
 }
 
-function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,{now,snapshot:chain.marketSnapshot}),deposit=depositWallets(store,keys),requireWorker:needsWorker=false}={}) {
+function payments(store,chain,keys,{now=Date.now,price=marketPrice(store,{now,snapshot:chain.marketSnapshot}),deposit=depositWallets(store,keys),requireWorker:needsWorker=false}={}) {
   if (chain.cluster!=='mainnet') throw failure('PAYMENT_UNAVAILABLE',503);
   const quoteStatus=(control,head,worker)=>{
-    requireOpen(control,now());
+    requireOpen(control);
     assertFence(control,head);
     if(needsWorker)requireWorker(worker,now());
-  };
-  const eligible=entry=>{
-    const energy=ledger.makeView(entry);
-    return energy.remaining-energy.reserved<=0;
   };
   const visible = row => ({
     id:row.id,cluster:chain.cluster,address:row.address,mint:row.mint,decimals:row.decimals,
@@ -113,32 +117,33 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
     const row=await loadCurrent(owner,await store.get(checkoutKey(owner)));
     return row?visible(row):null;
   }
-  async function selectQuote(owner,{fresh=false,recoverOnly=false}={}) {
-    const energy=energyKey(owner),active=checkoutKey(owner),global='checkout-global';
-    const [entry,previous,control,head,tally,worker,wallet]=await store.getMany([energy,active,CONTROL,HEAD,SPONSOR,WORKER,depositKey(owner)]);
-    const depleted=eligible(entry);
+  async function selectQuote(owner,{fresh=false,recoverOnly=false,recoveryId}={}) {
+    const active=checkoutKey(owner),global='checkout-global';
+    if(recoverOnly){
+      const row=recoveryId?await store.get(sessionKey(recoveryId)):await loadCurrent(owner,await store.get(active));
+      equalOwner(row,owner);
+      return {session:visible(row)};
+    }
+    const [previous,control,head,tally,worker,wallet]=await store.getMany([active,CONTROL,HEAD,SPONSOR,WORKER,depositKey(owner)]);
     const row=await loadCurrent(owner,previous);
-    if(row&&(recoverOnly||!fresh&&(!row.receipt&&(row.signed||row.expiresAt>now())||!depleted)))
-      return {session:visible(row),control,head,tally,worker,depleted};
-    if(recoverOnly)throw failure('PAYMENT_NOT_FOUND',404);
-    if(!depleted)throw failure('PAYMENT_ENERGY_AVAILABLE',409);
+    if(row&&!fresh&&!row.receipt&&(row.signed||row.expiresAt>now()))
+      return {session:visible(row),control,head,tally,worker,custody:row};
     if(row&&!row.receipt&&row.expiresAt>now())throw failure('PAYMENT_SESSION_ACTIVE');
     quoteStatus(control,head,worker);
     await store.rate('payment-session-attempt:'+owner,6,60);
     await store.rate('payment-session-attempt-global',30,60);
     const {mint,decimals,tokenProgram}=await chain.mintInfo();
     const quote=await price(mint,decimals,tokenProgram);
-    const id=randomBytes(24).toString('hex'), createdAt=now();
+    const id=randomBytes(24).toString('hex'),createdAt=now();
     if(quote.mint!==mint||quote.freshUntil<=createdAt)throw failure('MARKET_PRICE_UNAVAILABLE',503);
     const units=quoteUnits(quote,decimals);
     const address=wallet?deposit.addressFor(owner,wallet):(await deposit.ensure(owner)).address;
     const destination=await chain.depositTarget(address,tokenProgram);
     const next={id,owner,...destination,mint,decimals,tokenProgram,units,quote,createdAt,expiresAt:createdAt+QUOTE_MS};
-    const names=[energy,active,global,sessionKey(id),CONTROL,HEAD,WORKER];
-    const created=await store.change(names,([live,current,total,taken,approval,fence,heartbeat])=>{
+    const names=[active,global,sessionKey(id),CONTROL,HEAD,WORKER];
+    const created=await store.change(names,([current,total,taken,approval,fence,heartbeat])=>{
       quoteStatus(approval,fence,heartbeat);
       if(taken)throw failure('PAYMENT_SESSION_ACTIVE');
-      if(!eligible(live))throw failure('PAYMENT_ENERGY_AVAILABLE',409);
       if(current?.id!==previous?.id||current?.expiresAt>createdAt&&!current.credited){
         if(!fresh)return {result:null};
         throw failure('PAYMENT_SESSION_ACTIVE');
@@ -147,23 +152,21 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       const count=current?.day===day?current.count:0;
       const all=total?.day===day?total.count:0;
       if(count>=3||all>=100)throw failure('PAYMENT_RATE_LIMIT',429);
-      return {writes:[live,{id,day,count:count+1,expiresAt:next.expiresAt,credited:false},
+      return {writes:[{id,day,count:count+1,expiresAt:next.expiresAt,credited:false},
         {day,count:all+1},next,approval,fence,heartbeat],result:visible(next)};
     });
     const session=created??await current(owner);
     if(!session)throw failure('PAYMENT_SESSION_ACTIVE');
-    return {session,control,head,tally,worker,depleted};
-  }
-  async function create(owner,options) {
-    return (await selectQuote(owner,options)).session;
+    return {session,control,head,tally,worker,custody:created?next:await store.get(sessionKey(session.id))};
   }
   async function open(owner,options) {
-    const {session,control,head,worker,tally,depleted}=await selectQuote(owner,options);
+    const {session,control,head,worker,tally,custody}=await selectQuote(owner,options);
     const unavailable=code=>({...session,payable:false,sponsored:false,checkoutCode:code});
-    if(session.expiresAt<=now()||session.receipt||options?.recoverOnly||!depleted)return unavailable(null);
+    if(session.expiresAt<=now()||session.receipt||options?.recoverOnly)return unavailable(null);
     if(chain.mintAddress&&session.mint!==chain.mintAddress)return unavailable('PAYMENT_MINT_CHANGED');
     try {
       quoteStatus(control,head,worker);
+      (await deposit.secretFor(custody)).fill(0);
       if(!chain.sponsorEstimate)return unavailable('SPONSOR_BUDGET_UNAVAILABLE');
       reserveSponsor(tally,await chain.sponsorEstimate(),now());
     }catch(error){
@@ -193,6 +196,7 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       if(!await chain.canSubmit(session.signed))throw failure('PAYMENT_BLOCKHASH_EXPIRED',410);
       return reply(session.signed);
     }
+    (await deposit.secretFor(session)).fill(0);
     await store.rate('sponsor-wallet:'+account,4,86400);
     const signed=await chain.checkout(session,account);
     if(!await chain.canSubmit(signed))throw failure('PAYMENT_BLOCKHASH_EXPIRED',410);
@@ -210,55 +214,57 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       delete row.build;
       delete row.buildingUntil;
       return {writes:[row,{...control,head:next.head},next.head,next.entry,reserved,{id,nextAt:time},worker],result:reply(signed)};
-    });
+    },{wake:true});
   }
-  function validatedReceipt(payment,entry,claim,event,head) {
+  function validatedReceipt(payment,claim,event,head) {
     const receipt=payment?.receipt;
-    if(!receipt||!entry||claim?.id!==payment.id||claim.owner!==payment.owner||
-       claim.revision!==receipt.energyRevision||event?.type!=='CREDITED'||event.id!==payment.id||
-       event.signature!==receipt.paymentSignature||event.units!==receipt.units||event.revision!==receipt.energyRevision||
-       event.hash!==claim.eventHash||head?.sequence<event.sequence||!head||entry.revision<receipt.energyRevision) {
+    const legacy=receipt?.version!==2;
+    if(!receipt||claim?.id!==payment.id||claim.owner!==payment.owner||event?.type!=='CREDITED'||
+       event.id!==payment.id||event.signature!==receipt.paymentSignature||event.units!==receipt.units||
+       event.mint!==receipt.mint||event.hash!==claim.eventHash||!head||head.sequence<event.sequence||
+       (legacy?(claim.revision!==receipt.energyRevision||event.revision!==receipt.energyRevision):
+        (receipt.owner!==payment.owner||event.owner!==payment.owner||claim.version!==2))) {
       throw failure('PAYMENT_LEDGER_REVIEW',503);
     }
     const {hash,...content}=event;
     if(sha256(JSON.stringify(content))!==hash)throw failure('PAYMENT_LEDGER_REVIEW',503);
-    return {receipt,energy:ledger.makeView(entry)};
+    if(!legacy)return {receipt};
+    const {energyRevision,...details}=receipt;
+    if(!Number.isSafeInteger(energyRevision)||energyRevision<1)throw failure('PAYMENT_LEDGER_REVIEW',503);
+    return {receipt:{...details,version:2,owner:payment.owner,legacyEnergyRevision:energyRevision}};
   }
   async function receiptFor(owner,id,signature) {
-    return store.change([sessionKey(id),energyKey(owner),'signature:'+signature,creditEvent(id),HEAD],
-      ([payment,entry,claim,event,head])=>{
+    return store.change([sessionKey(id),'signature:'+signature,creditEvent(id),HEAD],
+      ([payment,claim,event,head])=>{
         equalOwner(payment,owner);
-        return {result:validatedReceipt(payment,entry,claim,event,head)};
+        return {result:validatedReceipt(payment,claim,event,head)};
       });
   }
   async function check(owner,id) {
-    const key=sessionKey(id),[row,approval]=await store.getMany([key,CONTROL]);
+    const key=sessionKey(id),row=await store.get(key);
     equalOwner(row,owner);
     if(row.receipt)return receiptFor(owner,id,row.receipt.paymentSignature);
     if(!row.signed)throw failure('PAYMENT_AWAITING_WALLET');
-    requireOpen(approval,now());
     const evidence=await chain.check(row);
     if(!evidence)throw failure('PAYMENT_PENDING');
     const claim='signature:'+evidence.signature,eventKey=creditEvent(id);
-    const names=[key,energyKey(owner),claim,sweepKey(id),'checkout:'+owner,CONTROL,HEAD,eventKey,verifyKey(id)];
-    return store.change(names,([payment,entry,claimed,job,active,control,head,event])=>{
+    const names=[key,claim,sweepKey(id),checkoutKey(owner),CONTROL,HEAD,eventKey,verifyKey(id)];
+    return store.change(names,([payment,claimed,job,active,control,head,event])=>{
       equalOwner(payment,owner);
-      if(payment.receipt)return {result:validatedReceipt(payment,entry,claimed,event,head)};
+      if(payment.receipt)return {result:validatedReceipt(payment,claimed,event,head)};
       const time=now();
-      requireOpen(control,time);
       if(claimed||job||payment.signed?.signature!==evidence.signature)throw failure('PAYMENT_LEDGER_REVIEW',503);
-      const energy=ledger.makeFull(entry,time);
-      const receipt={id,paymentSignature:evidence.signature,slot:evidence.slot,mint:payment.mint,
-        units:payment.units,finalizedAt:evidence.finalizedAt,creditedAt:time,energyRevision:energy.revision};
       assertFence(control,head);
-      const next=eventAfter(head,event,{key:eventKey,type:'CREDITED',id,signature:evidence.signature,
-        units:payment.units,mint:payment.mint,revision:energy.revision,at:time});
+      const receipt={version:2,id,owner,paymentSignature:evidence.signature,slot:evidence.slot,mint:payment.mint,
+        units:payment.units,finalizedAt:evidence.finalizedAt,creditedAt:time};
+      const next=eventAfter(head,event,{key:eventKey,type:'CREDITED',id,owner,signature:evidence.signature,
+        units:payment.units,mint:payment.mint,at:time});
       payment.receipt=receipt;
       if(active?.id===id)active.credited=true;
       const queued={id,owner,state:'PENDING',nextAt:time,attempts:0};
-      return {writes:[payment,entry,{id,owner,revision:energy.revision,eventHash:next.entry.hash},queued,
-        active,{...control,head:next.head},next.head,next.entry,null],result:{receipt,energy}};
-    });
+      return {writes:[payment,{version:2,id,owner,eventHash:next.entry.hash},queued,
+        active,{...control,head:next.head},next.head,next.entry,null],result:{receipt}};
+    },{wake:true});
   }
   async function verifyOne(id) {
     const key=verifyKey(id),lease=await store.change([key],([job])=>{
@@ -289,7 +295,6 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
     if(!payment?.receipt)throw failure('PAYMENT_NOT_FOUND',404);
     await receiptFor(payment.owner,id,payment.receipt.paymentSignature);
     const job=await store.change([key,CONTROL,HEAD],([row,control,head])=>{
-      requireOpen(control,now());
       assertFence(control,head);
       if(!row||row.nextAt>now()||row.state==='REVIEW')return {result:null};
       row.nextAt=now()+45000;
@@ -305,7 +310,6 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       if(status==='PENDING')return;
       const eventKey='financial-event:sweep-result:'+job.signed.signature;
       await store.change([key,CONTROL,HEAD,eventKey],([current,control,head,event])=>{
-        requireOpen(control,now());
         if(current?.lease!==nonce)return {result:null};
         assertFence(control,head);
         const next=eventAfter(head,event,{key:eventKey,type:'SWEEP_'+status,id,signature:job.signed.signature,messageHash:job.signed.messageHash,at:now()});
@@ -324,7 +328,6 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
     const eventKey='financial-event:sweep-signed:'+signed.signature;
     const reserved=await store.change([key,CONTROL,HEAD,eventKey,SPONSOR],([current,control,head,event,tally])=>{
       const time=now();
-      requireOpen(control,time);
       if(current?.lease!==nonce||current.nextAt<=time)return {result:false};
       const sponsor=reserveSponsor(tally,signed,time);
       assertFence(control,head);
@@ -340,7 +343,6 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
   }
   async function broadcast(key,nonce,signed){
     const reserved=await store.change([key,CONTROL,HEAD],([job,control,head])=>{
-      requireOpen(control,now());
       assertFence(control,head);
       if(job?.lease!==nonce||job.nextAt<=now()||job.signed.signature!==signed.signature||job.broadcasts>=3)return {result:false};
       job.broadcasts++;
@@ -364,7 +366,7 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       }
     }
   }
-  return {create,current,open,wallet,check,sweepOne,verifyOne,auditEvent,visible};
+  return {current,open,wallet,check,sweepOne,verifyOne,auditEvent,visible};
 }
 
 module.exports={encryption,payments,depositWallets,sessionKey};

@@ -1,6 +1,6 @@
-import { EnergyClient, ENERGY_PROTOCOL } from '../payment/energy-client.js';
+import { PaymentClient } from '../payment/payment-client.js';
 import { TopUp } from '../payment/top-up.js';
-import { energyAt } from '../economy/energy.js';
+import { ENERGY_INTERVAL } from '../economy/energy.js';
 import { reconcileSemanticConnections, semanticHydrationStatus } from '../semantic/memory-connections.js';
 import { repairCorrectionMetadata } from '../learning/correction-metadata-repair.js';
 import { knowledgeTalk } from '../cognition/talk-response.js';
@@ -28,11 +28,10 @@ export class MindlingApp extends EvolutionPreview {
   constructor() {
     super({ interactive: true, autoPlay: false, autoNetwork: true, snapshotProvider: null, canonicalBrain:true });
     this.db = new MindlingDatabase(); this.listeners = new AbortController();
-    this.energyClient = new EnergyClient(this);
+    this.paymentClient = new PaymentClient(this);
     // Keep cognition available internally without mounting a training interface.
     this.cognition = new CognitiveEngine({ events:this.events, store:{
       load:id=>this.db.trainingHistory(id),
-      transport:(kind,id)=>this.energyClient.transport(kind,id),
       source:id=>{this.external?.assertWritable();return this.db.trainingSource(id);},
       save:record=>{this.external?.assertWritable();return this.db.saveTraining(record);}
     } });
@@ -60,7 +59,7 @@ export class MindlingApp extends EvolutionPreview {
     await super.start();
     if (this.disposed) return;
     this.dashboard.setStorageStatus(true);
-    this.topUp = new TopUp(this.energyClient,this.listeners.signal);
+    this.topUp = new TopUp(this.paymentClient,this.listeners.signal);
     this.interaction.connect(this.host, {
       onTap: event => {
         if(this.external?.tap(event))return;
@@ -75,7 +74,7 @@ export class MindlingApp extends EvolutionPreview {
     });
     this.events.on(EVENTS.MEMORY_SELECTED, route => { this.seed.highlightRoute(route); this.view.selectedCanonical = route?.neuronIds?.[0] || null; });
     this.renderState();
-    if (this.state.mind) {this.dashboard.show();void this.syncEnergy();} else this.showOnboarding();
+    if (this.state.mind) {this.dashboard.show();void this.paymentClient.initializeWallet();} else this.showOnboarding();
     this.lifeTimer = setInterval(() => this.refreshState(), 60_000);
     this.energyTimer=setInterval(()=>{if(!this.external?.locked&&this.state?.mind){
       this.dashboard.renderEnergy(this.state.mind.energy,Date.now());
@@ -83,72 +82,24 @@ export class MindlingApp extends EvolutionPreview {
       this.dashboard.tickCareCooldowns();
       const e=this.state.mind.energy;
       if(!this.pendingMutations&&eligibility({...this.state,now:Date.now()}).eligible)this.refreshState();
-      else if(e.version===2&&e.remaining-e.bonus<energyCapacityForStage(this.state.mind.stage)&&Date.now()>=e.updatedAt+720000&&!this.pendingMutations)this.refreshState();
+      else if(e.version===2&&e.remaining-e.bonus<energyCapacityForStage(this.state.mind.stage)&&Date.now()>=e.updatedAt+ENERGY_INTERVAL&&!this.pendingMutations)this.refreshState();
     }},1000);
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden) void this.refreshState();
     }, { signal: this.listeners.signal });
-    window.addEventListener('online',()=>void this.syncEnergy(),{signal:this.listeners.signal});
+    window.addEventListener('online',()=>void this.paymentClient.initializeWallet(),{signal:this.listeners.signal});
   }
 
   async change(reducer = state => state, options = {}) {
     this.external?.assertWritable();this.pendingMutations=(this.pendingMutations||0)+1;
     try {
-      const activity=options.energyOperation;
-      const operationId=activity&&this.state?.mind?.energyAuthority?.protocol===ENERGY_PROTOCOL?
-        await this.energyClient.operation(activity.kind,activity.id):null;
-      const run=saved=>options.preserveGameplay?saved:advanceGameplay(saved);
-      let localCommit, intent;
-      const plan=(current,previousXP,updated)=>{
-        const mind=updated.mind,baseline=energyAt(current,updated.now);
-        const cost=baseline.remaining-mind.energy.remaining;
-        if(!Number.isSafeInteger(cost)||cost<0||cost>3)throw Error('Invalid Energy settlement.');
-        mind.energy=baseline;
-        const research=mind.learningTasks?.find(item=>item.id===activity.id);
-        const memoryHashes=research?(research.knowledgeIds||[]).flatMap(id=>{
-          const memory=mind.memories.find(item=>item.id===id);
-          return memory?.research?.taskId===activity.id?[memory.research.quoteHash]:[];
-        }).sort():undefined;
-        return {id:operationId,cost,memoryHashes,awardedXP:mind.lifetimeXP-previousXP};
-      };
-      let approval;
-      if(operationId){
-        const snapshot=(await this.db.get('gameplay','primary'))?.state;
-        if(!snapshot?.mind||snapshot.mind.id!==this.state.mind.id)throw Error('The Mindling identity changed.');
-        const draft=run(structuredClone(snapshot));
-        const energy=draft.mind.energy,xp=draft.mind.lifetimeXP;
-        intent=plan(energy,xp,reducer(draft));
-        approval=await this.energyClient.authorize(intent);
-      }
       const state=await this.db.changeGameplay(saved=>{
         this.external?.assertWritable();
-        const initial=run(saved);
-        const current=initial.mind?.energy,previousXP=initial.mind?.lifetimeXP;
-        const updated=reducer(initial);
-        if(operationId&&updated.mind?.energyAuthority){
-          const proposed=plan(current,previousXP,updated);
-          if(JSON.stringify(proposed)!==JSON.stringify(intent))throw Error('The activity changed before its Energy authorization could be saved.');
-          const authority=updated.mind.energyAuthority;
-          localCommit={id:operationId,approval};
-          authority.pending=[...(authority.pending||[]).filter(item=>item.id!==operationId),localCommit];
-        }
-        return updated;
-      },{...options,...(approval&&options.journal?{journal:{...options.journal,energyOperationId:operationId}}:{})});
-      if (!this.disposed) { this.state=state; this.renderState(); }
-      if(localCommit&&!this.disposed){
-        try {await this.energyClient.finish(localCommit,state.mind.id);}
-        catch {this.dashboard.showEnergySyncStatus('Energy settlement pending. Your saved progress is available locally.');}
-      }
-      return this.state||state;
+        return reducer(options.preserveGameplay?saved:advanceGameplay(saved));
+      },options);
+      if(!this.disposed){this.state=state;this.renderState();}
+      return state;
     } finally { this.pendingMutations--; }
-  }
-
-  async syncEnergy(){
-    if(this.disposed||this.external?.locked||!this.state?.mind)return;
-    const id=this.state.mind.id;
-    try{
-      await this.energyClient.sync({wallet:true});
-    }catch(error){if(this.state?.mind?.id===id)this.dashboard?.showEnergySyncStatus(error.message);}
   }
 
   async refreshState() {
@@ -218,7 +169,7 @@ export class MindlingApp extends EvolutionPreview {
         }
       });
       if (this.disposed) return;
-      this.onboarding.hide();this.view.claimRenderer();this.dashboard.openDashboard(); this.dashboard.show(); this.renderState();void this.syncEnergy();document.querySelector('#mindling-input').focus();
+      this.onboarding.hide();this.view.claimRenderer();this.dashboard.openDashboard(); this.dashboard.show(); this.renderState();void this.paymentClient.initializeWallet();document.querySelector('#mindling-input').focus();
     },{three:this.view.three});
     this.onboarding.show();
   }
