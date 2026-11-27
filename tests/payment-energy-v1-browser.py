@@ -25,7 +25,7 @@ async()=>{
   const db=await new MindlingDatabase().open();
   const identity=await createLocalIdentity();
   const state=newMindling(createSandbox(Date.now()),{id:identity.mindlingId,name:'Payment fixture',confirmed:true});
-  state.mind.energy.remaining=2;
+  state.mind.energy.remaining=10;
   await db.changeGameplay(()=>state,{identity});db.close();
 }
 """
@@ -38,7 +38,7 @@ def run(browser, width):
     errors = []
     session = None
     market_unavailable = False
-    remaining, revision, pending, held = 2, 1, True, 0
+    remaining, revision, pending, held = 10, 1, True, 0
 
     def route_request(route):
         nonlocal session, remaining, revision, pending, held
@@ -73,6 +73,8 @@ def run(browser, width):
                           'expiresAt': page_date() + 300000}
             elif action in ('register', 'state'):
                 result = {'energy': energy(remaining, revision)}
+                if body.get('wallet'):
+                    result['wallet'] = {'version': 1, 'address': ADDRESS, 'pending': None}
             elif action == 'local-talk':
                 assert isinstance(body['id'], str) and len(body['id']) == 64
                 held = 1
@@ -98,14 +100,15 @@ def run(browser, width):
                     session = {'id': SESSION, 'cluster': 'mainnet', 'address': ADDRESS, 'units': '19900000',
                                'decimals': 6, 'createdAt': timestamp, 'expiresAt': timestamp + 600000,
                                'qrPayload': payload, 'sponsored': True}
-                result = {'session': session}
+                assert remaining - held <= 0 or body.get('recoverOnly')
+                result = {'session': {**session, **({'qrPayload': None, 'sponsored': False} if body.get('recoverOnly') else {})}}
             elif action == 'payment-check':
                 assert body['id'] == SESSION
                 if pending:
                     pending = False
                     route.fulfill(status=409, json={'error': {'code': 'PAYMENT_PENDING'}})
                     return
-                remaining, revision = 10, 2
+                remaining, revision = 10, revision + 1
                 session['receipt'] = {'id': SESSION, 'energyRevision': revision}
                 result = {'energy': energy(remaining, revision), 'receipt': session['receipt']}
             else:
@@ -140,17 +143,41 @@ def run(browser, width):
     page.goto(BASE + '/')
     page.wait_for_function('window.fixtureReady')
     button = page.locator('[data-energy-wallet]')
-    expect(button).to_be_enabled()
-    expect(button.locator('span')).to_be_empty()
-    page.wait_for_function("fixtureApp.state.mind.energyAuthority?.revision===1")
+    address_text = ADDRESS[:5] + '…' + ADDRESS[-5:]
+    expect(button).to_contain_text(address_text)
+    expect(button).to_be_disabled()
     startup = seen.copy()
     assert startup == ['availability', 'challenge', 'register'], (seen, errors)
-    expect(page.locator('[data-energy-value]')).to_have_text('2 / 10')
+    expect(page.locator('[data-energy-value]')).to_have_text('10 / 10')
     nav = '[data-mobile-view' if width < 600 else '[data-view'
     page.locator(nav + '=development]').click()
     page.locator(nav + '=dashboard]').click()
     page.wait_for_timeout(1050)
     assert seen == startup, seen
+    if not button.is_visible():
+        page.locator('[data-mobile-view=dashboard]').click()
+
+    def set_energy(value):
+        nonlocal remaining, revision
+        remaining, revision = value, revision + 1
+        page.evaluate("value=>fixtureApp.energyClient.apply(fixtureApp.state.mind.id,value)", energy(remaining, revision))
+        expect(page.locator('[data-energy-value]')).to_have_text(f'{value} / 10')
+
+    for value in (5, 1):
+        set_energy(value)
+        expect(button).to_be_disabled()
+        expect(button).to_contain_text(address_text)
+    page.evaluate('fixtureApp.topUp.open()')
+    expect(page.locator('.energy-top-up')).to_have_count(0)
+    assert seen == startup
+    page.locator('#mindling-input').fill('How are you developing this afternoon?')
+    page.locator('#interaction-form button[type=submit]').click()
+    expect(page.locator('[data-energy-value]')).to_have_text('0 / 10')
+    page.wait_for_function("fixtureApp.state.mind.energyAuthority.pending?.length===0")
+    expect(button).to_be_enabled()
+    expect(button).to_have_text('TOP UP')
+    expect(button).to_have_class('energy-wallet energy-wallet-ready')
+    assert seen[len(startup):] == ['local-talk', 'authorize-commit', 'settle'], seen
     if not button.is_visible():
         page.locator('[data-mobile-view=dashboard]').click()
 
@@ -164,7 +191,7 @@ def run(browser, width):
     expect(dialog.locator('[data-address]')).to_have_value(ADDRESS)
     opened = seen[marker:]
     assert opened == ['payment-open'], opened
-    expect(button).to_contain_text(ADDRESS[:5] + '…' + ADDRESS[-5:])
+    expect(dialog.locator('[data-balance]')).to_have_text('0 / 10 → 10 / 10')
     remaining_time = dialog.locator('[data-time]').text_content()
     expect(dialog.locator('[data-time]')).not_to_have_text(remaining_time)
     assert seen[marker:] == opened, seen
@@ -174,43 +201,47 @@ def run(browser, width):
     page.keyboard.press('Escape')
     expect(dialog).to_be_hidden()
     expect(button).to_be_focused()
-    button.click()
-    expect(dialog.locator('[data-qr] svg')).to_be_visible()
+    set_energy(1)
+    expect(button).to_be_disabled()
+    recovery = page.locator('[data-payment-recovery]')
+    expect(recovery).to_be_visible()
+    recovery.click()
+    expect(dialog.locator('[data-address]')).to_have_value(ADDRESS)
+    expect(dialog.locator('[data-qr] svg')).to_have_count(0)
     assert seen[marker:] == ['payment-open', 'payment-open']
     check = dialog.get_by_role('button', name='Check payment')
     check.click()
     expect(dialog.get_by_role('status')).to_have_text('Waiting for the transaction to finalize.')
-    expect(page.locator('[data-energy-value]')).to_have_text('2 / 10')
+    expect(page.locator('[data-energy-value]')).to_have_text('1 / 10')
     check.click()
     expect(dialog).to_be_hidden()
     expect(page.locator('[data-energy-value]')).to_have_text('10 / 10')
     expect(page.locator('.interaction-status')).to_have_text('Payment confirmed. Energy restored.')
+    expect(recovery).to_be_hidden()
     marker=len(seen)
     page.reload()
     page.wait_for_function('window.fixtureReady')
-    expect(button).to_be_enabled()
+    expect(button).to_be_disabled()
     expect(page.locator('[data-energy-value]')).to_have_text('10 / 10')
-    assert page.evaluate('fixtureApp.state.mind.energyAuthority.revision') == 2
-    expect(button).to_contain_text(ADDRESS[:5] + '…' + ADDRESS[-5:])
+    expect(button).to_contain_text(address_text)
     assert seen[marker:] == []
-    page.locator('#mindling-input').fill('How are you developing this afternoon?')
-    page.locator('#interaction-form button[type=submit]').click()
-    expect(page.locator('[data-energy-value]')).to_have_text('9 / 10')
-    page.wait_for_function("fixtureApp.state.mind.energyAuthority.pending?.length===0")
-    assert seen.count('local-talk') == 1 and seen.count('authorize-commit') == 1 and seen.count('settle') == 1
     journal = page.evaluate("fixtureApp.db.getAll('energyJournal')")
-    assert len(journal) == 1 and journal[0]['energyCost'] == 1 and journal[0]['energyRevision'] == 4
-    assert seen[marker:] == ['challenge', 'local-talk', 'authorize-commit', 'settle']
+    assert len(journal) == 1 and journal[0]['energyCost'] == 1 and journal[0]['energyRevision'] == 5
     assert seen.count('payment-open') == 2
     assert seen.count('payment-check') == 2
     if not button.is_visible():
         page.locator('[data-mobile-view=dashboard]').click()
     market_unavailable = True
+    set_energy(0)
     button.click()
     expect(dialog.get_by_role('status')).to_have_text('A reliable MIND price is unavailable. No payment quote was created.')
     expect(dialog.locator('[data-qr] svg')).to_have_count(0)
+    dialog.get_by_role('button',name='Close').click()
+    set_energy(5)
+    expect(button).to_contain_text(address_text)
+    expect(button).to_be_disabled()
     print(f'{width}px: startup={startup}, navigation/idle=0, wallet={opened}, cached reload=0, '
-          'ordinary Talk=challenge + local-talk + authorize-commit + settle')
+          'ordinary Talk=local-talk + authorize-commit + settle')
     assert not errors, errors
     assert not unexpectedly_sent, unexpectedly_sent
     page.close()

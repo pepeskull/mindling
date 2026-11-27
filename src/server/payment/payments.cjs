@@ -4,7 +4,7 @@ const {failure} = require('./store.cjs');
 const {energyKey} = require('./energy-ledger.cjs');
 const {sha256}=require('./identity.cjs');
 const {marketPrice,quoteUnits} = require('./market-price.cjs');
-const {CONTROL,HEAD,SPONSOR,requireOpen,assertFence,eventAfter,reserveSponsor}=require('./financial-control.cjs');
+const {CONTROL,HEAD,SPONSOR,WORKER,requireOpen,requireWorker,assertFence,eventAfter,reserveSponsor}=require('./financial-control.cjs');
 
 const SESSION_ID=/^[a-f0-9]{48}$/;
 const ACCOUNT=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -47,26 +47,83 @@ function encryption(material,purpose='deposit') {
   };
 }
 
-function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,{now,snapshot:chain.marketSnapshot})}={}) {
+const checkoutKey=owner=>'checkout:'+owner;
+const depositKey=owner=>'deposit:'+owner;
+const pendingId=active=>!active?.credited&&SESSION_ID.test(active?.id||'')?active.id:null;
+
+function depositWallets(store,keys,generate=()=>require('./solana.cjs').randomDeposit()) {
+  const validate=(row,owner)=>{
+    if(!row||row.owner!==owner||row.id!==depositKey(owner)||!ACCOUNT.test(row.address)||!row.sealed)
+      throw failure('DEPOSIT_KEY_UNAVAILABLE',503);
+    return row;
+  };
+  async function ensure(owner) {
+    const wallet=depositKey(owner),checkout=checkoutKey(owner);
+    for(let attempt=0;attempt<3;attempt++){
+      const [existing,active]=await store.getMany([wallet,checkout]);
+      if(existing)return {address:validate(existing,owner).address,pending:pendingId(active)};
+      const legacy=active?.id?await store.get(sessionKey(active.id)):null;
+      if(active?.id){equalOwner(legacy,owner);}
+      const source=legacy?.sealed?{address:legacy.address,secret:keys.open(legacy)}:await generate();
+      if(legacy&&!legacy.sealed){source.secret.fill(0);throw failure('DEPOSIT_KEY_UNAVAILABLE',503);}
+      const record={id:wallet,owner,address:source.address};
+      try {record.sealed=keys.seal(source.secret,record);validate(record,owner);}
+      finally {source.secret.fill(0);}
+      const result=await store.change([wallet,checkout],([saved,current])=>{
+        if(saved)return {result:{address:validate(saved,owner).address,pending:pendingId(current)}};
+        if(current?.id!==active?.id)return {result:null};
+        return {writes:[record,current],result:{address:record.address,pending:pendingId(current)}};
+      });
+      if(result)return result;
+    }
+    throw failure('LEDGER_BUSY',503);
+  }
+  async function secretFor(session) {
+    if(session.sealed)return keys.open(session);
+    const row=validate(await store.get(depositKey(session.owner)),session.owner);
+    if(row.address!==session.address)throw failure('DEPOSIT_KEY_UNAVAILABLE',503);
+    return keys.open(row);
+  }
+  return {ensure,secretFor,addressFor:(owner,row)=>validate(row,owner).address};
+}
+
+function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,{now,snapshot:chain.marketSnapshot}),deposit=depositWallets(store,keys),requireWorker:needsWorker=false}={}) {
   if (chain.cluster!=='mainnet') throw failure('PAYMENT_UNAVAILABLE',503);
-  const keysFor=owner=>[energyKey(owner),'checkout:'+owner,'checkout-global'];
+  const quoteStatus=(control,head,worker)=>{
+    requireOpen(control,now());
+    assertFence(control,head);
+    if(needsWorker)requireWorker(worker,now());
+  };
+  const eligible=entry=>{
+    const energy=ledger.makeView(entry);
+    return energy.remaining-energy.reserved<=0;
+  };
   const visible = row => ({
     id:row.id,cluster:chain.cluster,address:row.address,mint:row.mint,decimals:row.decimals,
     units:row.units,createdAt:row.createdAt,expiresAt:row.expiresAt,priceAsOf:row.quote.asOf,
     receipt:row.receipt??null, transactionIssued:Boolean(row.signed)
   });
-  async function create(owner,{fresh=false}={}) {
-    await ledger.get(owner);
-    const [energy,active,global]=keysFor(owner);
-    const previous=await store.get(active);
-    if (!fresh && previous?.id) {
-      const row=await store.get(sessionKey(previous.id));
-      if(row){
-        equalOwner(row,owner);
-        if(row.receipt||row.signed||row.expiresAt>now())return visible(row);
-      }
-    }
-    requireOpen(await store.get(CONTROL),now());
+  async function loadCurrent(owner,active) {
+    if(!active?.id)return null;
+    const row=await store.get(sessionKey(active.id));
+    equalOwner(row,owner);
+    return row;
+  }
+  async function current(owner) {
+    const row=await loadCurrent(owner,await store.get(checkoutKey(owner)));
+    return row?visible(row):null;
+  }
+  async function selectQuote(owner,{fresh=false,recoverOnly=false}={}) {
+    const energy=energyKey(owner),active=checkoutKey(owner),global='checkout-global';
+    const [entry,previous,control,head,tally,worker,wallet]=await store.getMany([energy,active,CONTROL,HEAD,SPONSOR,WORKER,depositKey(owner)]);
+    const depleted=eligible(entry);
+    const row=await loadCurrent(owner,previous);
+    if(row&&(recoverOnly||!fresh&&(!row.receipt&&(row.signed||row.expiresAt>now())||!depleted)))
+      return {session:visible(row),control,head,tally,worker,depleted};
+    if(recoverOnly)throw failure('PAYMENT_NOT_FOUND',404);
+    if(!depleted)throw failure('PAYMENT_ENERGY_AVAILABLE',409);
+    if(row&&!row.receipt&&row.expiresAt>now())throw failure('PAYMENT_SESSION_ACTIVE');
+    quoteStatus(control,head,worker);
     await store.rate('payment-session-attempt:'+owner,6,60);
     await store.rate('payment-session-attempt-global',30,60);
     const {mint,decimals,tokenProgram}=await chain.mintInfo();
@@ -74,64 +131,53 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
     const id=randomBytes(24).toString('hex'), createdAt=now();
     if(quote.mint!==mint||quote.freshUntil<=createdAt)throw failure('MARKET_PRICE_UNAVAILABLE',503);
     const units=quoteUnits(quote,decimals);
-    const {secret,...deposit}=await chain.newDeposit(tokenProgram);
-    const row={id,owner,...deposit,mint,decimals,tokenProgram,units,quote,createdAt,expiresAt:createdAt+QUOTE_MS};
-    try {row.sealed=keys.seal(secret,row);}
-    finally {secret.fill(0);}
-    const created=await store.change([energy,active,global,sessionKey(id),CONTROL,HEAD],([entry,current,total,previous,control,head])=>{
-      requireOpen(control,now());
-      assertFence(control,head);
-      if(previous)throw failure('PAYMENT_SESSION_ACTIVE');
-      if (!entry) throw failure('ENERGY_REGISTRATION_REQUIRED',401);
-      if(current?.expiresAt>createdAt&&!current.credited){
+    const address=wallet?deposit.addressFor(owner,wallet):(await deposit.ensure(owner)).address;
+    const destination=await chain.depositTarget(address,tokenProgram);
+    const next={id,owner,...destination,mint,decimals,tokenProgram,units,quote,createdAt,expiresAt:createdAt+QUOTE_MS};
+    const names=[energy,active,global,sessionKey(id),CONTROL,HEAD,WORKER];
+    const created=await store.change(names,([live,current,total,taken,approval,fence,heartbeat])=>{
+      quoteStatus(approval,fence,heartbeat);
+      if(taken)throw failure('PAYMENT_SESSION_ACTIVE');
+      if(!eligible(live))throw failure('PAYMENT_ENERGY_AVAILABLE',409);
+      if(current?.id!==previous?.id||current?.expiresAt>createdAt&&!current.credited){
         if(!fresh)return {result:null};
         throw failure('PAYMENT_SESSION_ACTIVE');
       }
       const day=Math.floor(createdAt/86400000);
       const count=current?.day===day?current.count:0;
       const all=total?.day===day?total.count:0;
-      if (count>=3 || all>=100) throw failure('PAYMENT_RATE_LIMIT',429);
-      return {writes:[entry,{id,day,count:count+1,expiresAt:row.expiresAt,credited:false},{day,count:all+1},row,control,head],result:visible(row)};
+      if(count>=3||all>=100)throw failure('PAYMENT_RATE_LIMIT',429);
+      return {writes:[live,{id,day,count:count+1,expiresAt:next.expiresAt,credited:false},
+        {day,count:all+1},next,approval,fence,heartbeat],result:visible(next)};
     });
-    if(created)return created;
-    const recovered=await current(owner);
-    if(!recovered)throw failure('PAYMENT_SESSION_ACTIVE');
-    return recovered;
+    const session=created??await current(owner);
+    if(!session)throw failure('PAYMENT_SESSION_ACTIVE');
+    return {session,control,head,tally,worker,depleted};
   }
-  async function current(owner) {
-    const active=await store.get('checkout:'+owner);
-    if (!active) return null;
-    const session=await store.get(sessionKey(active.id));
-    equalOwner(session,owner);
-    return visible(session);
+  async function create(owner,options) {
+    return (await selectQuote(owner,options)).session;
   }
   async function open(owner,options) {
-    const session=await create(owner,options);
-    if(session.expiresAt<=now()||session.receipt)return {...session,payable:false,sponsored:false};
-    const [control,head,tally]=await Promise.all([store.get(CONTROL),store.get(HEAD),store.get(SPONSOR)]);
-    try {requireOpen(control,now());assertFence(control,head);}
-    catch(error){
-      if(error.code==='PAYMENTS_PAUSED')return {...session,payable:false,sponsored:false};
+    const {session,control,head,worker,tally,depleted}=await selectQuote(owner,options);
+    const unavailable=code=>({...session,payable:false,sponsored:false,checkoutCode:code});
+    if(session.expiresAt<=now()||session.receipt||options?.recoverOnly||!depleted)return unavailable(null);
+    if(chain.mintAddress&&session.mint!==chain.mintAddress)return unavailable('PAYMENT_MINT_CHANGED');
+    try {
+      quoteStatus(control,head,worker);
+      if(!chain.sponsorEstimate)return unavailable('SPONSOR_BUDGET_UNAVAILABLE');
+      reserveSponsor(tally,await chain.sponsorEstimate(),now());
+    }catch(error){
+      if(error.status===503)return unavailable(error.code);
       throw error;
     }
-    let sponsored=false;
-    try {
-      if(chain.sponsorEstimate){
-        reserveSponsor(tally,await chain.sponsorEstimate(),now());
-        sponsored=true;
-      }
-    }catch(error){
-      if(!['SPONSOR_BUDGET_UNAVAILABLE','CHAIN_UNAVAILABLE','SPONSOR_FEE_LIMIT'].includes(error.code))throw error;
-    }
-    const payable=sponsored&&session.expiresAt>now();
+    const payable=session.expiresAt>now();
     return {...session,payable,sponsored:payable};
   }
   async function wallet(id,account) {
     if (typeof account!=='string'||!ACCOUNT.test(account)) throw failure('INVALID_WALLET',400);
     const key=sessionKey(id),nonce=randomBytes(12).toString('hex');
-    const session=await store.change([key,CONTROL,HEAD],([row,control,head])=>{
-      requireOpen(control,now());
-      assertFence(control,head);
+    const session=await store.change([key,CONTROL,HEAD,WORKER],([row,control,head,worker])=>{
+      quoteStatus(control,head,worker);
       if(!row||row.receipt||row.expiresAt<=now())throw failure('PAYMENT_SESSION_EXPIRED',410);
       if(row.signed){
         if(row.account!==account)throw failure('PAYMENT_ACCOUNT_LOCKED');
@@ -140,7 +186,7 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       if(row.buildingUntil>now())throw failure('PAYMENT_BUILD_IN_PROGRESS');
       row.buildingUntil=now()+30000;
       row.build=nonce;
-      return {writes:[row,control,head],result:row};
+      return {writes:[row,control,head,worker],result:row};
     });
     const reply=signed=>({transaction:signed.transaction,message:'Play Mindling · $1.99 Energy top-up'});
     if(session.signed){
@@ -151,9 +197,9 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
     const signed=await chain.checkout(session,account);
     if(!await chain.canSubmit(signed))throw failure('PAYMENT_BLOCKHASH_EXPIRED',410);
     const eventKey='financial-event:checkout:'+id;
-    return store.change([key,CONTROL,HEAD,eventKey,SPONSOR,verifyKey(id)],([row,control,head,event,tally,job])=>{
+    return store.change([key,CONTROL,HEAD,eventKey,SPONSOR,verifyKey(id),WORKER],([row,control,head,event,tally,job,worker])=>{
       const time=now();
-      requireOpen(control,time);
+      quoteStatus(control,head,worker);
       if(!row||row.build!==nonce||row.expiresAt<=time||row.buildingUntil<=time||job)throw failure('PAYMENT_SESSION_EXPIRED',410);
       const reserved=reserveSponsor(tally,signed,time);
       assertFence(control,head);
@@ -163,7 +209,7 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       row.signed=signed;
       delete row.build;
       delete row.buildingUntil;
-      return {writes:[row,{...control,head:next.head},next.head,next.entry,reserved,{id,nextAt:time}],result:reply(signed)};
+      return {writes:[row,{...control,head:next.head},next.head,next.entry,reserved,{id,nextAt:time},worker],result:reply(signed)};
     });
   }
   function validatedReceipt(payment,entry,claim,event,head) {
@@ -186,11 +232,11 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       });
   }
   async function check(owner,id) {
-    const key=sessionKey(id),row=await store.get(key);
+    const key=sessionKey(id),[row,approval]=await store.getMany([key,CONTROL]);
     equalOwner(row,owner);
     if(row.receipt)return receiptFor(owner,id,row.receipt.paymentSignature);
     if(!row.signed)throw failure('PAYMENT_AWAITING_WALLET');
-    requireOpen(await store.get(CONTROL),now());
+    requireOpen(approval,now());
     const evidence=await chain.check(row);
     if(!evidence)throw failure('PAYMENT_PENDING');
     const claim='signature:'+evidence.signature,eventKey=creditEvent(id);
@@ -270,7 +316,7 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
       });
       return;
     }
-    const secret=keys.open(payment);
+    const secret=await deposit.secretFor(payment);
     let signed;
     try{signed=await chain.sweep(payment,secret);}
     finally{secret.fill(0);}
@@ -321,4 +367,4 @@ function payments(store,ledger,chain,keys,{now=Date.now,price=marketPrice(store,
   return {create,current,open,wallet,check,sweepOne,verifyOne,auditEvent,visible};
 }
 
-module.exports={encryption,payments,sessionKey};
+module.exports={encryption,payments,depositWallets,sessionKey};

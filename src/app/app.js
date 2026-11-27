@@ -79,6 +79,7 @@ export class MindlingApp extends EvolutionPreview {
     this.lifeTimer = setInterval(() => this.refreshState(), 60_000);
     this.energyTimer=setInterval(()=>{if(!this.external?.locked&&this.state?.mind){
       this.dashboard.renderEnergy(this.state.mind.energy,Date.now());
+      this.topUp?.update(this.state.mind);
       this.dashboard.tickCareCooldowns();
       const e=this.state.mind.energy;
       if(!this.pendingMutations&&eligibility({...this.state,now:Date.now()}).eligible)this.refreshState();
@@ -146,7 +147,7 @@ export class MindlingApp extends EvolutionPreview {
     if(this.disposed||this.external?.locked||!this.state?.mind)return;
     const id=this.state.mind.id;
     try{
-      await this.energyClient.sync();
+      await this.energyClient.sync({wallet:true});
     }catch(error){if(this.state?.mind?.id===id)this.dashboard?.showEnergySyncStatus(error.message);}
   }
 

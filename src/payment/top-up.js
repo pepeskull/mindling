@@ -1,6 +1,8 @@
 import qrcode from '../preview/vendor/qrcode.js';
-import {energyLabel} from '../economy/energy.js';
+import {energyAt,energyLabel} from '../economy/energy.js';
+import {energyFailureMessage} from './energy-client.js';
 
+const spendable=(mind,time=Date.now())=>energyAt(mind.energy,time).remaining-(mind.energyAuthority?.reserved||0);
 const ACCOUNT=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 function decimal(units,decimals){
   const padded=units.padStart(decimals+1,'0');
@@ -21,19 +23,31 @@ export class TopUp {
   constructor(client,signal){
     this.client=client;
     this.button=document.querySelector('[data-energy-wallet]');
+    this.recovery=document.querySelector('[data-payment-recovery]');
     this.button.addEventListener('click',()=>void this.open(),{signal});
+    this.recovery.addEventListener('click',()=>void this.open(true),{signal});
     signal.addEventListener('abort',()=>this.dialog?.close(),{once:true});
   }
   update(mind){
     if(this.identity!==mind.id){this.dialog?.close();this.identity=mind.id;}
     const address=mind.paymentWalletAddress;
-    this.button.disabled=mind.life.lifeState!=='ALIVE';
-    this.button.querySelector('span').textContent=ACCOUNT.test(address||'')?address.slice(0,5)+'…'+address.slice(-5):'';
+    const alive=mind.life.lifeState==='ALIVE';
+    const ready=mind.paymentWalletVersion===1&&ACCOUNT.test(address||'');
+    const eligible=alive&&ready&&spendable(mind)<=0;
+    const label=eligible?'TOP UP':ACCOUNT.test(address||'')?address.slice(0,5)+'…'+address.slice(-5):
+      'Wallet unavailable';
+    this.button.disabled=!eligible;
+    this.button.classList.toggle('energy-wallet-ready',eligible);
+    this.button.setAttribute('aria-label',eligible?'Top up Energy':label);
+    this.button.querySelector('span').textContent=label;
+    this.recovery.hidden=!/^[a-f0-9]{48}$/.test(mind.paymentPending||'');
   }
 
-  async open(){
+  async open(recoverOnly=false){
     const {app}=this.client,mind=app.state?.mind;
-    if(this.dialog||mind?.life?.lifeState!=='ALIVE')return;
+    if(this.dialog||!mind||
+       (recoverOnly?!mind.paymentPending:mind.life?.lifeState!=='ALIVE'||spendable(mind)>0||mind.paymentWalletVersion!==1))return;
+    const opener=recoverOnly?this.recovery:this.button;
     const dialog=document.createElement('dialog');
     this.dialog=dialog;
     dialog.className='energy-top-up glass-panel';
@@ -66,7 +80,7 @@ export class TopUp {
     const updateTime=()=>{
       if(!active())return;
       const {value,maximum,bar}=energyLabel(app.state.mind.energy,Date.now());
-      find('[data-balance]').textContent=value;
+      find('[data-balance]').textContent=value+' → '+maximum+' / '+maximum;
       find('progress').max=maximum;
       find('progress').value=bar;
       if(!session)return;
@@ -77,7 +91,7 @@ export class TopUp {
       qrBox.hidden=!seconds||!session.qrPayload||Boolean(session.receipt);
       if(qrBox.hidden)qrBox.replaceChildren();
       find('[data-sponsored]').hidden=qrBox.hidden||!session.sponsored;
-      fresh.hidden=seconds>0&&!session.receipt;
+      fresh.hidden=recoverOnly||spendable(app.state.mind)>0||seconds>0&&!session.receipt;
     };
     const load=async newQuote=>{
       if(busy||checking)return;
@@ -85,12 +99,10 @@ export class TopUp {
       fresh.disabled=check.disabled=true;
       status.textContent='Preparing your payment session…';
       try {
-        if(!await this.client.sync())throw Error('Energy authorization is temporarily unavailable.');
-        if(!active())return;
-        const {session:value}=await this.client.request({action:'payment-open',fresh:newQuote},mind);
+        const {session:value}=await this.client.request({action:'payment-open',fresh:newQuote,recoverOnly},mind);
         if(!validSession(value))throw Error('The payment session could not be validated.');
         await app.change(state=>{
-          if(state.mind?.id===mind.id)state.mind.paymentWalletAddress=value.address;
+          if(state.mind?.id===mind.id)state.mind.paymentPending=value.id;
           return state;
         },{preserveGameplay:true});
         if(!active())return;
@@ -107,7 +119,8 @@ export class TopUp {
         }
         status.textContent=value.receipt?'Check payment to sync the credited Energy.':
           value.expiresAt<=Date.now()?'Check an earlier payment or request a new quote.':
-          value.qrPayload?'Scan with a Solana Pay wallet.':'Checkout is temporarily unavailable.';
+          value.qrPayload?'Scan with a Solana Pay wallet.':value.checkoutCode?energyFailureMessage(value.checkoutCode):
+            'Check your existing payment here.';
         updateTime();
       }catch(error){if(active())status.textContent=error.message;}
       finally{busy=false;fresh.disabled=check.disabled=false;}
@@ -138,7 +151,7 @@ export class TopUp {
       clearInterval(timer);
       if(matchMedia('(prefers-reduced-motion: reduce)').matches)dialog.remove();
       else setTimeout(()=>dialog.remove(),180);
-      if(this.dialog===dialog){this.dialog=null;if(!this.button.disabled)this.button.focus();}
+      if(this.dialog===dialog){this.dialog=null;if(!opener.disabled&&!opener.hidden)opener.focus();}
     },{once:true});
     document.body.append(dialog);
     dialog.showModal();

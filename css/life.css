@@ -55,3 +55,5 @@
 .top-up-actions button:not([hidden]){margin-top:9px}
 .top-up-actions [data-check]{color:var(--life-energy)}
 @media(prefers-reduced-motion:reduce){.energy-top-up{transition:none}}
+
+.energy-wallet-ready{border-color:var(--life-energy);color:var(--life-energy);background:color-mix(in srgb,var(--life-energy) 15%,transparent);font-weight:700}.energy-panel [data-payment-recovery][hidden]{display:none}

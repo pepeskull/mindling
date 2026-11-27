@@ -19,9 +19,9 @@ import * as spl from '@solana-program/token';
 const {redisStore}=storeModule;
 const {authority,publicIdentity,signingMessage,sha256}=identityModule;
 const {energyLedger}=ledgerModule;
-const {encryption,payments}=paymentModule;
+const {encryption,payments,depositWallets}=paymentModule;
 const {marketPrice,quoteUnits,SOL_USD}=marketModule;
-const {CONTROL,HEAD,verifyJournal}=financialModule;
+const {CONTROL,HEAD,WORKER,verifyJournal}=financialModule;
 const {protect,energyHandler,runtimeFor,LEARN,REASON}=runtimeModule;
 const nowBase=Date.UTC(2026,10,26,13);
 const day=86400000, interval=720000;
@@ -45,6 +45,13 @@ function memoryRedis() {
       case 'SCAN':result=['0',[...values.keys()].filter(key=>key.startsWith(args[2].slice(0,-1)))];break;
       case 'EVAL': {
         const [script,length,...rest]=args;
+        if(script.includes('mindling-replay-rate')){
+          const n=Number(values.get(rest[1])||0)+1;
+          values.set(rest[1],String(n));
+          if(n>Number(rest[3])){result=-1;break;}
+          if(values.has(rest[0])){result=0;break;}
+          values.set(rest[0],'true');result=1;break;
+        }
         if(script.includes('INCR')){
           result=Number(values.get(rest[0])||0)+1;
           values.set(rest[0],String(result));break;
@@ -55,6 +62,7 @@ function memoryRedis() {
         if(result===1&&!script.includes('read-only compare')){
           keys.forEach((key,index)=>{
             const value=argv[index*2+1];
+            if(value===(values.get(key)||''))return;
             if(value)values.set(key,value);else values.delete(key);
           });
         }
@@ -125,6 +133,26 @@ test('a reusable P-256 session consumes each signed nonce once and expires witho
   assert.equal((await auth.verify(proof(2),route,body)).fingerprint,identity.fingerprint);
   tick(300001);
   await assert.rejects(auth.verify(proof(3),route,body),{code:'CHALLENGE_EXPIRED'});
+});
+
+test('sealed authentication tickets do not need a stored session and prevent replay across requests',async()=>{
+  const {store,clock,tick}=await setup();
+  const auth=authority(store,clock,encryption('a4'.repeat(32),'auth-ticket'));
+  const local=await createLocalIdentity(),identity=publicIdentity(local.publicKey);
+  const route='/api/mindling/energy',body={action:'state'};
+  const {nonce:session,ticket}=await auth.challenge(local.publicKey,true);
+  assert.equal(await store.get('nonce:'+session),null);
+  const key=createPrivateKey({key:local.privateKey,format:'jwk'});
+  const nonce=id('single-use ticket proof').slice(0,48);
+  const signature=sign('sha256',Buffer.from(signingMessage({...identity,session,nonce,route,body})),
+    {key,dsaEncoding:'ieee-p1363'}).toString('hex');
+  const headers={'x-mindling-ticket':ticket,'x-mindling-session':session,'x-mindling-nonce':nonce,
+    'x-mindling-owner':identity.fingerprint,'x-mindling-signature':signature};
+  await assert.rejects(auth.verify({...headers,'x-mindling-ticket':ticket.replace(/^./,'X')},route,body,'fixture'),{code:'CHALLENGE_EXPIRED'});
+  assert.equal((await auth.verify(headers,route,body,'fixture')).fingerprint,identity.fingerprint);
+  await assert.rejects(auth.verify(headers,route,body,'fixture'),{code:'CHALLENGE_EXPIRED'});
+  tick(300001);
+  await assert.rejects(auth.verify(headers,route,body,'fixture'),{code:'CHALLENGE_EXPIRED'});
 });
 
 test('legacy capacity requires a reviewed identical history, independent of claimed Energy',async()=>{
@@ -259,16 +287,78 @@ function mockChain() {
   const sponsor={fee:10000,rent:2000000,treasuryLamports:1000000000};
   return {
     chain:{cluster:'mainnet',mintInfo:async()=>({mint:account,decimals:6}),
-      newDeposit:()=>({address:'deposit-'+(++count),reference:'reference-'+count,ata:'ata-'+count,secret:Buffer.alloc(64,7)}),
+      depositTarget:async address=>({address,reference:'reference-'+(++count),ata:'ata-'+address}),
       checkout:async session=>{builds++;return {transaction:'synthetic-transaction',signature:session.id,...sponsor};},
       check:async session=>ready?{signature:session.id,slot:123,finalizedAt:nowBase}:null,
-      sweep:async(session,secret)=>{assert.equal(secret[0],7);return {transaction:'sweep',signature:'sweep-'+session.id,...sponsor};},
+      sweep:async(session,secret)=>{assert.equal(secret.length,64);return {transaction:'sweep',signature:'sweep-'+session.id,...sponsor};},
       sweepStatus:async()=>swept,canSubmit:async()=>valid,
       submit:async()=>{sends++;throw Error('Lost transport response');}
     },
     built:()=>builds,sent:()=>sends,allow:()=>{ready=true;},finalize:()=>{swept='FINALIZED';},expire:()=>{valid=false;}
   };
 }
+
+function deplete(store, owner, time=nowBase){
+  return store.change(['energy:'+owner],([entry])=>{
+    entry.balance={...entry.balance,remaining:0,bonus:0,updatedAt:time};
+    return {writes:[entry]};
+  });
+}
+
+test('wallet bootstrap needs no pricing, preserves its identity and reuses an issued legacy wallet',async()=>{
+  const {store}=await setup(),cipher=encryption('d1'.repeat(32));
+  const owner=own.fingerprint;
+  const {randomDeposit}=solanaModule;
+  const wallets=depositWallets(store,cipher,randomDeposit);
+  const [first,second]=await Promise.all([wallets.ensure(owner),wallets.ensure(owner)]);
+  assert.deepEqual(first,second);
+  assert.equal(solana.address(first.address),first.address);
+  const disk=await store.get('deposit:'+owner);
+  const secret=await wallets.secretFor({owner,address:first.address});
+  assert.equal(solana.getBase58Decoder().decode(secret.subarray(32)),first.address);
+  secret.fill(0);
+  assert(!JSON.stringify(disk).includes('secretKey'));
+  await assert.rejects(wallets.secretFor({owner,address:account}),{code:'DEPOSIT_KEY_UNAVAILABLE'});
+  const previousOwner=id('legacy owner'),legacyId=id('legacy payment').slice(0,48);
+  const {address,secret:legacySecret}=randomDeposit();
+  const legacy={id:legacyId,owner:previousOwner,address,mint:account};
+  legacy.sealed=cipher.seal(legacySecret,legacy);
+  legacySecret.fill(0);
+  await store.change(['checkout:'+previousOwner,'payment:'+legacyId],()=>({writes:[{id:legacyId},legacy]}));
+  assert.deepEqual(await wallets.ensure(previousOwner),{address,pending:legacyId});
+  assert.deepEqual(await store.get('payment:'+legacyId),legacy);
+  const recovered=await wallets.secretFor(legacy);
+  assert.equal(solana.getBase58Decoder().decode(recovered.subarray(32)),address);
+  recovered.fill(0);
+});
+
+test('Mainnet checkout needs audited approval and live recovery while the wallet stays available',async()=>{
+  const {store,ledger,clock,tick}=await setup(),owner=own.fingerprint;
+  const {chain}=mockChain(),cipher=encryption('f0'.repeat(32));
+  const deposit=depositWallets(store,cipher);
+  const payment=payments(store,ledger,chain,cipher,{now:clock,deposit,requireWorker:true,
+    price:async mint=>({mint,asOf:clock(),freshUntil:clock()+60000,usdScaled:'100000000000'})});
+  chain.sponsorEstimate=async()=>({fee:15000,rent:2000000,treasuryLamports:1000000000});
+  const auth={verify:async()=>own};
+  const handler=energyHandler({runtime:async()=>({store,ledger,auth,deposit,payment:()=>payment})});
+  const initialized=mockedResponse();
+  await handler({method:'POST',headers:{},body:{action:'register',wallet:true}},initialized);
+  assert.equal(initialized.code,200);
+  assert.equal(initialized.body.wallet.version,1);
+  assert.equal(initialized.body.energy.remaining,10);
+  await assert.rejects(payment.open(owner),{code:'PAYMENT_ENERGY_AVAILABLE'});
+  await deplete(store,owner);
+  await assert.rejects(payment.open(owner),{code:'PAYMENT_ACTIVATION_REQUIRED'});
+  await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase-1}]}));
+  await assert.rejects(payment.open(owner),{code:'PAYMENT_APPROVAL_EXPIRED'});
+  await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',policy:2,approvedAt:nowBase}]}));
+  tick(86400001);
+  await deplete(store,owner,clock());
+  await assert.rejects(payment.open(owner),{code:'PAYMENT_RECOVERY_UNAVAILABLE'});
+  await store.heartbeat(WORKER,{at:clock()});
+  assert.equal((await payment.open(owner)).payable,true);
+  assert.equal((await deposit.ensure(owner)).address,initialized.body.wallet.address);
+});
 
 test('one wallet-open operation recovers a pending session, and returns a QR only with validated pricing and sponsorship',async()=>{
   const {store,ledger,clock}=await setup(),principal=own.fingerprint;
@@ -282,6 +372,7 @@ test('one wallet-open operation recovers a pending session, and returns a QR onl
   };
   const payment=payments(store,ledger,chain,encryption('ab'.repeat(32)),{now:clock,price});
   await ledger.initialize(own);
+  await deplete(store,principal);
   await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase+600000}]}));
   const auth={verify:async()=>({fingerprint:principal})};
   const handler=energyHandler({runtime:async()=>({store,ledger,auth,payment:()=>payment})});
@@ -313,31 +404,33 @@ test('finalized payment atomically restores normal Energy once and keeps sweep i
   const {store,ledger,tick}=await setup();
   const principal=own.fingerprint, injected=mockChain();
   const key=encryption('ab'.repeat(32));
-  const price=async mint=>({mint,asOf:nowBase,freshUntil:nowBase+10000,usdScaled:'100000000000'});
+  const price=async mint=>({mint,asOf:nowBase,freshUntil:nowBase+60000,usdScaled:'100000000000'});
   const payment=payments(store,ledger,injected.chain,key,{now:()=>nowBase,price});
   await ledger.initialize(own);
-  await assert.rejects(payment.create(principal),{code:'PAYMENTS_PAUSED'});
+  await deplete(store,principal);
+  await assert.rejects(payment.create(principal),{code:'PAYMENT_ACTIVATION_REQUIRED'});
   await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase+600000}]}));
-  await store.change(['energy:'+principal],([entry])=>{
-    entry.balance={...entry.balance,remaining:13,bonus:3};
-    return {writes:[entry]};
-  });
-  const expense=operation('prior expense','deep','learn');
-  await ledger.admit(principal,expense);
-  await confirmed(ledger,principal,expense);
-  await settle(ledger,principal,expense.id,3);
   const session=await payment.create(principal);
   assert.equal(session.units,'19900000');
   assert.equal((await payment.create(principal)).id,session.id);
   assert.equal(session.sealed,undefined);
   const persisted=await store.get('payment:'+session.id);
-  assert(!JSON.stringify(persisted).includes(Buffer.alloc(64,7).toString('hex')));
-  assert.throws(()=>key.open({...persisted,address:'other address'}));
+  const wallet=await store.get('deposit:'+principal);
+  assert.equal(persisted.sealed,undefined);
+  assert.throws(()=>key.open({...wallet,address:'other address'}));
   await payment.wallet(session.id,account);
   await payment.wallet(session.id,account);
   assert.equal(injected.built(),1);
   await assert.rejects(payment.check(id('different owner'),session.id),{code:'PAYMENT_NOT_FOUND'});
   await assert.rejects(payment.check(principal,session.id),{code:'PAYMENT_PENDING'});
+  await store.change(['energy:'+principal],([entry])=>{
+    entry.balance={...entry.balance,remaining:3,bonus:3};
+    return {writes:[entry]};
+  });
+  const pending=await payment.open(principal,{recoverOnly:true});
+  assert.equal(pending.id,session.id);
+  assert.equal(pending.payable,false);
+  await assert.rejects(payment.create(principal,{fresh:true}),{code:'PAYMENT_ENERGY_AVAILABLE'});
   injected.allow();
   const [first,second]=await Promise.all([payment.check(principal,session.id),payment.check(principal,session.id)]);
   assert.deepEqual(first.receipt,second.receipt);
@@ -348,8 +441,6 @@ test('finalized payment atomically restores normal Energy once and keeps sweep i
   assert.equal((await store.get('sweep-work:'+session.id)).state,'DISPATCHED');
   assert.equal(injected.sent(),1);
   assert.equal((await payment.check(principal,session.id)).receipt.energyRevision,first.energy.revision);
-  const next=await payment.create(principal,{fresh:true});
-  assert.notEqual(next.address,session.address);
   const post=operation('post payment','talk','talk');
   await ledger.admit(principal,post);
   await confirmed(ledger,principal,post);
@@ -362,6 +453,10 @@ test('finalized payment atomically restores normal Energy once and keeps sweep i
   await recovered.sweepOne(session.id);
   assert.equal((await store.get('financial-event:sweep-result:sweep-'+session.id)).type,'SWEEP_FINALIZED');
   assert.equal(injected.sent(),1);
+  await deplete(store,principal,nowBase+46000);
+  const next=await recovered.create(principal,{fresh:true});
+  assert.notEqual(next.id,session.id);
+  assert.equal(next.address,session.address);
 });
 
 function mockedResponse(){
@@ -472,8 +567,17 @@ for(const [label,tokenProgram] of [['SPL',spl.TOKEN_PROGRAM_ADDRESS],['Token-202
     transaction={version:'legacy',slot:7,blockTime:nowBase/1000,transaction:[signed,'base64'],
       meta:{err:null,preTokenBalances:[],postTokenBalances:[post]}};
     assert.equal((await chain.check(session)).slot,7);
-    post.uiTokenAmount.amount='19899999';
-    await assert.rejects(chain.check(session),{code:'PAYMENT_AMOUNT_MISMATCH'});
+    for(const invalid of [{mint:payer.address},{owner:treasury.address},{uiTokenAmount:{amount:'19899999',decimals:6}},
+      {uiTokenAmount:{amount:'19900001',decimals:6}}]){
+      const original=transaction.meta.postTokenBalances;
+      transaction.meta.postTokenBalances=[{...post,...invalid}];
+      await assert.rejects(chain.check(session),{code:'PAYMENT_AMOUNT_MISMATCH'});
+      transaction.meta.postTokenBalances=original;
+    }
+    transaction.blockTime=Math.floor(session.expiresAt/1000)+1;
+    await assert.rejects(chain.check(session),{code:'PAYMENT_TIMING_REVIEW'});
+    transaction.meta.err={rejected:true};
+    await assert.rejects(chain.check(session),{code:'PAYMENT_TRANSACTION_REJECTED'});
   });
 }
 
@@ -660,6 +764,7 @@ test('sponsorship pauses on expired blockhash, reserve exhaustion or broken jour
   const price=async mint=>({mint,asOf:clock(),freshUntil:clock()+10000,usdScaled:'100000000000'});
   const payment=payments(store,ledger,chain,encryption('abcd'.repeat(16)),{now:clock,price});
   await ledger.initialize(own);
+  await deplete(store,principal);
   await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase+86400000}]}));
   const session=await payment.create(principal);
   assert.equal(session.expiresAt-session.createdAt,600000);
@@ -694,6 +799,7 @@ test('sweep worker reuses the exact persisted wire transaction after a lost disp
   const price=async mint=>({mint,asOf:clock(),freshUntil:clock()+10000,usdScaled:'100000000000'});
   const payment=payments(store,ledger,chain,encryption('fe'.repeat(32)),{now:clock,price});
   await ledger.initialize(own);
+  await deplete(store,principal);
   await store.change([CONTROL],()=>({writes:[{cluster:'mainnet',state:'OPEN',verifiedUntil:nowBase+86400000}]}));
   const session=await payment.create(principal);
   await payment.wallet(session.id,account);

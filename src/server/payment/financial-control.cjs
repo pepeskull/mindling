@@ -4,6 +4,7 @@ const {sha256}=require('./identity.cjs');
 
 const CONTROL='financial-control';
 const HEAD='financial-head';
+const WORKER='payment-worker-ready';
 const SPONSOR='financial-sponsor';
 const DAY=86400000;
 const MAX_DAILY_LAMPORTS=250000000;
@@ -11,8 +12,16 @@ const TREASURY_RESERVE=10000000;
 const MAX_SIGNING_EXPOSURE=4000000;
 
 function requireOpen(control,now) {
-  if(control?.state!=='OPEN'||control.cluster!=='mainnet'||!Number.isSafeInteger(control.verifiedUntil)||
-    control.verifiedUntil<=now)throw failure('PAYMENTS_PAUSED',503);
+  if(!control)throw failure('PAYMENT_ACTIVATION_REQUIRED',503);
+  if(control.state!=='OPEN'||control.cluster!=='mainnet')throw failure('PAYMENTS_PAUSED',503);
+  if(control.policy===2&&Number.isSafeInteger(control.approvedAt)&&control.approvedAt>0&&control.approvedAt<=now)return;
+  if(!Number.isSafeInteger(control.verifiedUntil)||control.verifiedUntil<=now)
+    throw failure('PAYMENT_APPROVAL_EXPIRED',503);
+}
+
+function requireWorker(status,now) {
+  if(!Number.isSafeInteger(status?.at)||status.at>now+5000||status.at<now-120000)
+    throw failure('PAYMENT_RECOVERY_UNAVAILABLE',503);
 }
 
 function assertFence(control,head) {
@@ -63,4 +72,4 @@ async function verifyJournal(store,expected=null,{limit=2000,onEvent=()=>{}}={})
   return {head,checked};
 }
 
-module.exports={CONTROL,HEAD,SPONSOR,requireOpen,assertFence,eventAfter,reserveSponsor,verifyJournal};
+module.exports={CONTROL,HEAD,SPONSOR,WORKER,requireOpen,requireWorker,assertFence,eventAfter,reserveSponsor,verifyJournal};
