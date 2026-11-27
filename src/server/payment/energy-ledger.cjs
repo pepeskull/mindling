@@ -85,7 +85,7 @@ async function energyLedger(store, now = Date.now) {
       if(!advanceStage(entry,time))return {result:state(entry,time)};
       entry.revision++;
       return {writes:[entry],result:state(entry,time)};
-    });
+    },{verifyRead:false});
   }
   function setResearch(identity, enabled, automaticRequestLimit=12, permissionRevision) {
     if (typeof enabled !== 'boolean'||!Number.isSafeInteger(automaticRequestLimit)||automaticRequestLimit<4||automaticRequestLimit>40) throw failure('INVALID_PERMISSION',400);

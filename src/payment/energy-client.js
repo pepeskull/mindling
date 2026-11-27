@@ -1,11 +1,29 @@
 export const ENERGY_PROTOCOL='mindling-energy-mainnet-v1';
 const ENDPOINT='/api/mindling/energy';
 const encoder=new TextEncoder();
+const WALLET=/^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const SESSION=/^[a-f0-9]{48}$/;
 const hex=bytes=>[...new Uint8Array(bytes)].map(byte=>byte.toString(16).padStart(2,'0')).join('');
 const digest=async value=>hex(await crypto.subtle.digest('SHA-256',encoder.encode(value)));
 const base64url=value=>btoa(String.fromCharCode(...encoder.encode(JSON.stringify(value))))
   .replaceAll('+','-').replaceAll('/','_').replace(/=+$/,'');
 const messages={
+  PAYMENT_ACTIVATION_REQUIRED:'Mainnet checkout needs an operator approval before it can accept payments.',
+  PAYMENT_APPROVAL_EXPIRED:'The existing Mainnet checkout approval expired. An operator must review and reopen checkout.',
+  PAYMENT_RECOVERY_UNAVAILABLE:'Automatic payment recovery is offline. Checkout will be available when it returns.',
+  PAYMENT_RPC_REJECTED:'Helius refused the Mainnet RPC credentials.',
+  PAYMENT_TREASURY_INVALID:'The configured treasury signing key could not be verified.',
+  PAYMENT_RPC_UNCONFIGURED:'Mainnet checkout is missing its Helius configuration.',
+  PAYMENT_MINT_CHANGED:'The configured mint changed after this quote. Existing transfers can still be checked.',
+  PAYMENT_MINT_INVALID:'The configured MIND mint address is invalid.',
+  PAYMENT_MINT_UNCONFIGURED:'The Mainnet MIND mint has not been configured.',
+  PAYMENT_TREASURY_UNCONFIGURED:'The payment treasury has not been configured.',
+  PAYMENT_CONFIGURATION_INVALID:'Mainnet checkout configuration needs review.',
+  UNSUPPORTED_MINT:'The configured MIND mint could not be validated on Mainnet.',
+  CHAIN_UNAVAILABLE:'Solana Mainnet could not be reached. Try again later.',
+  DEPOSIT_KEY_UNAVAILABLE:'The deposit wallet requires recovery before it can accept payments.',
+  PAYMENT_ENERGY_AVAILABLE:'Top-up opens when your spendable Energy reaches zero.',
+  PAYMENT_NOT_FOUND:'No existing payment session was found.',
   INVALID_PAYMENT_RECEIPT:'Payment confirmation could not be validated.',
   MARKET_PRICE_UNAVAILABLE:'A reliable MIND price is unavailable. No payment quote was created.',
   PAYMENTS_PAUSED:'Mainnet checkout is temporarily paused.',
@@ -31,8 +49,11 @@ const validEnergy=energy=>energy?.version===2&&Number.isInteger(energy.stage)&&
   [10,12,15,18,22,26,32][energy.stage-1]===energy.capacity&&
   ['remaining','bonus','updatedAt','revision','reserved','serverTime'].every(key=>Number.isSafeInteger(energy[key])&&energy[key]>=0)&&
   energy.bonus<=energy.remaining&&energy.remaining-energy.bonus<=energy.capacity&&energy.reserved<=energy.remaining;
+export function energyFailureMessage(code){
+  return messages[code]||'Energy could not be synchronized. Try again when the service is available.';
+}
 function error(code){
-  return Object.assign(Error(messages[code]||'Energy could not be synchronized. Try again when the service is available.'),{code});
+  return Object.assign(Error(energyFailureMessage(code)),{code});
 }
 async function read(response){
   let data;
@@ -95,7 +116,7 @@ export class EnergyClient {
     if(challenge?.fingerprint!==fingerprint||challenge.expiresAt<=Date.now()+5000){
       const issue=()=>this.fetcher(ENDPOINT,{
         method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(5000),
-        body:JSON.stringify({action:'challenge',publicKey:identity.publicKey})
+        body:JSON.stringify({action:'challenge',publicKey:identity.publicKey,ticket:true})
       }).then(read);
       const pending=this.authPending;
       try {
@@ -126,6 +147,7 @@ export class EnergyClient {
     headers.set('X-Mindling-Owner',challenge.fingerprint);
     headers.set('X-Mindling-Nonce',nonce);
     if(session)headers.set('X-Mindling-Session',session);
+    if(session&&typeof challenge.ticket==='string')headers.set('X-Mindling-Ticket',challenge.ticket);
     headers.set('X-Mindling-Signature',signature);
     if(operation)headers.set('X-Mindling-Operation',base64url(operation));
     const response=await this.fetcher(route,{...options,headers});
@@ -145,21 +167,31 @@ export class EnergyClient {
     const data=await read(response);
     if(body.action==='payment-check'&&(data.receipt?.id!==body.id||
       !Number.isSafeInteger(data.receipt.energyRevision)||data.energy?.revision<data.receipt.energyRevision||!validEnergy(data.energy)))throw error('INVALID_PAYMENT_RECEIPT');
-    if(data.energy)await this.apply(mind.id,data.energy);
+    if(data.energy)await this.apply(mind.id,data.energy,data.wallet,body.action==='payment-check'?body.id:null);
     return data;
   }
-  async apply(identity,energy){
+  async apply(identity,energy,wallet,checkedId){
     if(this.app.disposed||this.app.state?.mind?.id!==identity)throw error('IDENTITY_CHANGED');
     await this.app.change(state=>{
       if(state.mind?.id!==identity)throw error('IDENTITY_CHANGED');
       cacheEnergy(state.mind,energy);
+      if(wallet?.version===1&&WALLET.test(wallet.address||'')&&(!wallet.pending||SESSION.test(wallet.pending))){
+        state.mind.paymentWalletAddress=wallet.address;
+        state.mind.paymentWalletVersion=1;
+        state.mind.paymentPending=wallet.pending??null;
+      }
+      if(checkedId&&state.mind.paymentPending===checkedId)state.mind.paymentPending=null;
       return state;
     },{preserveGameplay:true});
   }
-  async sync(){
+  async sync({wallet=false}={}){
     const mind=this.app.state?.mind;
     if(!mind)return false;
-    if(this.syncing?.id===mind.id)return this.syncing.promise;
+    if(this.syncing?.id===mind.id){
+      if(!wallet||this.syncing.wallet)return this.syncing.promise;
+      await this.syncing.promise;
+      return this.sync({wallet});
+    }
     const promise=(async()=>{
       if(!await this.enabled())return false;
       const registered=mind.energyAuthority?.protocol===ENERGY_PROTOCOL;
@@ -167,7 +199,9 @@ export class EnergyClient {
         const legacy={stage:mind.stage,createdAt:mind.createdAt,stages:(mind.stageHistory||[]).map(
           ({stage,enteredAt,leftAt,xp,concepts})=>({stage,enteredAt,leftAt,xp,concepts})
         )};
-        await this.request({action:'register',legacy},mind);
+        await this.request({action:'register',legacy,...(wallet?{wallet:true}:{})},mind);
+      }else if(wallet&&mind.paymentWalletVersion!==1){
+        await this.request({action:'state',wallet:true},mind);
       }
       const permissions=await this.app.db.researchPermissions(mind.id);
       if(this.app.state?.mind?.id!==mind.id)throw error('IDENTITY_CHANGED');
@@ -178,7 +212,7 @@ export class EnergyClient {
       for(const pending of authority?.pending||[])await this.finish(pending,mind.id).catch(()=>{});
       return true;
     })().finally(()=>{if(this.syncing?.promise===promise)this.syncing=null;});
-    this.syncing={id:mind.id,promise};
+    this.syncing={id:mind.id,promise,wallet};
     return promise;
   }
   operation(kind,id){return digest(JSON.stringify([kind,id]));}

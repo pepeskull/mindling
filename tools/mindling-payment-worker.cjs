@@ -1,26 +1,27 @@
 'use strict';
 const {runtimeFor}=require('../src/server/payment/runtime.cjs');
+const {WORKER}=require('../src/server/payment/financial-control.cjs');
 
 async function run({store,payment},watch) {
-  const payments=payment(), cursors={'verify-work:':'0','sweep-work:':'0'};
+  const payments=payment();
+  let cursor='0';
   do {
-    for(const [prefix,action] of [['verify-work:','verifyOne'],['sweep-work:','sweepOne']]){
-      let examined=0,pages=0;
-      do {
-        const batch=await store.pending(prefix,cursors[prefix]);
-        cursors[prefix]=batch.cursor;
-        pages++;
-        for(const id of batch.keys){
-          try{await payments[action](id);}
-          catch(error){
-            const code=/^[A-Z_]{1,60}$/.test(error.code||'')?error.code:'PAYMENT_WORK_UNAVAILABLE';
-            // Never print RPC errors, request metadata or private keys.
-            if(code!=='PAYMENTS_PAUSED')process.stderr.write(code+'\n');
-          }
-          examined++;
+    let scanned=0,pages=0;
+    do {
+      const batch=await store.pendingWork(cursor);
+      cursor=batch.cursor;
+      pages++;
+      for(const {kind,id} of batch.jobs){
+        try{await payments[kind==='verify'?'verifyOne':'sweepOne'](id);}
+        catch(error){
+          const code=/^[A-Z_]{1,60}$/.test(error.code||'')?error.code:'PAYMENT_WORK_UNAVAILABLE';
+          if(!['PAYMENTS_PAUSED','PAYMENT_ACTIVATION_REQUIRED','PAYMENT_APPROVAL_EXPIRED'].includes(code))
+            process.stderr.write(code+'\n');
         }
-      }while(cursors[prefix]!=='0'&&examined<80&&pages<6);
-    }
+        scanned++;
+      }
+    }while(cursor!=='0'&&scanned<80&&pages<6);
+    if(watch)await store.heartbeat(WORKER,{at:Date.now()});
     if(!watch)return;
     await new Promise(resolve=>setTimeout(resolve,30000));
   }while(true);

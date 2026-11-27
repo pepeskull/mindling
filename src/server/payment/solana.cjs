@@ -4,15 +4,26 @@ const {failure} = require('./store.cjs');
 const {sha256} = require('./identity.cjs');
 const {pumpSnapshot,decodeMint,decodeHolding,TOKEN_2022}=require('./pump-market.cjs');
 
+function randomDeposit() {
+  const {privateKey}=generateKeyPairSync('ed25519');
+  const {d,x}=privateKey.export({format:'jwk'});
+  const rawPublic=Buffer.from(x,'base64url');
+  const {getBase58Decoder}=require('@solana/kit');
+  return {address:getBase58Decoder().decode(rawPublic),secret:Buffer.concat([Buffer.from(d,'base64url'),rawPublic])};
+}
+
 function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
   if (!apiKey || !mintAddress || !walletSecret) throw failure('PAYMENT_UNAVAILABLE',503);
   const kit=require('@solana/kit'), spl=require('@solana-program/token');
   const {getSetComputeUnitLimitInstruction}=require('@solana-program/compute-budget');
   const b58=kit.getBase58Decoder(), b58Bytes=kit.getBase58Encoder();
-  const mint=kit.address(mintAddress);
-  const walletBytes=walletSecret.startsWith('[')?JSON.parse(walletSecret):b58Bytes.encode(walletSecret);
+  let mint,walletBytes;
+  try {mint=kit.address(mintAddress);}
+  catch {throw failure('PAYMENT_MINT_INVALID',503);}
+  try {walletBytes=walletSecret.startsWith('[')?JSON.parse(walletSecret):b58Bytes.encode(walletSecret);}
+  catch {throw failure('PAYMENT_TREASURY_INVALID',503);}
   if(walletBytes?.length!==64||Array.from(walletBytes).some(byte=>!Number.isInteger(byte)||byte<0||byte>255)){
-    throw failure('PAYMENT_UNAVAILABLE',503);
+    throw failure('PAYMENT_TREASURY_INVALID',503);
   }
   const treasuryBytes=Uint8Array.from(walletBytes);
   const treasuryAddress=kit.address(b58.decode(treasuryBytes.subarray(32)));
@@ -27,6 +38,7 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
       body:JSON.stringify({jsonrpc:'2.0',id:String(++requestId),method,params}),
       signal:AbortSignal.timeout(6500)
     });
+    if(response.status===401||response.status===403)throw failure('PAYMENT_RPC_REJECTED',503);
     if(!response.ok)throw failure('CHAIN_UNAVAILABLE',503);
     const data=await response.json();
     if(data.error||!Object.hasOwn(data,'result'))throw failure('CHAIN_UNAVAILABLE',503);
@@ -50,6 +62,8 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     return snapshot(mint,decimals,tokenProgram);
   }
   async function sponsorEstimate(){
+    try{await treasury();}
+    catch{throw failure('PAYMENT_TREASURY_INVALID',503);}
     // Bound the normal 2-signature fee and maximum permitted ATA allocation;
     // checkout still verifies and reserves the concrete transaction cost.
     const [rent,balance]=await Promise.all([
@@ -58,13 +72,12 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     ]);
     return {fee:15000,rent,treasuryLamports:balance?.value};
   }
+  async function depositTarget(address,tokenProgram=spl.TOKEN_PROGRAM_ADDRESS) {
+    return {address,ata:await ata(address,tokenProgram),reference:b58.decode(randomBytes(32))};
+  }
   async function newDeposit(tokenProgram=spl.TOKEN_PROGRAM_ADDRESS) {
-    const {privateKey}=generateKeyPairSync('ed25519');
-    const {d,x}=privateKey.export({format:'jwk'});
-    const rawPublic=Buffer.from(x,'base64url');
-    const address=kit.address(b58.decode(rawPublic));
-    return {address,ata:await ata(address,tokenProgram),secret:Buffer.concat([Buffer.from(d,'base64url'),rawPublic]),
-      reference:b58.decode(randomBytes(32))};
+    const {address,secret}=randomDeposit();
+    return {...await depositTarget(address,tokenProgram),secret};
   }
   async function build(instructions,payer,tokenProgram) {
     const {value:lifetime}=await rpc('getLatestBlockhash',{commitment:'confirmed'});
@@ -163,7 +176,7 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     // Absence after expiry does not establish that a transfer never landed.
     return status?'PENDING':'UNKNOWN';
   }
-  return {cluster:'mainnet',mintInfo,marketSnapshot,sponsorEstimate,newDeposit,checkout,check,sweep,sweepStatus,
+  return {cluster:'mainnet',mintAddress:mint,mintInfo,marketSnapshot,sponsorEstimate,depositTarget,newDeposit,checkout,check,sweep,sweepStatus,
     async canSubmit(signed) {
       const height=await rpc('getBlockHeight',{commitment:'confirmed'});
       if(!Number.isSafeInteger(height))throw failure('CHAIN_UNAVAILABLE',503);
@@ -172,4 +185,4 @@ function solanaAdapter({apiKey,mintAddress,walletSecret,rpc:mockedRPC}) {
     submit:signed=>rpc('sendTransaction',signed.transaction,{encoding:'base64',maxRetries:0,preflightCommitment:'finalized'})};
 }
 
-module.exports={solanaAdapter};
+module.exports={solanaAdapter,randomDeposit};

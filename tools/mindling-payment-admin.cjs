@@ -2,7 +2,7 @@
 const {readFile}=require('node:fs/promises');
 const {runtimeFor}=require('../src/server/payment/runtime.cjs');
 const {sha256}=require('../src/server/payment/identity.cjs');
-const {CONTROL,HEAD,verifyJournal}=require('../src/server/payment/financial-control.cjs');
+const {CONTROL,HEAD,WORKER,requireWorker,verifyJournal}=require('../src/server/payment/financial-control.cjs');
 const {legacyStage}=require('../src/server/payment/energy-ledger.cjs');
 const failure=require('../src/server/payment/store.cjs').failure;
 
@@ -51,10 +51,11 @@ async function main(command,path) {
        manifest.sponsorReviewed!==true||manifest.energyReviewed!==true||manifest.marketReviewed!==true||
        manifest.activationApproved!==true)throw failure('PAYMENT_ACTIVATION_REVIEW_REQUIRED');
     const time=Date.now();
-    await store.change([CONTROL,HEAD],([,head])=>{
+    await store.change([CONTROL,HEAD,WORKER],([,head,worker])=>{
+      requireWorker(worker,time);
       if(JSON.stringify(head)!==JSON.stringify(result.head))throw failure('LEDGER_BUSY',503);
       return {writes:[{cluster:'mainnet',state:'OPEN',reference:manifest.reference,
-        head,verifiedUntil:time+86400000},head]};
+        head,policy:2,approvedAt:time},head,worker]};
     });
   }
   return {...result,state:command==='open'?'OPEN':'AUDITED'};

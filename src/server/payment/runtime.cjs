@@ -74,19 +74,24 @@ function energyCipher(env) {
 function runtimeFor(env=process.env) {
   const activityCipher=energyCipher(env);
   const store = redisStore({url:env.UPSTASH_REDIS_REST_URL,token:env.UPSTASH_REDIS_REST_TOKEN});
-  const auth = authority(store);
+  const {encryption,depositWallets}=require('./payments.cjs');
+  const auth=authority(store,Date.now,encryption(env.ENCRYPTION_KEY,'auth-ticket'));
+  const depositKeys=encryption(env.ENCRYPTION_KEY);
+  const deposit=depositWallets(store,depositKeys);
   return Promise.resolve(energyLedger(store)).then(ledger=>{
     let payment;
-    return {store,auth,ledger,activityCipher,payment(){
+    return {store,auth,ledger,activityCipher,deposit,payment(){
       if (payment) return payment;
-      const {payments,encryption}=require('./payments.cjs');
+      const {payments}=require('./payments.cjs');
       const {solanaAdapter}=require('./solana.cjs');
       try {
-        const keys=encryption(env.ENCRYPTION_KEY);
+        if(!env.HELIUS_API_KEY)throw failure('PAYMENT_RPC_UNCONFIGURED',503);
+        if(!env.MIND_TOKEN_MINT)throw failure('PAYMENT_MINT_UNCONFIGURED',503);
+        if(!env.WALLET_PRIVATE_KEY)throw failure('PAYMENT_TREASURY_UNCONFIGURED',503);
         const chain=solanaAdapter({apiKey:env.HELIUS_API_KEY,mintAddress:env.MIND_TOKEN_MINT,walletSecret:env.WALLET_PRIVATE_KEY});
-        payment=payments(store,ledger,chain,keys);
+        payment=payments(store,ledger,chain,depositKeys,{deposit,requireWorker:true});
         return payment;
-      } catch {throw failure('PAYMENT_UNAVAILABLE',503);}
+      } catch(error) {throw error.status===503?error:failure('PAYMENT_CONFIGURATION_INVALID',503);}
     }};
   });
 }
@@ -152,7 +157,7 @@ function protect(route,handler,options={}) {
       body=parse(req);
       origin(req);
       const {ledger,auth,store,activityCipher}=await (options.runtime||runtimeFor)();
-      const {fingerprint,operation}=await auth.verify(req.headers,route,body,()=>store.rate(clientKey(req,'authenticated'),90,60));
+      const {fingerprint,operation}=await auth.verify(req.headers,route,body,clientKey(req,'authenticated'));
       if(route===REASON&&body.mode==='research-capabilities') {
         await ledger.get(fingerprint);
         return handler(req,res);
@@ -220,17 +225,29 @@ function energyHandler(options={}) {
       if(!active)throw failure('ENERGY_SERVICE_UNAVAILABLE',503);
       const runtime=await (options.runtime||runtimeFor)();
       const {store,auth,ledger}=runtime;
+      async function walletStatus(owner){
+        if(!runtime.deposit)return undefined;
+        try{return {...await runtime.deposit.ensure(owner),version:1};}
+        catch(error){
+          const code=/^[A-Z_]{1,60}$/.test(error.code||'')?error.code:'DEPOSIT_KEY_UNAVAILABLE';
+          return {version:1,status:'unavailable',code};
+        }
+      }
       if(body.action==='challenge'){
         await store.rate(clientKey(req,'challenge'),90,60);
-        return res.status(200).json(await auth.challenge(body.publicKey));
+        return res.status(200).json(await auth.challenge(body.publicKey,body.ticket===true));
       }
-      const {fingerprint,publicKey,displayId}=await auth.verify(req.headers,ENERGY,body,()=>store.rate(clientKey(req,'authenticated'),90,60));
+      const {fingerprint,publicKey,displayId}=await auth.verify(req.headers,ENERGY,body,clientKey(req,'authenticated'));
       let data;
       switch(body.action){
         case 'register':
-          data={energy:await ledger.initialize({fingerprint,publicKey,displayId},body.legacy)};break;
+          data={energy:await ledger.initialize({fingerprint,publicKey,displayId},body.legacy)};
+          if(body.wallet===true)data.wallet=await walletStatus(fingerprint);
+          break;
         case 'state':
-          data={energy:await ledger.get(fingerprint)};break;
+          data={energy:await ledger.get(fingerprint)};
+          if(body.wallet===true)data.wallet=await walletStatus(fingerprint);
+          break;
         case 'research-permission':
           data=await ledger.setResearch(fingerprint,body.enabled,body.automaticRequestLimit,body.permissionRevision);break;
         case 'authorize-commit':
@@ -250,7 +267,7 @@ function energyHandler(options={}) {
           await store.rate(clientKey(req,'payment-open'),12,60);
           const localOrigin=req.headers.origin;
           if(typeof localOrigin!=='string'||!localOrigin.startsWith('https://'))throw failure('PAYMENT_HTTPS_REQUIRED',400);
-          const session=await runtime.payment().open(fingerprint,{fresh:body.fresh===true});
+          const session=await runtime.payment().open(fingerprint,{fresh:body.fresh===true,recoverOnly:body.recoverOnly===true});
           const link=new URL('/api/mindling/pay',localOrigin);
           link.searchParams.set('session',session.id);
           data={session:{...session,qrPayload:session.payable?'solana:'+encodeURIComponent(link.href):null}};
