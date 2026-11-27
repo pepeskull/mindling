@@ -81,7 +81,7 @@ export class CognitiveEngine {
         const previous = await this.store.load(event.mindlingId); live();
         const existing = previous.records.find(record => record.id === id);
         if (existing) return { record: existing, history: previous, source, cached: true };
-        const result = await requestReasoning({ id, context, signal: run.controller.signal, fetcher:this.store.transport?.('evaluation',id) }); live();
+        const result = await requestReasoning({ id, context, signal: run.controller.signal }); live();
         const latest = await this.store.source(event.mindlingId); live(); assertTrainingContext(context, latest);
         const record = { id, mindlingId: event.mindlingId, at: Date.now(), problem: event.problem, context, result };
         const history = await this.store.save(record); live();

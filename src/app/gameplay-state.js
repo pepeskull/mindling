@@ -100,6 +100,6 @@ export function dashboardLife(state) {
   return { ...life, id: 'primary', schemaVersion: 2, stage: m.stage, condition: condition(life),
     birthTimestamp: life.birthTimestamp || new Date(m.createdAt).toISOString(), lastSimulationAt: new Date(life.lastAt).toISOString(),
     deathTimestamp: life.deathAt == null ? null : new Date(life.deathAt).toISOString(),
-    energy: { ...m.energy, maximum:m.energyAuthority?m.energy.capacity:energyCapacityForStage(m.stage) },
+    energy: { ...m.energy, maximum:energyCapacityForStage(m.stage) },
     careCooldowns: Object.fromEntries(Object.entries(life.care).map(([key, value]) => [key, value == null ? null : new Date(value).toISOString()])) };
 }

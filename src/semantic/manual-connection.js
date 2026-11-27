@@ -36,7 +36,7 @@ export async function connectMemories(app,ids,identity){
   globalThis.window?.addEventListener('pagehide',abort,{once:true});
   let result;
   try{
-   const response=await (app.energyClient?.transport('memory-pair',fingerprint)||fetch)('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:fingerprint,mode:'semantic',context})});
+   const response=await fetch('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:fingerprint,mode:'semantic',context})});
    const text=await response.text();received=true;if(text.length>100000)fail('INVALID_RESPONSE');
    try{result=JSON.parse(text);}catch{fail('INVALID_RESPONSE');}
    if(!response.ok)throw Object.assign(Error('API_FAILURE'),{code:'API_FAILURE',diagnostic:semanticDiagnostic(result.error?.diagnostic)});

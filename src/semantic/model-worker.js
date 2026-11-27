@@ -1,4 +1,3 @@
-import {researchOperationKind} from '../payment/energy-client.js';
 import {PARENT_DISCOVERY_ENABLED,discoveryContext,persistParents} from './parent-discovery.js';
 import {persistAreaRelations} from './area-relations.js';
 import {graphData} from '../memory/graph-data.js';
@@ -53,7 +52,7 @@ export async function runSemantic(engine,task){
    if(engine.abort.signal.aborted)throw error('REQUEST_INTERRUPTED');
    await engine.patch(task.id,null,(current,next)=>{engine.assertLive(identity);if(!researchEnergyReady(next.mind))throw error('ENERGY_LOW');if(JSON.stringify(candidateContext({...next.mind,learningTasks:next.mind.learningTasks||[current]},current.knowledgeIds,{limit:batchLimit(current)}))!==JSON.stringify(context))throw error('STALE_EVIDENCE');const w=current.semanticWork;if(w?.state!=='RESERVED'||w.owner!==owner||w.fingerprint!==fingerprint)throw error('STALE_EVIDENCE');w.state='DISPATCHED';w.trigger='AUTHORIZED_TASK_CONTINUATION';w.updatedAt=now();const attempt=current.semanticAttempts?.find(a=>a.fingerprint===fingerprint);if(attempt){attempt.state='DISPATCHED';attempt.dispatchedAt=now();attempt.pairs=context.pairs.map(semanticPairReceipt);}},{researchGrant:grant});
    dispatched=true;
-   const response=await (engine.app.energyClient?.transport('research-semantic',task.id,{kind:researchOperationKind(task),id:task.id})||fetch)('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:fingerprint,mode:'semantic',context})});
+   const response=await fetch('/api/mindling/reason',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({id:fingerprint,mode:'semantic',context})});
    const text=await response.text();if(text.length>100000)throw error('INVALID_SCHEMA');
    if(!response.ok){let code,diagnostic;try{const failure=JSON.parse(text);code=failure.error?.code;diagnostic=semanticDiagnostic(failure.error?.diagnostic);knownNotDispatched=code==='MODEL_UNAVAILABLE'&&failure.id===fingerprint&&failure.inferenceDispatched===false;}catch{}throw Object.assign(error(['INVALID_SCHEMA','INCOMPLETE_GENERATION','MODEL_UNAVAILABLE','REQUEST_INTERRUPTED'].includes(code)?code:response.status===503?'MODEL_UNAVAILABLE':'API_FAILURE'),{diagnostic});}
    try{result=JSON.parse(text);}catch{throw error('INVALID_SCHEMA');}

@@ -248,7 +248,7 @@ export class Dashboard {
     else document.querySelector("[data-energy-message]").hidden = true;
   }
 
-  showEnergySyncStatus(message){ this.#showStatus(message); }
+  showPaymentStatus(message){ this.#showStatus(message); }
 
   renderEnergy(energy,now){
     const label=energyLabel(energy,now);
